@@ -1,0 +1,38 @@
+import WebsiteLayout from '@/layoutes/WebsiteLayout'
+import { Head } from '@inertiajs/react'
+import React from 'react'
+import HeroSection from '@/components/HeroSection'
+import FeaturesSection from '@/components/FeaturesSection'
+import AboutSection from '@/components/AboutSection'
+import ContactSection from '@/components/ContactSection'
+import RideBookingSearch from '@/components/ride_booking/RideBookingSearch'
+
+type Props = {}
+
+const home = (props: Props) => {
+ return (
+   <WebsiteLayout page='home'>
+       <Head>
+         <title>SkySlope - Premium Travel Experiences</title>
+         <meta name="description" content="Discover extraordinary journeys with SkySlope. From mountain adventures to cultural explorations, we create unforgettable travel experiences tailored just for you." />
+         <meta name="keywords" content="travel, tours, adventures, vacations, destinations, skyslope" />
+       </Head>
+       <>
+         <HeroSection />
+         
+         {/* Ride Booking Section */}
+         <section className="py-12 bg-gray-50">
+           <div className="max-w-4xl mx-auto px-4">
+             <RideBookingSearch compact={true} />
+           </div>
+         </section>
+         
+         <FeaturesSection />
+         <AboutSection />
+         <ContactSection />
+       </>
+   </WebsiteLayout>
+ )
+}
+
+export default home
