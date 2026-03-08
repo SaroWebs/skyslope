@@ -1,5 +1,6 @@
 import React from 'react'
 import { TextInput, Button, Grid, Stack, Text, Group, Divider } from '@mantine/core'
+import LocationInput from '@/components/ui/LocationInput'
 
 interface CarCategory {
   id: number
@@ -11,6 +12,15 @@ interface CarCategory {
   base_price_per_day: number
   price_per_km: number
   features: string[]
+}
+
+interface SearchResult {
+  id: string
+  name: string
+  address: string
+  type: string
+  lat?: number
+  lng?: number
 }
 
 interface CarRentFormProps {
@@ -29,6 +39,7 @@ interface CarRentFormProps {
   }
   formErrors: Record<string, string>
   onFormChange: (field: string, value: string) => void
+  onLocationSelect?: (location: SearchResult) => void
 }
 
 const CarRentForm: React.FC<CarRentFormProps> = ({
@@ -38,7 +49,8 @@ const CarRentForm: React.FC<CarRentFormProps> = ({
   processing,
   formData,
   formErrors,
-  onFormChange
+  onFormChange,
+  onLocationSelect
 }) => {
 
   const calculateDays = () => {
@@ -82,7 +94,7 @@ const CarRentForm: React.FC<CarRentFormProps> = ({
                     '&:focus': {
                       borderColor: '#3b82f6',
                       boxShadow: '0 0 0 3px rgba(59, 130, 246, 0.1)',
-                    }
+                    },
                   },
                   label: {
                     marginBottom: '8px',
@@ -110,7 +122,7 @@ const CarRentForm: React.FC<CarRentFormProps> = ({
                     '&:focus': {
                       borderColor: '#3b82f6',
                       boxShadow: '0 0 0 3px rgba(59, 130, 246, 0.1)',
-                    }
+                    },
                   },
                   label: {
                     marginBottom: '8px',
@@ -139,7 +151,7 @@ const CarRentForm: React.FC<CarRentFormProps> = ({
                     '&:focus': {
                       borderColor: '#3b82f6',
                       boxShadow: '0 0 0 3px rgba(59, 130, 246, 0.1)',
-                    }
+                    },
                   },
                   label: {
                     marginBottom: '8px',
@@ -182,7 +194,7 @@ const CarRentForm: React.FC<CarRentFormProps> = ({
                     '&:focus': {
                       borderColor: '#3b82f6',
                       boxShadow: '0 0 0 3px rgba(59, 130, 246, 0.1)',
-                    }
+                    },
                   },
                   label: {
                     marginBottom: '8px',
@@ -211,7 +223,7 @@ const CarRentForm: React.FC<CarRentFormProps> = ({
                     '&:focus': {
                       borderColor: '#3b82f6',
                       boxShadow: '0 0 0 3px rgba(59, 130, 246, 0.1)',
-                    }
+                    },
                   },
                   label: {
                     marginBottom: '8px',
@@ -223,30 +235,14 @@ const CarRentForm: React.FC<CarRentFormProps> = ({
             </Grid.Col>
 
             <Grid.Col span={12}>
-              <TextInput
-                id="pickup_location"
+              <LocationInput
                 label="Pickup Location"
-                placeholder="Guwahati Airport, Hotel, etc."
+                placeholder="Search for pickup location (e.g., Guwahati Airport, Hotel, etc.)"
                 value={formData.pickup_location}
-                onChange={(e) => onFormChange('pickup_location', e.target.value)}
+                onChange={(value) => onFormChange('pickup_location', value)}
+                onLocationSelect={onLocationSelect}
                 error={formErrors.pickup_location}
                 required
-                size="md"
-                styles={{
-                  input: {
-                    borderRadius: '8px',
-                    border: '1px solid #e2e8f0',
-                    '&:focus': {
-                      borderColor: '#3b82f6',
-                      boxShadow: '0 0 0 3px rgba(59, 130, 246, 0.1)',
-                    }
-                  },
-                  label: {
-                    marginBottom: '8px',
-                    fontWeight: 500,
-                    color: '#374151',
-                  }
-                }}
               />
             </Grid.Col>
           </Grid>

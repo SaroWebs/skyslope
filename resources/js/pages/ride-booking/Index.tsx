@@ -33,7 +33,7 @@ interface RideBooking {
 
 const RideBooking = () => {
   const { auth } = usePage().props
-  
+
   const [currentStep, setCurrentStep] = useState<'search' | 'pickup' | 'dropoff' | 'booking' | 'tracking'>('search')
   const [pickupLocation, setPickupLocation] = useState<Location | null>(null)
   const [dropoffLocation, setDropoffLocation] = useState<Location | null>(null)
@@ -62,20 +62,6 @@ const RideBooking = () => {
       }
     }
   }, [])
-
-  if (!(auth as any).user) {
-    return (
-      <WebsiteLayout page='ride-booking'>
-        <div className="container-modern py-12 sm:py-20 px-4">
-          <div className="max-w-md mx-auto text-center">
-            <h2 className="text-xl sm:text-2xl font-bold text-neutral-900 mb-3 sm:mb-4">Login Required</h2>
-            <p className="text-neutral-600 mb-4 sm:mb-6 text-sm sm:text-base">You need to login to book a ride.</p>
-            <a href="/login" className="modern-btn modern-btn-primary text-sm sm:text-base px-6 sm:px-8 py-2 sm:py-3">Login</a>
-          </div>
-        </div>
-      </WebsiteLayout>
-    )
-  }
 
   // Handles pickup location selection
   const handlePickupLocationSelected = (pickup: Location) => {

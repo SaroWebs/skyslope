@@ -6,17 +6,19 @@ import CarCategoryCard from '@/components/car_rent/CarCategoryCard'
 import CarRentForm from '@/components/car_rent/CarRentForm'
 import { notificationService } from '@/services/notification'
 
-// Extend Window interface for Google Maps
-declare global {
-  interface Window {
-    google: typeof google
-  }
-}
-
 interface Location {
   lat: number
   lng: number
   address: string
+}
+
+interface SearchResult {
+  id: string
+  name: string
+  address: string
+  type: string
+  lat?: number
+  lng?: number
 }
 
 interface CarCategory {
@@ -41,20 +43,6 @@ interface Destination {
 const CarRental = () => {
   const { auth } = usePage().props
 
-  if (!(auth as any).user) {
-    return (
-      <WebsiteLayout page='car-rental'>
-        <div className="container-modern py-12 sm:py-20 px-4">
-          <div className="max-w-md mx-auto text-center">
-            <h2 className="text-xl sm:text-2xl font-bold text-neutral-900 mb-3 sm:mb-4">Login Required</h2>
-            <p className="text-neutral-600 mb-4 sm:mb-6 text-sm sm:text-base">You need to login to rent a car.</p>
-            <Link href="/login" className="modern-btn modern-btn-primary text-sm sm:text-base px-6 sm:px-8 py-2 sm:py-3">Login</Link>
-          </div>
-        </div>
-      </WebsiteLayout>
-    )
-  }
-
   const { data, setData, post, processing, errors, reset } = useForm({
     car_category_id: '',
     customer_name: '',
@@ -71,9 +59,8 @@ const CarRental = () => {
   const [totalPrice, setTotalPrice] = useState<number>(0)
   const [loading, setLoading] = useState<boolean>(true)
   const [pickupLocation, setPickupLocation] = useState<Location | null>(null)
+  const [selectedLocation, setSelectedLocation] = useState<SearchResult | null>(null)
   const [isDrawerOpen, setIsDrawerOpen] = useState<boolean>(false)
-
-  const GOOGLE_MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || 'your_google_maps_api_key_here'
 
   useEffect(() => {
     fetchCarCategories()
@@ -86,11 +73,9 @@ const CarRental = () => {
     }
   }, [data.start_date, data.end_date, selectedCategory])
 
-
-
   const fetchCarCategories = async () => {
     try {
-      const response = await fetch('/api/car-categories')
+      const response = await fetch('/api/car-categories/active')
       if (!response.ok) {
         throw new Error('Failed to fetch car categories')
       }
@@ -138,6 +123,15 @@ const CarRental = () => {
     setIsDrawerOpen(true);
   }
 
+  const handleLocationSelect = (location: SearchResult) => {
+    setSelectedLocation(location)
+    setPickupLocation({
+      lat: location.lat || 0,
+      lng: location.lng || 0,
+      address: location.address
+    })
+  }
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     
@@ -162,6 +156,7 @@ const CarRental = () => {
         setSelectedCategory(null)
         setTotalPrice(0)
         setPickupLocation(null)
+        setSelectedLocation(null)
         setIsDrawerOpen(false)
       } else {
         // Show error notification
@@ -172,10 +167,6 @@ const CarRental = () => {
       notificationService.error('An unexpected error occurred. Please try again.')
     }
   }
-
-
-
-
 
   return (
     <WebsiteLayout page='car-rental'>
@@ -321,6 +312,7 @@ const CarRental = () => {
             formData={data}
             formErrors={errors}
             onFormChange={(field, value) => setData(field as any, value)}
+            onLocationSelect={handleLocationSelect}
           />
         </div>
       </Drawer>

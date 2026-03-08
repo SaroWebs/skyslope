@@ -13,6 +13,8 @@ use App\Models\Itinerary;
 use App\Models\PlaceMedia;
 use App\Models\Role;
 use App\Models\RideBooking;
+use App\Models\CarCategory;
+use App\Models\Destination;
 
 class AdminController extends Controller
 {
@@ -618,27 +620,506 @@ class AdminController extends Controller
     }
 
     /**
+     * Show create car rental form
+     */
+    public function createCarRental()
+    {
+        $carCategories = CarCategory::where('is_active', true)->orderBy('name')->get();
+        $destinations = Destination::where('is_active', true)->orderBy('name')->get();
+        $drivers = User::whereHas('roles', function($query) {
+            $query->where('name', 'driver');
+        })->orderBy('name')->get();
+
+        return inertia('admin/CarRentals/Create', [
+            'title' => 'Create Car Rental',
+            'user' => Auth::user(),
+            'car_categories' => $carCategories,
+            'destinations' => $destinations,
+            'drivers' => $drivers,
+        ]);
+    }
+
+    /**
+     * Store new car rental
+     */
+    public function storeCarRental(Request $request)
+    {
+        $validated = $request->validate([
+            'car_category_id' => 'required|exists:car_categories,id',
+            'customer_name' => 'required|string|max:255',
+            'customer_email' => 'required|email|max:255',
+            'customer_phone' => 'required|string|max:20',
+            'customer_address' => 'nullable|string',
+            'start_date' => 'required|date|after:today',
+            'end_date' => 'required|date|after:start_date',
+            'start_time' => 'nullable|date_format:H:i',
+            'end_time' => 'nullable|date_format:H:i',
+            'pickup_location' => 'required|string|max:255',
+            'dropoff_location' => 'nullable|string|max:255',
+            'destination_details' => 'nullable|string',
+            'distance_km' => 'nullable|numeric|min:0',
+            'special_requests' => 'nullable|string',
+            'status' => 'required|in:pending,confirmed,in_progress,completed,cancelled',
+            'payment_status' => 'required|in:pending,paid,failed,refunded',
+            'payment_method' => 'required|in:cash,card,bank_transfer,upi',
+            'assigned_driver' => 'nullable|exists:users,id',
+            'vehicle_number' => 'nullable|string|max:50',
+            'internal_notes' => 'nullable|string',
+            'whatsapp_notification' => 'boolean',
+            'email_notification' => 'boolean',
+            'sms_notification' => 'boolean',
+        ]);
+
+        // Calculate pricing
+        $carCategory = CarCategory::findOrFail($validated['car_category_id']);
+        $startDate = \Carbon\Carbon::parse($validated['start_date']);
+        $endDate = \Carbon\Carbon::parse($validated['end_date']);
+        $numberOfDays = $startDate->diffInDays($endDate) + 1;
+        $distanceKm = $validated['distance_km'] ?? 0;
+
+        $pricing = $carCategory->calculatePrice($numberOfDays, $distanceKm);
+
+        $carRental = \App\Models\CarRental::create([
+            'user_id' => Auth::id(),
+            'car_category_id' => $validated['car_category_id'],
+            'customer_name' => $validated['customer_name'],
+            'customer_email' => $validated['customer_email'],
+            'customer_phone' => $validated['customer_phone'],
+            'customer_address' => $validated['customer_address'],
+            'start_date' => $validated['start_date'],
+            'end_date' => $validated['end_date'],
+            'start_time' => $validated['start_time'] ?? '09:00',
+            'end_time' => $validated['end_time'] ?? '18:00',
+            'pickup_location' => $validated['pickup_location'],
+            'dropoff_location' => $validated['dropoff_location'],
+            'destination_details' => $validated['destination_details'],
+            'number_of_days' => $numberOfDays,
+            'base_price' => $pricing['base_price'],
+            'distance_km' => $distanceKm,
+            'distance_price' => $pricing['distance_price'],
+            'extras_price' => 0,
+            'discount_amount' => 0,
+            'total_price' => $pricing['subtotal'],
+            'status' => $validated['status'],
+            'payment_status' => $validated['payment_status'],
+            'payment_method' => $validated['payment_method'],
+            'special_requests' => $validated['special_requests'],
+            'assigned_driver' => $validated['assigned_driver'],
+            'vehicle_number' => $validated['vehicle_number'],
+            'internal_notes' => $validated['internal_notes'],
+            'whatsapp_notification' => $request->boolean('whatsapp_notification', true),
+            'email_notification' => $request->boolean('email_notification', true),
+            'sms_notification' => $request->boolean('sms_notification', false),
+        ]);
+
+        return redirect()->route('admin.car-rentals')->with('success', 'Car rental created successfully');
+    }
+
+    /**
+     * Show car rental details
+     */
+    public function showCarRental(\App\Models\CarRental $carRental)
+    {
+        $carRental->load(['carCategory', 'user', 'driver', 'extras']);
+
+        return inertia('admin/CarRentals/Show', [
+            'title' => 'Car Rental Details',
+            'user' => Auth::user(),
+            'car_rental' => $carRental,
+        ]);
+    }
+
+    /**
+     * Show edit car rental form
+     */
+    public function editCarRental(\App\Models\CarRental $carRental)
+    {
+        $carRental->load(['carCategory', 'user', 'driver']);
+        $carCategories = CarCategory::where('is_active', true)->orderBy('name')->get();
+        $destinations = Destination::where('is_active', true)->orderBy('name')->get();
+        $drivers = User::whereHas('roles', function($query) {
+            $query->where('name', 'driver');
+        })->orderBy('name')->get();
+
+        return inertia('admin/CarRentals/Edit', [
+            'title' => 'Edit Car Rental',
+            'user' => Auth::user(),
+            'car_rental' => $carRental,
+            'car_categories' => $carCategories,
+            'destinations' => $destinations,
+            'drivers' => $drivers,
+        ]);
+    }
+
+    /**
+     * Update car rental
+     */
+    public function updateCarRental(Request $request, \App\Models\CarRental $carRental)
+    {
+        $validated = $request->validate([
+            'car_category_id' => 'required|exists:car_categories,id',
+            'customer_name' => 'required|string|max:255',
+            'customer_email' => 'required|email|max:255',
+            'customer_phone' => 'required|string|max:20',
+            'customer_address' => 'nullable|string',
+            'start_date' => 'required|date',
+            'end_date' => 'required|date|after:start_date',
+            'start_time' => 'nullable|date_format:H:i',
+            'end_time' => 'nullable|date_format:H:i',
+            'pickup_location' => 'required|string|max:255',
+            'dropoff_location' => 'nullable|string|max:255',
+            'destination_details' => 'nullable|string',
+            'distance_km' => 'nullable|numeric|min:0',
+            'special_requests' => 'nullable|string',
+            'status' => 'required|in:pending,confirmed,in_progress,completed,cancelled',
+            'payment_status' => 'required|in:pending,paid,failed,refunded',
+            'payment_method' => 'required|in:cash,card,bank_transfer,upi',
+            'assigned_driver' => 'nullable|exists:users,id',
+            'vehicle_number' => 'nullable|string|max:50',
+            'internal_notes' => 'nullable|string',
+            'whatsapp_notification' => 'boolean',
+            'email_notification' => 'boolean',
+            'sms_notification' => 'boolean',
+        ]);
+
+        // Recalculate pricing if dates or category changed
+        $carCategory = CarCategory::findOrFail($validated['car_category_id']);
+        $startDate = \Carbon\Carbon::parse($validated['start_date']);
+        $endDate = \Carbon\Carbon::parse($validated['end_date']);
+        $numberOfDays = $startDate->diffInDays($endDate) + 1;
+        $distanceKm = $validated['distance_km'] ?? 0;
+
+        $pricing = $carCategory->calculatePrice($numberOfDays, $distanceKm);
+
+        $carRental->update([
+            'car_category_id' => $validated['car_category_id'],
+            'customer_name' => $validated['customer_name'],
+            'customer_email' => $validated['customer_email'],
+            'customer_phone' => $validated['customer_phone'],
+            'customer_address' => $validated['customer_address'],
+            'start_date' => $validated['start_date'],
+            'end_date' => $validated['end_date'],
+            'start_time' => $validated['start_time'],
+            'end_time' => $validated['end_time'],
+            'pickup_location' => $validated['pickup_location'],
+            'dropoff_location' => $validated['dropoff_location'],
+            'destination_details' => $validated['destination_details'],
+            'number_of_days' => $numberOfDays,
+            'base_price' => $pricing['base_price'],
+            'distance_km' => $distanceKm,
+            'distance_price' => $pricing['distance_price'],
+            'total_price' => $pricing['subtotal'],
+            'special_requests' => $validated['special_requests'],
+            'status' => $validated['status'],
+            'payment_status' => $validated['payment_status'],
+            'payment_method' => $validated['payment_method'],
+            'assigned_driver' => $validated['assigned_driver'],
+            'vehicle_number' => $validated['vehicle_number'],
+            'internal_notes' => $validated['internal_notes'],
+            'whatsapp_notification' => $request->boolean('whatsapp_notification', $carRental->whatsapp_notification),
+            'email_notification' => $request->boolean('email_notification', $carRental->email_notification),
+            'sms_notification' => $request->boolean('sms_notification', $carRental->sms_notification),
+        ]);
+
+        return redirect()->route('admin.car-rentals')->with('success', 'Car rental updated successfully');
+    }
+
+    /**
+     * Delete car rental
+     */
+    public function deleteCarRental(\App\Models\CarRental $carRental)
+    {
+        $carRental->delete();
+
+        return redirect()->route('admin.car-rentals')->with('success', 'Car rental deleted successfully');
+    }
+
+    /**
      * Car categories management
      */
-    public function carCategories()
+    public function carCategories(Request $request)
     {
+        $query = CarCategory::query();
+
+        // Filter by vehicle type if provided
+        if ($request->has('type') && !empty($request->type)) {
+            $query->where('vehicle_type', $request->type);
+        }
+
+        // Filter by active status
+        if ($request->has('active') && $request->boolean('active')) {
+            $query->where('is_active', true);
+        } elseif ($request->has('active') && !$request->boolean('active')) {
+            $query->where('is_active', false);
+        }
+
+        $carCategories = $query->orderBy('sort_order')->orderBy('name')->paginate(12);
+
         return inertia('admin/CarCategories', [
             'title' => 'Car Categories Management',
             'user' => Auth::user(),
-            'car_categories' => \App\Models\CarCategory::paginate(12),
+            'car_categories' => $carCategories,
         ]);
+    }
+
+    /**
+     * Show create car category form
+     */
+    public function createCarCategory()
+    {
+        return inertia('admin/CarCategories/Create', [
+            'title' => 'Create Car Category',
+            'user' => Auth::user(),
+        ]);
+    }
+
+    /**
+     * Store new car category
+     */
+    public function storeCarCategory(Request $request)
+    {
+        $validated = $request->validate([
+            'name' => 'required|string|max:255|unique:car_categories,name',
+            'description' => 'nullable|string',
+            'vehicle_type' => 'required|string|in:sedan,suv,hatchback,convertible,van,truck',
+            'seats' => 'required|integer|min:1|max:20',
+            'has_ac' => 'boolean',
+            'has_driver' => 'boolean',
+            'base_price_per_day' => 'required|numeric|min:0',
+            'price_per_km' => 'required|numeric|min:0',
+            'features' => 'nullable|array',
+            'features.*' => 'string',
+            'images' => 'nullable|array',
+            'images.*' => 'string',
+            'fuel_type' => 'nullable|string|in:petrol,diesel,electric,hybrid',
+            'year' => 'nullable|integer|min:1900|max:' . (date('Y') + 1),
+            'is_active' => 'boolean',
+            'sort_order' => 'nullable|integer|min:0',
+        ]);
+
+        CarCategory::create($validated);
+
+        return redirect()->route('admin.car-categories')->with('success', 'Car category created successfully');
+    }
+
+    /**
+     * Show car category details
+     */
+    public function showCarCategory(CarCategory $carCategory)
+    {
+        return inertia('admin/CarCategories/Show', [
+            'title' => 'Car Category Details',
+            'user' => Auth::user(),
+            'car_category' => $carCategory->load('carRentals'),
+        ]);
+    }
+
+    /**
+     * Show edit car category form
+     */
+    public function editCarCategory(CarCategory $carCategory)
+    {
+        return inertia('admin/CarCategories/Edit', [
+            'title' => 'Edit Car Category',
+            'user' => Auth::user(),
+            'car_category' => $carCategory,
+        ]);
+    }
+
+    /**
+     * Update car category
+     */
+    public function updateCarCategory(Request $request, CarCategory $carCategory)
+    {
+        $validated = $request->validate([
+            'name' => 'required|string|max:255|unique:car_categories,name,' . $carCategory->id,
+            'description' => 'nullable|string',
+            'vehicle_type' => 'required|string|in:sedan,suv,hatchback,convertible,van,truck',
+            'seats' => 'required|integer|min:1|max:20',
+            'has_ac' => 'boolean',
+            'has_driver' => 'boolean',
+            'base_price_per_day' => 'required|numeric|min:0',
+            'price_per_km' => 'required|numeric|min:0',
+            'features' => 'nullable|array',
+            'features.*' => 'string',
+            'images' => 'nullable|array',
+            'images.*' => 'string',
+            'fuel_type' => 'nullable|string|in:petrol,diesel,electric,hybrid',
+            'year' => 'nullable|integer|min:1900|max:' . (date('Y') + 1),
+            'is_active' => 'boolean',
+            'sort_order' => 'nullable|integer|min:0',
+        ]);
+
+        $carCategory->update($validated);
+
+        return redirect()->route('admin.car-categories')->with('success', 'Car category updated successfully');
+    }
+
+    /**
+     * Delete car category
+     */
+    public function deleteCarCategory(CarCategory $carCategory)
+    {
+        // Check if there are any car rentals using this category
+        if ($carCategory->carRentals()->count() > 0) {
+            return back()->with('error', 'Cannot delete car category as it has associated car rentals');
+        }
+
+        $carCategory->delete();
+
+        return redirect()->route('admin.car-categories')->with('success', 'Car category deleted successfully');
     }
 
     /**
      * Destinations management
      */
-    public function destinations()
+    public function destinations(Request $request)
     {
+        $query = Destination::query();
+
+        // Filter by state if provided
+        if ($request->has('state') && !empty($request->state)) {
+            $query->where('state', $request->state);
+        }
+
+        // Filter by type if provided
+        if ($request->has('type') && !empty($request->type)) {
+            $query->where('type', $request->type);
+        }
+
+        // Filter by region if provided
+        if ($request->has('region') && !empty($request->region)) {
+            $query->where('region', $request->region);
+        }
+
+        // Filter by active status
+        if ($request->has('active') && $request->boolean('active')) {
+            $query->where('is_active', true);
+        } elseif ($request->has('active') && !$request->boolean('active')) {
+            $query->where('is_active', false);
+        }
+
+        $destinations = $query->orderBy('sort_order')->orderBy('name')->paginate(12);
+
         return inertia('admin/Destinations', [
             'title' => 'Destinations Management',
             'user' => Auth::user(),
-            'destinations' => \App\Models\Destination::paginate(12),
+            'destinations' => $destinations,
         ]);
+    }
+
+    /**
+     * Show create destination form
+     */
+    public function createDestination()
+    {
+        return inertia('admin/Destinations/Create', [
+            'title' => 'Create Destination',
+            'user' => Auth::user(),
+        ]);
+    }
+
+    /**
+     * Store new destination
+     */
+    public function storeDestination(Request $request)
+    {
+        $validated = $request->validate([
+            'name' => 'required|string|max:255|unique:destinations,name',
+            'description' => 'nullable|string',
+            'state' => 'required|string|max:100',
+            'region' => 'nullable|string|max:100',
+            'type' => 'required|string|in:city,hill_station,beach,historical,cultural,nature,adventure,religious',
+            'latitude' => 'nullable|numeric|between:-90,90',
+            'longitude' => 'nullable|numeric|between:-180,180',
+            'popular_routes' => 'nullable|array',
+            'popular_routes.*' => 'string',
+            'distance_from_guwahati' => 'nullable|numeric|min:0',
+            'estimated_travel_time' => 'nullable|integer|min:0',
+            'best_time_to_visit' => 'nullable|array',
+            'best_time_to_visit.*' => 'string',
+            'attractions' => 'nullable|array',
+            'attractions.*' => 'string',
+            'images' => 'nullable|array',
+            'images.*' => 'string',
+            'is_active' => 'boolean',
+            'sort_order' => 'nullable|integer|min:0',
+        ]);
+
+        Destination::create($validated);
+
+        return redirect()->route('admin.destinations')->with('success', 'Destination created successfully');
+    }
+
+    /**
+     * Show destination details
+     */
+    public function showDestination(Destination $destination)
+    {
+        return inertia('admin/Destinations/Show', [
+            'title' => 'Destination Details',
+            'user' => Auth::user(),
+            'destination' => $destination,
+        ]);
+    }
+
+    /**
+     * Show edit destination form
+     */
+    public function editDestination(Destination $destination)
+    {
+        return inertia('admin/Destinations/Edit', [
+            'title' => 'Edit Destination',
+            'user' => Auth::user(),
+            'destination' => $destination,
+        ]);
+    }
+
+    /**
+     * Update destination
+     */
+    public function updateDestination(Request $request, Destination $destination)
+    {
+        $validated = $request->validate([
+            'name' => 'required|string|max:255|unique:destinations,name,' . $destination->id,
+            'description' => 'nullable|string',
+            'state' => 'required|string|max:100',
+            'region' => 'nullable|string|max:100',
+            'type' => 'required|string|in:city,hill_station,beach,historical,cultural,nature,adventure,religious',
+            'latitude' => 'nullable|numeric|between:-90,90',
+            'longitude' => 'nullable|numeric|between:-180,180',
+            'popular_routes' => 'nullable|array',
+            'popular_routes.*' => 'string',
+            'distance_from_guwahati' => 'nullable|numeric|min:0',
+            'estimated_travel_time' => 'nullable|integer|min:0',
+            'best_time_to_visit' => 'nullable|array',
+            'best_time_to_visit.*' => 'string',
+            'attractions' => 'nullable|array',
+            'attractions.*' => 'string',
+            'images' => 'nullable|array',
+            'images.*' => 'string',
+            'is_active' => 'boolean',
+            'sort_order' => 'nullable|integer|min:0',
+        ]);
+
+        $destination->update($validated);
+
+        return redirect()->route('admin.destinations')->with('success', 'Destination updated successfully');
+    }
+
+    /**
+     * Delete destination
+     */
+    public function deleteDestination(Destination $destination)
+    {
+        // Check if there are any tours using this destination
+        if ($destination->tours()->count() > 0) {
+            return back()->with('error', 'Cannot delete destination as it has associated tours');
+        }
+
+        $destination->delete();
+
+        return redirect()->route('admin.destinations')->with('success', 'Destination deleted successfully');
     }
 
     /**

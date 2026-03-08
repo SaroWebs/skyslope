@@ -1,10 +1,20 @@
 import React from 'react';
 import { Link, useForm } from '@inertiajs/react';
 import AdminLayout from '@/layoutes/AdminLayout';
+import LocationInput from '@/components/ui/LocationInput';
 
 interface CreatePlaceProps {
     title: string;
     user: any;
+}
+
+interface SearchResult {
+    id: string;
+    name: string;
+    address: string;
+    type: string;
+    lat?: number;
+    lng?: number;
 }
 
 export default function Create({ title, user }: CreatePlaceProps) {
@@ -15,6 +25,12 @@ export default function Create({ title, user }: CreatePlaceProps) {
         lat: '',
         status: 'available',
     });
+
+    const handleLocationSelect = (location: SearchResult) => {
+        setData('name', location.name);
+        setData('lat', location.lat?.toString() || '');
+        setData('lng', location.lng?.toString() || '');
+    };
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
@@ -37,20 +53,15 @@ export default function Create({ title, user }: CreatePlaceProps) {
 
                     <form onSubmit={handleSubmit}>
                         <div className="grid grid-cols-1 gap-6">
-                            <div>
-                                <label htmlFor="name" className="block text-sm font-medium text-gray-700">
-                                    Name
-                                </label>
-                                <input
-                                    type="text"
-                                    id="name"
-                                    value={data.name}
-                                    onChange={(e) => setData('name', e.target.value)}
-                                    className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
-                                    required
-                                />
-                                {errors.name && <div className="text-red-600 text-sm mt-1">{errors.name}</div>}
-                            </div>
+                            <LocationInput
+                                label="Location"
+                                placeholder="Search for a location..."
+                                value={data.name}
+                                onChange={(value) => setData('name', value)}
+                                onLocationSelect={handleLocationSelect}
+                                error={errors.name}
+                                required
+                            />
 
                             <div>
                                 <label htmlFor="description" className="block text-sm font-medium text-gray-700">
@@ -79,6 +90,7 @@ export default function Create({ title, user }: CreatePlaceProps) {
                                         value={data.lng}
                                         onChange={(e) => setData('lng', e.target.value)}
                                         className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
+                                        readOnly
                                     />
                                     {errors.lng && <div className="text-red-600 text-sm mt-1">{errors.lng}</div>}
                                 </div>
@@ -94,6 +106,7 @@ export default function Create({ title, user }: CreatePlaceProps) {
                                         value={data.lat}
                                         onChange={(e) => setData('lat', e.target.value)}
                                         className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
+                                        readOnly
                                     />
                                     {errors.lat && <div className="text-red-600 text-sm mt-1">{errors.lat}</div>}
                                 </div>

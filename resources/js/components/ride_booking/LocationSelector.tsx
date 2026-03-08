@@ -1,5 +1,6 @@
-import React, { useState, useEffect, useRef } from 'react'
+import React, { useState, useEffect } from 'react'
 import { notificationService } from '@/services/notification'
+import { searchLocationsWithDebounce, getPlaceDetails } from '@/lib/nominatim'
 
 interface Location {
   lat: number
@@ -9,8 +10,8 @@ interface Location {
   id?: string | number
 }
 
-interface LocationResult {
-  id: string | number
+interface SearchResult {
+  id: string
   name: string
   address: string
   type: string
@@ -26,12 +27,6 @@ interface LocationSelectorProps {
   onBack?: () => void
 }
 
-declare global {
-  interface Window {
-    google: typeof google
-  }
-}
-
 const LocationSelector: React.FC<LocationSelectorProps> = ({
   onLocationSelected,
   initialPickup,
@@ -41,21 +36,14 @@ const LocationSelector: React.FC<LocationSelectorProps> = ({
 }) => {
   const [pickupQuery, setPickupQuery] = useState('')
   const [dropoffQuery, setDropoffQuery] = useState('')
-  const [pickupResults, setPickupResults] = useState<LocationResult[]>([])
-  const [dropoffResults, setDropoffResults] = useState<LocationResult[]>([])
+  const [pickupResults, setPickupResults] = useState<SearchResult[]>([])
+  const [dropoffResults, setDropoffResults] = useState<SearchResult[]>([])
   const [showPickupResults, setShowPickupResults] = useState(false)
   const [showDropoffResults, setShowDropoffResults] = useState(false)
   const [selectedPickup, setSelectedPickup] = useState<Location | null>(initialPickup || null)
   const [selectedDropoff, setSelectedDropoff] = useState<Location | null>(initialDropoff || null)
   const [loading, setLoading] = useState(false)
-  const [popularLocations, setPopularLocations] = useState<LocationResult[]>([])
-
-  const pickupInputRef = useRef<HTMLInputElement>(null)
-  const dropoffInputRef = useRef<HTMLInputElement>(null)
-
-  useEffect(() => {
-    fetchPopularLocations()
-  }, [])
+  const [popularLocations, setPopularLocations] = useState<SearchResult[]>([])
 
   useEffect(() => {
     if (initialPickup) {
@@ -66,6 +54,7 @@ const LocationSelector: React.FC<LocationSelectorProps> = ({
       setDropoffQuery(initialDropoff.address)
       setSelectedDropoff(initialDropoff)
     }
+    fetchPopularLocations()
   }, [initialPickup, initialDropoff])
 
   const fetchPopularLocations = async () => {
@@ -80,78 +69,62 @@ const LocationSelector: React.FC<LocationSelectorProps> = ({
     }
   }
 
-  const searchLocations = async (query: string, type: 'pickup' | 'dropoff') => {
-    if (query.length < 2) {
-      if (type === 'pickup') {
-        setPickupResults([])
-        setShowPickupResults(false)
-      } else {
-        setDropoffResults([])
-        setShowDropoffResults(false)
-      }
-      return
-    }
-
-    try {
-      const response = await fetch(`/api/locations/search?query=${encodeURIComponent(query)}`)
-      if (response.ok) {
-        const data = await response.json()
-        if (type === 'pickup') {
-          setPickupResults(data.results || [])
-          setShowPickupResults(true)
-        } else {
-          setDropoffResults(data.results || [])
-          setShowDropoffResults(true)
-        }
-      }
-    } catch (error) {
-      console.error('Error searching locations:', error)
-    }
-  }
-
   const handlePickupChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value
     setPickupQuery(value)
-    searchLocations(value, 'pickup')
+    
+    // Clear selected location if user is typing manually
+    if (value !== selectedPickup?.address) {
+      setSelectedPickup(null)
+    }
+
+    // Search with debounce
+    searchLocationsWithDebounce(value, (results) => {
+      setPickupResults(results)
+      setShowPickupResults(results.length > 0 && value.length >= 3)
+    })
   }
 
   const handleDropoffChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value
     setDropoffQuery(value)
-    searchLocations(value, 'dropoff')
+    
+    // Clear selected location if user is typing manually
+    if (value !== selectedDropoff?.address) {
+      setSelectedDropoff(null)
+    }
+
+    // Search with debounce
+    searchLocationsWithDebounce(value, (results) => {
+      setDropoffResults(results)
+      setShowDropoffResults(results.length > 0 && value.length >= 3)
+    })
   }
 
-  const selectLocation = async (location: LocationResult, type: 'pickup' | 'dropoff') => {
+  const selectLocation = async (location: SearchResult, type: 'pickup' | 'dropoff') => {
     let fullLocation: Location
 
-    if (location.type === 'google_place' && location.id) {
-      // Fetch place details from Google
-      try {
-        const response = await fetch(`/api/locations/place-details?place_id=${location.id}`)
-        if (response.ok) {
-          const placeData = await response.json()
-          fullLocation = {
-            lat: placeData.lat,
-            lng: placeData.lng,
-            address: placeData.address,
-            type: 'google_place',
-            id: placeData.id
-          }
-        } else {
-          throw new Error('Failed to fetch place details')
-        }
-      } catch (error) {
-        notificationService.error('Failed to get location details')
-        return
-      }
-    } else {
-      // Local destination
+    if (location.lat && location.lng) {
+      // Use provided coordinates directly
       fullLocation = {
-        lat: location.lat || 0,
-        lng: location.lng || 0,
+        lat: location.lat,
+        lng: location.lng,
         address: location.address,
         type: location.type,
         id: location.id
+      }
+    } else {
+      // Fetch place details if coordinates not provided
+      try {
+        const placeDetails = await getPlaceDetails(location.id)
+        if (!placeDetails) {
+          notificationService.error('Failed to get location details')
+          return
+        }
+        fullLocation = placeDetails
+      } catch (error) {
+        notificationService.error('Failed to get location details')
+        return
       }
     }
 
@@ -230,10 +203,12 @@ const LocationSelector: React.FC<LocationSelectorProps> = ({
       setSelectedPickup(null)
       setPickupQuery('')
       setPickupResults([])
+      setShowPickupResults(false)
     } else {
       setSelectedDropoff(null)
       setDropoffQuery('')
       setDropoffResults([])
+      setShowDropoffResults(false)
     }
   }
 
@@ -247,7 +222,6 @@ const LocationSelector: React.FC<LocationSelectorProps> = ({
           <label className="block text-sm font-medium text-gray-700 mb-2">Pickup Location</label>
           <div className="relative">
             <input
-              ref={pickupInputRef}
               type="text"
               value={pickupQuery}
               onChange={handlePickupChange}
@@ -258,6 +232,7 @@ const LocationSelector: React.FC<LocationSelectorProps> = ({
               <button
                 onClick={() => clearLocation('pickup')}
                 className="absolute right-3 top-3 text-gray-400 hover:text-gray-600"
+                type="button"
               >
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -288,7 +263,6 @@ const LocationSelector: React.FC<LocationSelectorProps> = ({
           <label className="block text-sm font-medium text-gray-700 mb-2">Dropoff Location (Optional)</label>
           <div className="relative">
             <input
-              ref={dropoffInputRef}
               type="text"
               value={dropoffQuery}
               onChange={handleDropoffChange}
@@ -299,6 +273,7 @@ const LocationSelector: React.FC<LocationSelectorProps> = ({
               <button
                 onClick={() => clearLocation('dropoff')}
                 className="absolute right-3 top-3 text-gray-400 hover:text-gray-600"
+                type="button"
               >
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -335,7 +310,7 @@ const LocationSelector: React.FC<LocationSelectorProps> = ({
                   onClick={() => selectLocation(location, selectedPickup ? 'dropoff' : 'pickup')}
                   className="text-left px-3 py-2 bg-gray-50 hover:bg-gray-100 rounded-lg transition-colors"
                 >
-                  <div className="text-sm font-medium text-gray-900">{location.name}</div>
+                  <div className="text-sm font-medium text-gray-900">{location.address.split(',')[0]}</div>
                   <div className="text-xs text-gray-600">{location.address}</div>
                 </button>
               ))}

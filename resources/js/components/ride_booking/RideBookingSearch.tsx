@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useRef } from 'react'
+import React, { useState } from 'react'
+import { searchLocationsWithDebounce } from '@/lib/nominatim'
 
 interface Location {
   lat: number
@@ -8,8 +9,8 @@ interface Location {
   id?: string | number
 }
 
-interface LocationResult {
-  id: string | number
+interface SearchResult {
+  id: string
   name: string
   address: string
   type: string
@@ -34,108 +35,59 @@ const RideBookingSearch: React.FC<RideBookingSearchProps> = ({
 }) => {
   const [pickupQuery, setPickupQuery] = useState('')
   const [dropoffQuery, setDropoffQuery] = useState('')
-  const [pickupResults, setPickupResults] = useState<LocationResult[]>([])
-  const [dropoffResults, setDropoffResults] = useState<LocationResult[]>([])
+  const [pickupResults, setPickupResults] = useState<SearchResult[]>([])
+  const [dropoffResults, setDropoffResults] = useState<SearchResult[]>([])
   const [showPickupResults, setShowPickupResults] = useState(false)
   const [showDropoffResults, setShowDropoffResults] = useState(false)
   const [selectedPickup, setSelectedPickup] = useState<Location | null>(initialPickup || null)
   const [selectedDropoff, setSelectedDropoff] = useState<Location | null>(initialDropoff || null)
   const [loading, setLoading] = useState(false)
 
-  const pickupInputRef = useRef<HTMLInputElement>(null)
-  const dropoffInputRef = useRef<HTMLInputElement>(null)
-
-  useEffect(() => {
-    if (initialPickup) {
-      setSelectedPickup(initialPickup)
-      setPickupQuery(initialPickup.address)
-    }
-    if (initialDropoff) {
-      setSelectedDropoff(initialDropoff)
-      setDropoffQuery(initialDropoff.address)
-    }
-  }, [initialPickup, initialDropoff])
-
-  const searchLocations = async (query: string, type: 'pickup' | 'dropoff') => {
-    if (query.length < 2) {
-      if (type === 'pickup') {
-        setPickupResults([])
-        setShowPickupResults(false)
-      } else {
-        setDropoffResults([])
-        setShowDropoffResults(false)
-      }
-      return
-    }
-
-    try {
-      const response = await fetch(`/api/locations/search?query=${encodeURIComponent(query)}`)
-      if (response.ok) {
-        const data = await response.json()
-        if (type === 'pickup') {
-          setPickupResults(data.results || [])
-          setShowPickupResults(true)
-        } else {
-          setDropoffResults(data.results || [])
-          setShowDropoffResults(true)
-        }
-      }
-    } catch (error) {
-      console.error('Error searching locations:', error)
-    }
-  }
-
   const handlePickupChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value
     setPickupQuery(value)
-    searchLocations(value, 'pickup')
+    
+    // Clear selected location if user is typing manually
+    if (value !== selectedPickup?.address) {
+      setSelectedPickup(null)
+    }
+
+    // Search with debounce
+    searchLocationsWithDebounce(value, (results) => {
+      setPickupResults(results)
+      setShowPickupResults(results.length > 0 && value.length >= 3)
+    })
   }
 
   const handleDropoffChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value
     setDropoffQuery(value)
-    searchLocations(value, 'dropoff')
+    
+    // Clear selected location if user is typing manually
+    if (value !== selectedDropoff?.address) {
+      setSelectedDropoff(null)
+    }
+
+    // Search with debounce
+    searchLocationsWithDebounce(value, (results) => {
+      setDropoffResults(results)
+      setShowDropoffResults(results.length > 0 && value.length >= 3)
+    })
   }
 
-  const selectLocation = async (location: LocationResult, type: 'pickup' | 'dropoff') => {
-    let fullLocation: Location
-
-    if (location.type === 'google_place' && location.id) {
-      // Fetch place details from Google
-      try {
-        const response = await fetch(`/api/locations/place-details?place_id=${location.id}`)
-        if (response.ok) {
-          const placeData = await response.json()
-          fullLocation = {
-            lat: placeData.lat,
-            lng: placeData.lng,
-            address: placeData.address,
-            type: 'google_place',
-            id: placeData.id
-          }
-        } else {
-          throw new Error('Failed to fetch place details')
-        }
-      } catch (error) {
-        console.error('Failed to get location details')
-        return
-      }
-    } else {
-      // Local destination
-      fullLocation = {
-        lat: location.lat || 0,
-        lng: location.lng || 0,
-        address: location.address,
-        type: location.type,
-        id: location.id
-      }
+  const selectLocation = (location: SearchResult, type: 'pickup' | 'dropoff') => {
+    const fullLocation: Location = {
+      lat: location.lat || 0,
+      lng: location.lng || 0,
+      address: location.address,
+      type: location.type,
+      id: location.id
     }
 
     if (type === 'pickup') {
       setSelectedPickup(fullLocation)
       setPickupQuery(fullLocation.address)
       setShowPickupResults(false)
-      dropoffInputRef.current?.focus()
     } else {
       setSelectedDropoff(fullLocation)
       setDropoffQuery(fullLocation.address)
@@ -148,10 +100,12 @@ const RideBookingSearch: React.FC<RideBookingSearchProps> = ({
       setSelectedPickup(null)
       setPickupQuery('')
       setPickupResults([])
+      setShowPickupResults(false)
     } else {
       setSelectedDropoff(null)
       setDropoffQuery('')
       setDropoffResults([])
+      setShowDropoffResults(false)
     }
   }
 
@@ -196,7 +150,6 @@ const RideBookingSearch: React.FC<RideBookingSearchProps> = ({
             <div className="flex items-center space-x-2">
               <div className="w-3 h-3 bg-green-500 rounded-full flex-shrink-0"></div>
               <input
-                ref={pickupInputRef}
                 type="text"
                 value={pickupQuery}
                 onChange={handlePickupChange}
@@ -237,7 +190,6 @@ const RideBookingSearch: React.FC<RideBookingSearchProps> = ({
             <div className="flex items-center space-x-2">
               <div className="w-3 h-3 bg-red-500 rounded-full flex-shrink-0"></div>
               <input
-                ref={dropoffInputRef}
                 type="text"
                 value={dropoffQuery}
                 onChange={handleDropoffChange}
@@ -290,7 +242,6 @@ const RideBookingSearch: React.FC<RideBookingSearchProps> = ({
             <div className="flex items-center space-x-3">
               <div className="w-4 h-4 bg-green-500 rounded-full flex-shrink-0"></div>
               <input
-                ref={pickupInputRef}
                 type="text"
                 value={pickupQuery}
                 onChange={handlePickupChange}
@@ -346,7 +297,6 @@ const RideBookingSearch: React.FC<RideBookingSearchProps> = ({
             <div className="flex items-center space-x-3">
               <div className="w-4 h-4 bg-red-500 rounded-full flex-shrink-0"></div>
               <input
-                ref={dropoffInputRef}
                 type="text"
                 value={dropoffQuery}
                 onChange={handleDropoffChange}

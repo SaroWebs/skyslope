@@ -1,17 +1,27 @@
 <?php
 
 use Illuminate\Support\Facades\Route;
-use App\Http\Controllers\PagesController;
-use App\Http\Controllers\TourController;
-use App\Http\Controllers\PlaceController;
+use Illuminate\Support\Facades\Artisan;
 use App\Http\Controllers\AuthController;
+use App\Http\Controllers\TourController;
 use App\Http\Controllers\AdminController;
-use App\Http\Controllers\ItineraryController;
+use App\Http\Controllers\PagesController;
+use App\Http\Controllers\PlaceController;
 use App\Http\Controllers\CarRentalController;
+use App\Http\Controllers\ItineraryController;
+use App\Http\Controllers\RideBookingController;
+use App\Http\Controllers\Api\LocationController;
 use App\Http\Controllers\Api\CarCategoryController as ApiCarCategoryController;
 use App\Http\Controllers\Api\DestinationController as ApiDestinationController;
-use App\Http\Controllers\Api\LocationController;
-use App\Http\Controllers\RideBookingController;
+
+Route::get('/link', function () {
+    try {
+        $output = Artisan::call('storage:link');
+        return 'Command output: ' . $output;
+    } catch (\Exception $e) {
+        return 'Error: ' . $e->getMessage();
+    }
+});
 
 Route::get('/', [PagesController::class, 'index'])->name('home');
 Route::get('/about', [PagesController::class, 'about'])->name('about');
@@ -29,6 +39,7 @@ Route::get('/api/tours', [TourController::class, 'index'])->name('api.tours');
 Route::get('/api/tours/{id}', [TourController::class, 'show'])->name('api.tours.show');
 Route::get('/api/places', [PlaceController::class, 'index'])->name('api.places');
 Route::get('/api/car-categories', [ApiCarCategoryController::class, 'index'])->name('api.car-categories');
+Route::get('/api/car-categories/active', [ApiCarCategoryController::class, 'getActiveCategories'])->name('api.car-categories.active');
 Route::get('/api/destinations', [ApiDestinationController::class, 'index'])->name('api.destinations');
 
 // Location and Ride Booking APIs
@@ -95,10 +106,33 @@ Route::middleware(['auth', 'role:admin'])->prefix('admin')->name('admin.')->grou
 
     // Other Management Routes
     Route::get('/bookings', [AdminController::class, 'bookings'])->name('bookings');
-    Route::get('/car-rentals', [AdminController::class, 'carRentals'])->name('car-rentals');
     Route::get('/ride-bookings', [AdminController::class, 'rideBookings'])->name('ride-bookings');
+    
+    // Car Rentals Management Routes
+    Route::get('/car-rentals', [AdminController::class, 'carRentals'])->name('car-rentals');
+    Route::get('/car-rentals/create', [AdminController::class, 'createCarRental'])->name('car-rentals.create');
+    Route::post('/car-rentals', [AdminController::class, 'storeCarRental'])->name('car-rentals.store');
+    Route::get('/car-rentals/{carRental}', [AdminController::class, 'showCarRental'])->name('car-rentals.show');
+    Route::get('/car-rentals/{carRental}/edit', [AdminController::class, 'editCarRental'])->name('car-rentals.edit');
+    Route::put('/car-rentals/{carRental}', [AdminController::class, 'updateCarRental'])->name('car-rentals.update');
+    Route::delete('/car-rentals/{carRental}', [AdminController::class, 'deleteCarRental'])->name('car-rentals.delete');
+    // Car Categories Management Routes
     Route::get('/car-categories', [AdminController::class, 'carCategories'])->name('car-categories');
+    Route::get('/car-categories/create', [AdminController::class, 'createCarCategory'])->name('car-categories.create');
+    Route::post('/car-categories', [AdminController::class, 'storeCarCategory'])->name('car-categories.store');
+    Route::get('/car-categories/{carCategory}', [AdminController::class, 'showCarCategory'])->name('car-categories.show');
+    Route::get('/car-categories/{carCategory}/edit', [AdminController::class, 'editCarCategory'])->name('car-categories.edit');
+    Route::put('/car-categories/{carCategory}', [AdminController::class, 'updateCarCategory'])->name('car-categories.update');
+    Route::delete('/car-categories/{carCategory}', [AdminController::class, 'deleteCarCategory'])->name('car-categories.delete');
+
+    // Destinations Management Routes
     Route::get('/destinations', [AdminController::class, 'destinations'])->name('destinations');
+    Route::get('/destinations/create', [AdminController::class, 'createDestination'])->name('destinations.create');
+    Route::post('/destinations', [AdminController::class, 'storeDestination'])->name('destinations.store');
+    Route::get('/destinations/{destination}', [AdminController::class, 'showDestination'])->name('destinations.show');
+    Route::get('/destinations/{destination}/edit', [AdminController::class, 'editDestination'])->name('destinations.edit');
+    Route::put('/destinations/{destination}', [AdminController::class, 'updateDestination'])->name('destinations.update');
+    Route::delete('/destinations/{destination}', [AdminController::class, 'deleteDestination'])->name('destinations.delete');
     Route::get('/places', [AdminController::class, 'places'])->name('places');
     Route::get('/places/create', [AdminController::class, 'createPlace'])->name('places.create');
     Route::post('/places', [AdminController::class, 'storePlace'])->name('places.store');

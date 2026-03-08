@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { Head, usePage } from '@inertiajs/react'
+import { Head, usePage, router, Link } from '@inertiajs/react'
 import AdminLayout from '@/layoutes/AdminLayout'
 import { notificationService } from '@/services/notification'
 
@@ -38,8 +38,6 @@ const CarRentals = () => {
   const [carRentals, setCarRentals] = useState<CarRental[]>([])
   const [carCategories, setCarCategories] = useState<CarCategory[]>([])
   const [loading, setLoading] = useState(true)
-  const [showCreateModal, setShowCreateModal] = useState(false)
-  const [editingRental, setEditingRental] = useState<CarRental | null>(null)
   const [filterStatus, setFilterStatus] = useState('')
 
   useEffect(() => {
@@ -99,6 +97,12 @@ const CarRentals = () => {
     return badges[status as keyof typeof badges] || 'bg-gray-100 text-gray-800'
   }
 
+  const handleDelete = (id: number) => {
+    if (confirm('Are you sure you want to delete this car rental? This action cannot be undone.')) {
+      router.delete(`/admin/car-rentals/${id}`)
+    }
+  }
+
   return (
     <AdminLayout>
       <Head>
@@ -111,12 +115,12 @@ const CarRentals = () => {
             <h1 className="text-3xl font-bold text-gray-900">Car Rentals</h1>
             <p className="text-gray-600 mt-1">Manage car rental bookings and extras</p>
           </div>
-          <button
-            onClick={() => setShowCreateModal(true)}
-            className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-medium transition-colors"
+          <Link
+            href="/admin/car-rentals/create"
+            className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-medium transition-colors inline-block"
           >
             Add New Rental
-          </button>
+          </Link>
         </div>
 
         {/* Filters */}
@@ -228,14 +232,23 @@ const CarRentals = () => {
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                         <div className="flex space-x-2">
-                          <button
-                            onClick={() => setEditingRental(rental)}
+                          <Link
+                            href={`/admin/car-rentals/${rental.id}`}
                             className="text-blue-600 hover:text-blue-900"
                           >
-                            Edit
-                          </button>
-                          <button className="text-gray-600 hover:text-gray-900">
                             View
+                          </Link>
+                          <Link
+                            href={`/admin/car-rentals/${rental.id}/edit`}
+                            className="text-yellow-600 hover:text-yellow-900"
+                          >
+                            Edit
+                          </Link>
+                          <button
+                            onClick={() => handleDelete(rental.id)}
+                            className="text-red-600 hover:text-red-900"
+                          >
+                            Delete
                           </button>
                         </div>
                       </td>
