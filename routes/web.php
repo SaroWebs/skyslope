@@ -5,23 +5,29 @@ use Illuminate\Support\Facades\Artisan;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\TourController;
 use App\Http\Controllers\AdminController;
+use App\Http\Controllers\DriverController;
 use App\Http\Controllers\PagesController;
 use App\Http\Controllers\PlaceController;
 use App\Http\Controllers\CarRentalController;
 use App\Http\Controllers\ItineraryController;
 use App\Http\Controllers\RideBookingController;
+use App\Http\Controllers\Api\DriverController as ApiDriverController;
 use App\Http\Controllers\Api\LocationController;
+use App\Http\Controllers\Api\WalletController;
+use App\Http\Controllers\Api\TrackingController;
 use App\Http\Controllers\Api\CarCategoryController as ApiCarCategoryController;
 use App\Http\Controllers\Api\DestinationController as ApiDestinationController;
 
-Route::get('/link', function () {
-    try {
-        $output = Artisan::call('storage:link');
-        return 'Command output: ' . $output;
-    } catch (\Exception $e) {
-        return 'Error: ' . $e->getMessage();
-    }
-});
+if (app()->isLocal()) {
+    Route::get('/link', function () {
+        try {
+            $output = Artisan::call('storage:link');
+            return 'Command output: ' . $output;
+        } catch (\Exception $e) {
+            return 'Error: ' . $e->getMessage();
+        }
+    });
+}
 
 Route::get('/', [PagesController::class, 'index'])->name('home');
 Route::get('/about', [PagesController::class, 'about'])->name('about');
@@ -54,23 +60,53 @@ Route::middleware('guest')->group(function () {
     Route::post('/login', [AuthController::class, 'login'])->name('login.post');
 });
 
+Route::match(['get', 'post'], '/api/ride-bookings/estimate', [RideBookingController::class, 'estimate'])->name('api.ride-bookings.estimate');
+Route::get('/api/ride-bookings/nearby-drivers', [RideBookingController::class, 'nearbyDrivers'])->name('api.ride-bookings.nearby-drivers');
+
 // Protected Routes (require authentication)
 Route::middleware('auth')->group(function () {
     Route::post('/logout', [AuthController::class, 'logout'])->name('logout');
     Route::get('/dashboard', [AuthController::class, 'dashboard'])->name('dashboard');
-
     // Car Rental Routes
     Route::post('/api/book-car', [CarRentalController::class, 'bookCar'])->name('api.book-car');
     Route::resource('car-rentals', CarRentalController::class);
 
     // Ride Booking Routes (Ola/Uber-like)
-    Route::get('/api/ride-bookings/estimate', [RideBookingController::class, 'estimate'])->name('api.ride-bookings.estimate');
     Route::post('/api/ride-bookings', [RideBookingController::class, 'store'])->name('api.ride-bookings.store');
-    Route::get('/api/ride-bookings/nearby-drivers', [RideBookingController::class, 'nearbyDrivers'])->name('api.ride-bookings.nearby-drivers');
+    Route::post('/api/ride-bookings/{booking}/review', [RideBookingController::class, 'submitReview'])->name('api.ride-bookings.review');
+    Route::post('/api/ride-bookings/{booking}/tip', [RideBookingController::class, 'submitTip'])->name('api.ride-bookings.tip');
     Route::resource('ride-bookings', RideBookingController::class);
 
     // Tour Routes
     Route::post('/api/book-tour', [TourController::class, 'bookTour'])->name('api.book-tour');
+
+    // Wallet Routes
+    Route::prefix('api/wallet')->name('api.wallet.')->group(function () {
+        Route::get('/', [WalletController::class, 'getWallet'])->name('index');
+        Route::get('/transactions', [WalletController::class, 'getTransactions'])->name('transactions');
+        Route::post('/topup', [WalletController::class, 'topUp'])->name('topup');
+        Route::post('/topup/order', [WalletController::class, 'createTopUpOrder'])->name('topup.order');
+        Route::post('/topup/verify', [WalletController::class, 'verifyTopUp'])->name('topup.verify');
+        Route::post('/withdraw', [WalletController::class, 'withdraw'])->name('withdraw');
+        Route::get('/stats', [WalletController::class, 'getStats'])->name('stats');
+        Route::get('/razorpay-config', [WalletController::class, 'getRazorpayConfig'])->name('razorpay-config');
+    });
+
+    // Tracking Routes (Real-time location and status)
+    Route::prefix('api/tracking')->name('api.tracking.')->group(function () {
+        Route::post('/driver-location', [TrackingController::class, 'updateDriverLocation'])->name('driver-location');
+        Route::post('/ride/{booking}/location', [TrackingController::class, 'updateRideLocation'])->name('ride-location');
+        Route::post('/ride/{booking}/status', [TrackingController::class, 'updateRideStatus'])->name('ride-status');
+        Route::get('/ride/{booking}', [TrackingController::class, 'getTrackingInfo'])->name('ride-info');
+    });
+
+    // Withdrawal Routes (User)
+    Route::prefix('api/withdrawals')->name('api.withdrawals.')->group(function () {
+        Route::get('/', [App\Http\Controllers\Api\WithdrawalController::class, 'index'])->name('index');
+        Route::post('/', [App\Http\Controllers\Api\WithdrawalController::class, 'store'])->name('store');
+        Route::get('/{withdrawal}', [App\Http\Controllers\Api\WithdrawalController::class, 'show'])->name('show');
+        Route::post('/{withdrawal}/cancel', [App\Http\Controllers\Api\WithdrawalController::class, 'cancel'])->name('cancel');
+    });
 });
 
 // Admin Routes (require admin role)
@@ -107,6 +143,10 @@ Route::middleware(['auth', 'role:admin'])->prefix('admin')->name('admin.')->grou
     // Other Management Routes
     Route::get('/bookings', [AdminController::class, 'bookings'])->name('bookings');
     Route::get('/ride-bookings', [AdminController::class, 'rideBookings'])->name('ride-bookings');
+    Route::get('/ride-bookings/{rideBooking}', [AdminController::class, 'showRideBooking'])->name('ride-bookings.show');
+    Route::post('/ride-bookings/{rideBooking}/assign-driver', [AdminController::class, 'assignRideBookingDriver'])->name('ride-bookings.assign-driver');
+    Route::post('/ride-bookings/{rideBooking}/update-status', [AdminController::class, 'updateRideBookingStatus'])->name('ride-bookings.update-status');
+    Route::post('/ride-bookings/{rideBooking}/undo-last-change', [AdminController::class, 'undoLastRideBookingChange'])->name('ride-bookings.undo-last-change');
     
     // Car Rentals Management Routes
     Route::get('/car-rentals', [AdminController::class, 'carRentals'])->name('car-rentals');
@@ -143,4 +183,17 @@ Route::middleware(['auth', 'role:admin'])->prefix('admin')->name('admin.')->grou
     Route::post('/places/{place}/media', [AdminController::class, 'storeMedia'])->name('places.media.store');
     Route::delete('/media/{media}', [AdminController::class, 'deleteMedia'])->name('media.delete');
     Route::get('/settings', [AdminController::class, 'settings'])->name('settings');
+
+    // Commission Analytics API Routes
+    Route::get('/api/commission-stats', [App\Http\Controllers\Api\CommissionController::class, 'getStats'])->name('api.commission-stats');
+    Route::get('/api/commission-transactions', [App\Http\Controllers\Api\CommissionController::class, 'getTransactions'])->name('api.commission-transactions');
+    Route::get('/api/driver/{driverId}/commission-stats', [App\Http\Controllers\Api\CommissionController::class, 'getDriverStats'])->name('api.driver-commission-stats');
+
+    // Withdrawal Management API Routes
+    Route::get('/api/withdrawals', [App\Http\Controllers\Api\WithdrawalController::class, 'adminIndex'])->name('api.withdrawals');
+    Route::get('/api/withdrawals/stats', [App\Http\Controllers\Api\WithdrawalController::class, 'stats'])->name('api.withdrawals.stats');
+    Route::post('/api/withdrawals/{withdrawal}/approve', [App\Http\Controllers\Api\WithdrawalController::class, 'approve'])->name('api.withdrawals.approve');
+    Route::post('/api/withdrawals/{withdrawal}/reject', [App\Http\Controllers\Api\WithdrawalController::class, 'reject'])->name('api.withdrawals.reject');
+    Route::post('/api/withdrawals/{withdrawal}/process', [App\Http\Controllers\Api\WithdrawalController::class, 'processPayout'])->name('api.withdrawals.process');
+    Route::post('/api/withdrawals/{withdrawal}/complete', [App\Http\Controllers\Api\WithdrawalController::class, 'markCompleted'])->name('api.withdrawals.complete');
 });

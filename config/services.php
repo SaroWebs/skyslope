@@ -39,4 +39,23 @@ return [
         'api_key' => env('GOOGLE_MAPS_API_KEY'),
     ],
 
+    'razorpay' => [
+        'key' => env('RAZORPAY_KEY'),
+        'secret' => env('RAZORPAY_SECRET'),
+        'webhook_secret' => env('RAZORPAY_WEBHOOK_SECRET'),
+        'merchant_account' => env('RAZORPAY_MERCHANT_ACCOUNT'),
+    ],
+
+    'twilio' => [
+        'sid' => env('TWILIO_SID'),
+        'token' => env('TWILIO_TOKEN'),
+        'from' => env('TWILIO_FROM'),
+    ],
+
+    'whatsapp' => [
+        'api_url' => env('WHATSAPP_API_URL'),
+        'api_key' => env('WHATSAPP_API_KEY'),
+        'from' => env('WHATSAPP_FROM'),
+    ],
+
 ];

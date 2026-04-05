@@ -21,6 +21,9 @@ class DatabaseSeeder extends Seeder
             ItinerarySeeder::class,
             CarCategorySeeder::class,
             DestinationSeeder::class,
+            PlaceCategorySeeder::class,
+            InsuranceSeeder::class,
+            WalletSeeder::class,
         ]);
 
         // Create additional test user if needed

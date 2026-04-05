@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useState, useCallback, useRef, useEffect } from 'react'
 import { searchLocationsWithDebounce } from '@/lib/nominatim'
 
 interface Location {
@@ -43,37 +43,79 @@ const RideBookingSearch: React.FC<RideBookingSearchProps> = ({
   const [selectedDropoff, setSelectedDropoff] = useState<Location | null>(initialDropoff || null)
   const [loading, setLoading] = useState(false)
 
-  const handlePickupChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  // Refs to store timeout IDs for cleanup
+  const pickupTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+  const dropoffTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+
+  // Cleanup timeouts on unmount
+  useEffect(() => {
+    return () => {
+      if (pickupTimeoutRef.current) {
+        clearTimeout(pickupTimeoutRef.current)
+      }
+      if (dropoffTimeoutRef.current) {
+        clearTimeout(dropoffTimeoutRef.current)
+      }
+    }
+  }, []);
+
+  const handlePickupChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value
     setPickupQuery(value)
     
-    // Clear selected location if user is typing manually
     if (value !== selectedPickup?.address) {
       setSelectedPickup(null)
     }
 
-    // Search with debounce
-    searchLocationsWithDebounce(value, (results) => {
-      setPickupResults(results)
-      setShowPickupResults(results.length > 0 && value.length >= 3)
-    })
-  }
+    // Clear previous timeout
+    if (pickupTimeoutRef.current) {
+      clearTimeout(pickupTimeoutRef.current)
+    }
 
-  const handleDropoffChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    // Only trigger search if query is long enough
+    if (value.length >= 3) {
+      setLoading(true)
+      pickupTimeoutRef.current = setTimeout(() => {
+        searchLocationsWithDebounce(value, (results) => {
+          setPickupResults(results)
+          setShowPickupResults(results.length > 0)
+          setLoading(false)
+        }, 500)
+      }, 300)
+    } else {
+      setPickupResults([])
+      setShowPickupResults(false)
+    }
+  }, [selectedPickup])
+
+  const handleDropoffChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value
     setDropoffQuery(value)
     
-    // Clear selected location if user is typing manually
     if (value !== selectedDropoff?.address) {
       setSelectedDropoff(null)
     }
 
-    // Search with debounce
-    searchLocationsWithDebounce(value, (results) => {
-      setDropoffResults(results)
-      setShowDropoffResults(results.length > 0 && value.length >= 3)
-    })
-  }
+    // Clear previous timeout
+    if (dropoffTimeoutRef.current) {
+      clearTimeout(dropoffTimeoutRef.current)
+    }
+
+    // Only trigger search if query is long enough
+    if (value.length >= 3) {
+      setLoading(true)
+      dropoffTimeoutRef.current = setTimeout(() => {
+        searchLocationsWithDebounce(value, (results) => {
+          setDropoffResults(results)
+          setShowDropoffResults(results.length > 0)
+          setLoading(false)
+        }, 500)
+      }, 300)
+    } else {
+      setDropoffResults([])
+      setShowDropoffResults(false)
+    }
+  }, [selectedDropoff])
 
   const selectLocation = (location: SearchResult, type: 'pickup' | 'dropoff') => {
     const fullLocation: Location = {
@@ -88,10 +130,12 @@ const RideBookingSearch: React.FC<RideBookingSearchProps> = ({
       setSelectedPickup(fullLocation)
       setPickupQuery(fullLocation.address)
       setShowPickupResults(false)
+      setPickupResults([])
     } else {
       setSelectedDropoff(fullLocation)
       setDropoffQuery(fullLocation.address)
       setShowDropoffResults(false)
+      setDropoffResults([])
     }
   }
 
@@ -138,6 +182,12 @@ const RideBookingSearch: React.FC<RideBookingSearchProps> = ({
       setSelectedDropoff(tempPickup)
       setPickupQuery(selectedDropoff.address)
       setDropoffQuery(selectedPickup.address)
+      
+      // Clear search results when swapping
+      setPickupResults([])
+      setDropoffResults([])
+      setShowPickupResults(false)
+      setShowDropoffResults(false)
     }
   }
 

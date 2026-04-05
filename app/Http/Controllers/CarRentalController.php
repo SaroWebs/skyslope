@@ -189,7 +189,7 @@ class CarRentalController extends Controller
             'status' => 'in:pending,confirmed,in_progress,completed,cancelled',
             'payment_status' => 'in:pending,paid,failed,refunded',
             'internal_notes' => 'nullable|string',
-            'assigned_driver' => 'nullable|exists:users,id',
+            'assigned_driver' => 'nullable|exists:drivers,id',
             'vehicle_number' => 'nullable|string|max:50',
         ]);
 

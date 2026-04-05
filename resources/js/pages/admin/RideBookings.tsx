@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { Head, usePage } from '@inertiajs/react'
+import { Head, Link, usePage } from '@inertiajs/react'
 import AdminLayout from '@/layoutes/AdminLayout'
 import { notificationService } from '@/services/notification'
 
@@ -37,7 +37,11 @@ const RideBookings = () => {
       const params = new URLSearchParams()
       if (filterStatus) params.append('status', filterStatus)
 
-      const response = await fetch(`/ride-bookings?${params}`)
+      const response = await fetch(`/admin/ride-bookings?${params.toString()}`, {
+        headers: {
+          Accept: 'application/json',
+        },
+      })
       if (!response.ok) throw new Error('Failed to fetch ride bookings')
 
       const data = await response.json()
@@ -76,10 +80,11 @@ const RideBookings = () => {
 
   const updateBookingStatus = async (bookingId: number, newStatus: string) => {
     try {
-      const response = await fetch(`/ride-bookings/${bookingId}`, {
-        method: 'PUT',
+      const response = await fetch(`/admin/ride-bookings/${bookingId}/update-status`, {
+        method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          Accept: 'application/json',
           'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '',
         },
         body: JSON.stringify({ status: newStatus })
@@ -233,6 +238,12 @@ const RideBookings = () => {
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                         <div className="flex space-x-2">
+                          <Link
+                            href={`/admin/ride-bookings/${booking.id}`}
+                            className="inline-flex items-center rounded border border-blue-200 px-2 py-1 text-xs text-blue-700 hover:bg-blue-50"
+                          >
+                            View
+                          </Link>
                           <select
                             value={booking.status}
                             onChange={(e) => updateBookingStatus(booking.id, e.target.value)}

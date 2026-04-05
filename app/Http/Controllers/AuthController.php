@@ -6,6 +6,8 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Validation\ValidationException;
+use App\Models\Customer;
+use App\Models\Driver;
 use App\Models\User;
 
 class AuthController extends Controller
@@ -84,11 +86,9 @@ class AuthController extends Controller
             return $this->adminDashboard();
         } elseif ($user->isGuide()) {
             return $this->guideDashboard();
-        } elseif ($user->isDriver()) {
-            return $this->driverDashboard();
-        } else {
-            return $this->customerDashboard();
         }
+
+        abort(403);
     }
 
     /**
@@ -101,8 +101,11 @@ class AuthController extends Controller
             'user' => Auth::user(),
             'stats' => [
                 'total_users' => User::count(),
+                'total_customers' => Customer::count(),
+                'total_drivers' => Driver::count(),
                 'total_tours' => \App\Models\Tour::count(),
                 'total_bookings' => \App\Models\Booking::count(),
+                'total_ride_bookings' => \App\Models\RideBooking::count(),
                 'total_places' => \App\Models\Place::count(),
             ],
             'recent_users' => User::with('roles')->latest()->take(5)->get(),
@@ -125,31 +128,4 @@ class AuthController extends Controller
         ]);
     }
 
-    /**
-     * Driver dashboard
-     */
-    private function driverDashboard()
-    {
-        return inertia('driver/Dashboard', [
-            'title' => 'Driver Dashboard',
-            'user' => Auth::user(),
-            'my_tours' => Auth::user()->tourDrivers()->with('tour')->get(),
-            'upcoming_tours' => \App\Models\Tour::whereHas('drivers', function($q) {
-                $q->where('user_id', Auth::id());
-            })->where('available_from', '>=', now())->get(),
-        ]);
-    }
-
-    /**
-     * Customer dashboard
-     */
-    private function customerDashboard()
-    {
-        return inertia('customer/Dashboard', [
-            'title' => 'My Dashboard',
-            'user' => Auth::user(),
-            'my_bookings' => Auth::user()->bookings()->with('tour')->get(),
-            'available_tours' => \App\Models\Tour::where('available_from', '>=', now())->take(5)->get(),
-        ]);
-    }
 }

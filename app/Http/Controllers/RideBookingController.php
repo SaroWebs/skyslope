@@ -5,6 +5,9 @@ namespace App\Http\Controllers;
 use App\Models\RideBooking;
 use App\Models\DriverAvailability;
 use App\Models\Destination;
+use App\Models\RideBookingReview;
+use App\Models\RideBookingTip;
+use App\Models\Wallet;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Validator;
@@ -109,11 +112,17 @@ class RideBookingController extends Controller
      */
     public function store(Request $request)
     {
+        if (!Auth::check()) {
+            return response()->json([
+                'message' => 'Please login to book a ride.',
+            ], 401);
+        }
+
         $validator = Validator::make($request->all(), [
             'service_type' => 'required|in:point_to_point,hourly_rental,round_trip',
-            'customer_name' => 'required|string|max:255',
-            'customer_email' => 'required|email|max:255',
-            'customer_phone' => 'required|string|max:20',
+            'customer_name' => 'nullable|string|max:255',
+            'customer_email' => 'nullable|email|max:255',
+            'customer_phone' => 'nullable|string|max:20',
             'pickup_location' => 'required|string|max:255',
             'pickup_lat' => 'required|numeric|between:-90,90',
             'pickup_lng' => 'required|numeric|between:-180,180',
@@ -130,6 +139,22 @@ class RideBookingController extends Controller
         }
 
         // Calculate pricing
+        $user = Auth::user();
+        $customerName = trim((string) ($request->input('customer_name') ?: ($user->name ?? '')));
+        $customerEmail = trim((string) ($request->input('customer_email') ?: ($user->email ?? '')));
+        $customerPhone = trim((string) ($request->input('customer_phone')
+            ?: ($user->phone ?? $user->phone_number ?? $user->mobile ?? '')));
+
+        if ($customerName === '' || $customerEmail === '') {
+            return response()->json([
+                'message' => 'Missing customer identity details.',
+                'errors' => [
+                    'customer_name' => $customerName === '' ? ['Customer name is required.'] : [],
+                    'customer_email' => $customerEmail === '' ? ['Customer email is required.'] : [],
+                ],
+            ], 422);
+        }
+
         $estimateRequest = new Request([
             'pickup_lat' => $request->pickup_lat,
             'pickup_lng' => $request->pickup_lng,
@@ -146,9 +171,9 @@ class RideBookingController extends Controller
             $rideBooking = RideBooking::create([
                 'user_id' => Auth::id(),
                 'service_type' => $request->service_type,
-                'customer_name' => $request->customer_name,
-                'customer_email' => $request->customer_email,
-                'customer_phone' => $request->customer_phone,
+                'customer_name' => $customerName,
+                'customer_email' => $customerEmail,
+                'customer_phone' => $customerPhone,
                 'pickup_location' => $request->pickup_location,
                 'pickup_lat' => $request->pickup_lat,
                 'pickup_lng' => $request->pickup_lng,
@@ -180,6 +205,11 @@ class RideBookingController extends Controller
 
         } catch (\Exception $e) {
             DB::rollback();
+            \Log::error('Ride booking creation failed', [
+                'user_id' => Auth::id(),
+                'message' => $e->getMessage(),
+            ]);
+
             return response()->json(['message' => 'Failed to create booking'], 500);
         }
     }
@@ -214,8 +244,8 @@ class RideBookingController extends Controller
         }
 
         $validator = Validator::make($request->all(), [
-            'status' => 'sometimes|in:confirmed,driver_assigned,driver_arriving,pickup,in_transit,completed,cancelled',
-            'driver_id' => 'sometimes|nullable|exists:users,id',
+            'status' => 'sometimes|string|in:confirmed,driver_assigned,driver_arriving,pickup,in_transit,completed,cancelled,on_the_way,arrived,started',
+            'driver_id' => 'sometimes|nullable|exists:drivers,id',
             'current_lat' => 'sometimes|nullable|numeric|between:-90,90',
             'current_lng' => 'sometimes|nullable|numeric|between:-180,180',
         ]);
@@ -224,9 +254,15 @@ class RideBookingController extends Controller
             return response()->json(['errors' => $validator->errors()], 422);
         }
 
-        $rideBooking->update($request->only([
+        $updateData = $request->only([
             'status', 'driver_id', 'current_lat', 'current_lng'
-        ]));
+        ]);
+
+        if (!empty($updateData['status'])) {
+            $updateData['status'] = $this->normalizeStatus($updateData['status']) ?? $rideBooking->status;
+        }
+
+        $rideBooking->update($updateData);
 
         // Update last location update timestamp
         if ($request->has(['current_lat', 'current_lng'])) {
@@ -249,9 +285,37 @@ class RideBookingController extends Controller
             abort(403);
         }
 
-        $rideBooking->delete();
+        if (in_array($rideBooking->status, ['completed', 'cancelled'], true)) {
+            return response()->json([
+                'message' => 'This booking can no longer be cancelled.',
+            ], 400);
+        }
 
-        return response()->json(['message' => 'Ride booking deleted successfully']);
+        DB::beginTransaction();
+        try {
+            if ($rideBooking->driver_id) {
+                DriverAvailability::where('driver_id', $rideBooking->driver_id)
+                    ->update(['is_available' => true]);
+            }
+
+            $rideBooking->update([
+                'status' => 'cancelled',
+                'cancellation_reason' => 'Cancelled by user',
+            ]);
+
+            DB::commit();
+
+            return response()->json([
+                'message' => 'Ride booking cancelled successfully',
+                'ride_booking' => $rideBooking->fresh(['driver']),
+            ]);
+        } catch (\Throwable $e) {
+            DB::rollBack();
+
+            return response()->json([
+                'message' => 'Failed to cancel booking',
+            ], 500);
+        }
     }
 
     /**
@@ -283,6 +347,8 @@ class RideBookingController extends Controller
                 'driver_id' => $assignedDriver->driver_id,
                 'status' => 'driver_assigned',
                 'vehicle_number' => $assignedDriver->vehicle_number,
+                'start_ride_pin' => $rideBooking->start_ride_pin ?: RideBooking::generateStartRidePin(),
+                'start_pin_verified_at' => null,
             ]);
 
             // Mark driver as unavailable
@@ -323,5 +389,142 @@ class RideBookingController extends Controller
             });
 
         return response()->json(['drivers' => $drivers]);
+    }
+
+    private function normalizeStatus(string $status): ?string
+    {
+        return match ($status) {
+            'confirmed' => 'confirmed',
+            'driver_assigned' => 'driver_assigned',
+            'driver_arriving', 'on_the_way' => 'driver_arriving',
+            'pickup', 'arrived' => 'pickup',
+            'in_transit', 'started' => 'in_transit',
+            'completed' => 'completed',
+            'cancelled' => 'cancelled',
+            default => null,
+        };
+    }
+
+    public function submitReview(Request $request, RideBooking $booking)
+    {
+        if ($booking->user_id !== Auth::id()) {
+            return response()->json(['message' => 'Unauthorized'], 403);
+        }
+
+        if ($booking->status !== 'completed') {
+            return response()->json(['message' => 'Review allowed only after ride completion.'], 422);
+        }
+
+        $validated = $request->validate([
+            'rating' => 'required|integer|min:1|max:5',
+            'comment' => 'nullable|string|max:1000',
+        ]);
+
+        $review = RideBookingReview::updateOrCreate(
+            [
+                'ride_booking_id' => $booking->id,
+                'customer_id' => Auth::id(),
+            ],
+            [
+                'driver_id' => $booking->driver_id,
+                'rating' => (int) $validated['rating'],
+                'comment' => $validated['comment'] ?? null,
+            ]
+        );
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Review submitted successfully.',
+            'review' => $review,
+        ]);
+    }
+
+    public function submitTip(Request $request, RideBooking $booking)
+    {
+        if ($booking->user_id !== Auth::id()) {
+            return response()->json(['message' => 'Unauthorized'], 403);
+        }
+
+        if ($booking->status !== 'completed') {
+            return response()->json(['message' => 'Tip allowed only after ride completion.'], 422);
+        }
+
+        if (!$booking->driver_id) {
+            return response()->json(['message' => 'No driver assigned for this booking.'], 422);
+        }
+
+        $validated = $request->validate([
+            'amount' => 'required|numeric|min:10|max:50000',
+            'message' => 'nullable|string|max:500',
+        ]);
+
+        $amount = round((float) $validated['amount'], 2);
+
+        $customerWallet = Wallet::where('user_id', Auth::id())->first();
+        if (!$customerWallet || !$customerWallet->isActive()) {
+            return response()->json(['message' => 'Customer wallet not available.'], 422);
+        }
+
+        $driverWallet = Wallet::firstOrCreate(
+            ['user_id' => $booking->driver_id],
+            [
+                'balance' => 0,
+                'currency' => 'INR',
+                'status' => 'active',
+            ]
+        );
+
+        if (!$driverWallet->isActive()) {
+            return response()->json(['message' => 'Driver wallet is not active.'], 422);
+        }
+
+        DB::beginTransaction();
+        try {
+            $debited = $customerWallet->debit(
+                $amount,
+                'Tip paid for booking #' . $booking->booking_number,
+                'ride_tip_' . $booking->id . '_' . now()->timestamp
+            );
+
+            if (!$debited) {
+                DB::rollBack();
+                return response()->json(['message' => 'Insufficient wallet balance for tip.'], 422);
+            }
+
+            $credited = $driverWallet->credit(
+                $amount,
+                'Tip received for booking #' . $booking->booking_number,
+                'ride_tip_' . $booking->id . '_' . now()->timestamp
+            );
+
+            if (!$credited) {
+                DB::rollBack();
+                return response()->json(['message' => 'Failed to transfer tip to driver.'], 500);
+            }
+
+            $tip = RideBookingTip::create([
+                'ride_booking_id' => $booking->id,
+                'customer_id' => Auth::id(),
+                'driver_id' => $booking->driver_id,
+                'amount' => $amount,
+                'payment_method' => 'wallet',
+                'status' => 'completed',
+                'message' => $validated['message'] ?? null,
+            ]);
+
+            DB::commit();
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Tip sent successfully.',
+                'tip' => $tip,
+            ]);
+        } catch (\Throwable $e) {
+            DB::rollBack();
+
+            return response()->json([
+                'message' => 'Failed to send tip.',
+            ], 500);
+        }
     }
 }

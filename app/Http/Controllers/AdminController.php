@@ -5,6 +5,8 @@ namespace App\Http\Controllers;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Storage;
+use App\Models\Customer;
+use App\Models\Driver;
 use App\Models\User;
 use App\Models\Tour;
 use App\Models\Booking;
@@ -13,6 +15,7 @@ use App\Models\Itinerary;
 use App\Models\PlaceMedia;
 use App\Models\Role;
 use App\Models\RideBooking;
+use App\Models\DriverAvailability;
 use App\Models\CarCategory;
 use App\Models\Destination;
 
@@ -28,8 +31,11 @@ class AdminController extends Controller
             'user' => Auth::user(),
             'stats' => [
                 'total_users' => User::count(),
+                'total_customers' => Customer::count(),
+                'total_drivers' => Driver::count(),
                 'total_tours' => Tour::count(),
                 'total_bookings' => Booking::count(),
+                'total_ride_bookings' => RideBooking::count(),
                 'total_places' => Place::count(),
                 'active_tours' => Tour::where('available_from', '>=', now())->count(),
                 'recent_bookings' => Booking::with('user', 'tour')->latest()->take(5)->get(),
@@ -48,7 +54,7 @@ class AdminController extends Controller
             'title' => 'User Management',
             'user' => Auth::user(),
             'users' => User::with('roles')->paginate(15),
-            'roles' => Role::active()->get(),
+            'roles' => Role::active()->whereIn('name', ['admin', 'guide'])->get(),
         ]);
     }
 
@@ -74,7 +80,7 @@ class AdminController extends Controller
         $data = [
             'title' => 'Create User',
             'user' => Auth::user(),
-            'roles' => Role::active()->get(),
+            'roles' => Role::active()->whereIn('name', ['admin', 'guide'])->get(),
         ];
 
         return view('admin.users.create', $data);
@@ -90,7 +96,7 @@ class AdminController extends Controller
             'email' => 'required|email|unique:users',
             'phone' => 'required|string|unique:users',
             'password' => 'required|string|min:8|confirmed',
-            'role' => 'required|exists:roles,name',
+            'role' => 'required|in:admin,guide',
         ]);
 
         $user = User::create([
@@ -114,7 +120,7 @@ class AdminController extends Controller
             'title' => 'Edit User',
             'user' => Auth::user(),
             'target_user' => $user,
-            'roles' => Role::active()->get(),
+            'roles' => Role::active()->whereIn('name', ['admin', 'guide'])->get(),
         ];
 
         return view('admin.users.edit', $data);
@@ -129,7 +135,7 @@ class AdminController extends Controller
             'name' => 'required|string|max:255',
             'email' => 'required|email|unique:users,email,' . $user->id,
             'phone' => 'required|string|unique:users,phone,' . $user->id,
-            'role' => 'required|exists:roles,name',
+            'role' => 'required|in:admin,guide',
         ]);
 
         $user->update([
@@ -662,7 +668,7 @@ class AdminController extends Controller
             'status' => 'required|in:pending,confirmed,in_progress,completed,cancelled',
             'payment_status' => 'required|in:pending,paid,failed,refunded',
             'payment_method' => 'required|in:cash,card,bank_transfer,upi',
-            'assigned_driver' => 'nullable|exists:users,id',
+            'assigned_driver' => 'nullable|exists:drivers,id',
             'vehicle_number' => 'nullable|string|max:50',
             'internal_notes' => 'nullable|string',
             'whatsapp_notification' => 'boolean',
@@ -774,7 +780,7 @@ class AdminController extends Controller
             'status' => 'required|in:pending,confirmed,in_progress,completed,cancelled',
             'payment_status' => 'required|in:pending,paid,failed,refunded',
             'payment_method' => 'required|in:cash,card,bank_transfer,upi',
-            'assigned_driver' => 'nullable|exists:users,id',
+            'assigned_driver' => 'nullable|exists:drivers,id',
             'vehicle_number' => 'nullable|string|max:50',
             'internal_notes' => 'nullable|string',
             'whatsapp_notification' => 'boolean',
@@ -1146,5 +1152,191 @@ class AdminController extends Controller
             'user' => Auth::user(),
             'ride_bookings' => $rideBookings,
         ]);
+    }
+
+    /**
+     * Show ride booking details for admin dashboard.
+     */
+    public function showRideBooking(RideBooking $rideBooking)
+    {
+        $rideBooking->load([
+            'user:id,name,email,phone',
+            'driver:id,name,email,phone',
+        ]);
+
+        $drivers = Driver::query()
+            ->select('id', 'name', 'email', 'phone')
+            ->orderBy('name')
+            ->get();
+
+        $driverAvailability = DriverAvailability::whereIn('driver_id', $drivers->pluck('id'))
+            ->get()
+            ->keyBy('driver_id');
+
+        $drivers = $drivers->map(function ($driver) use ($driverAvailability) {
+            $availability = $driverAvailability->get($driver->id);
+
+            return [
+                'id' => $driver->id,
+                'name' => $driver->name,
+                'email' => $driver->email,
+                'phone' => $driver->phone,
+                'is_online' => (bool) ($availability?->is_online ?? false),
+                'is_available' => (bool) ($availability?->is_available ?? false),
+                'rating' => $availability?->rating,
+                'vehicle_number' => $availability?->vehicle_number,
+            ];
+        })->values();
+
+        return inertia('admin/RideBookingDetails', [
+            'title' => 'Ride Booking Details',
+            'user' => Auth::user(),
+            'booking' => $rideBooking,
+            'drivers' => $drivers,
+            'can_undo_last_change' => $this->canUndoLastChange($rideBooking),
+        ]);
+    }
+
+    /**
+     * Assign or reassign driver for ride booking.
+     */
+    public function assignRideBookingDriver(Request $request, RideBooking $rideBooking)
+    {
+        $validated = $request->validate([
+            'driver_id' => 'required|exists:drivers,id',
+        ]);
+
+        $driver = Driver::findOrFail($validated['driver_id']);
+
+        $previousDriverId = $rideBooking->driver_id;
+        $newDriverId = (int) $validated['driver_id'];
+
+        if ($previousDriverId && $previousDriverId !== $newDriverId) {
+            DriverAvailability::where('driver_id', $previousDriverId)->update([
+                'is_available' => true,
+            ]);
+        }
+
+        $this->captureAdminSnapshot($rideBooking);
+
+        $rideBooking->update([
+            'driver_id' => $newDriverId,
+            'status' => in_array($rideBooking->status, ['completed', 'cancelled'], true)
+                ? $rideBooking->status
+                : 'driver_assigned',
+            'start_ride_pin' => $rideBooking->start_ride_pin ?: RideBooking::generateStartRidePin(),
+            'start_pin_verified_at' => null,
+            'last_admin_changed_at' => now(),
+            'last_admin_changed_by' => Auth::id(),
+        ]);
+
+        DriverAvailability::where('driver_id', $newDriverId)->update([
+            'is_available' => false,
+        ]);
+
+        return response()->json([
+            'message' => 'Driver assigned successfully.',
+            'ride_booking' => $rideBooking->fresh(['driver:id,name,email,phone']),
+        ]);
+    }
+
+    public function updateRideBookingStatus(Request $request, RideBooking $rideBooking)
+    {
+        $validated = $request->validate([
+            'status' => 'nullable|string|in:pending,confirmed,driver_assigned,driver_arriving,pickup,in_transit,completed,cancelled',
+            'payment_status' => 'nullable|string|in:pending,paid,failed,refunded',
+        ]);
+
+        if (!isset($validated['status']) && !isset($validated['payment_status'])) {
+            return response()->json([
+                'message' => 'No changes requested.',
+            ], 422);
+        }
+
+        $this->captureAdminSnapshot($rideBooking);
+
+        $updateData = [
+            'last_admin_changed_at' => now(),
+            'last_admin_changed_by' => Auth::id(),
+        ];
+
+        if (isset($validated['status'])) {
+            $updateData['status'] = $validated['status'];
+        }
+
+        if (isset($validated['payment_status'])) {
+            $updateData['payment_status'] = $validated['payment_status'];
+        }
+
+        $rideBooking->update($updateData);
+
+        return response()->json([
+            'message' => 'Ride booking updated successfully.',
+            'ride_booking' => $rideBooking->fresh(['driver:id,name,email,phone']),
+        ]);
+    }
+
+    public function undoLastRideBookingChange(RideBooking $rideBooking)
+    {
+        if (!$this->canUndoLastChange($rideBooking)) {
+            return response()->json([
+                'message' => 'Undo window has expired or there is no change to undo.',
+            ], 422);
+        }
+
+        $snapshot = $rideBooking->last_admin_change_snapshot ?? [];
+        if (!is_array($snapshot) || empty($snapshot)) {
+            return response()->json([
+                'message' => 'No undo snapshot available.',
+            ], 422);
+        }
+
+        $oldDriverId = $rideBooking->driver_id;
+        $newDriverId = $snapshot['driver_id'] ?? null;
+
+        if ($oldDriverId && $oldDriverId !== $newDriverId) {
+            DriverAvailability::where('driver_id', $oldDriverId)->update(['is_available' => true]);
+        }
+
+        if ($newDriverId) {
+            DriverAvailability::where('driver_id', $newDriverId)->update(['is_available' => false]);
+        }
+
+        $rideBooking->update([
+            'driver_id' => $snapshot['driver_id'] ?? null,
+            'status' => $snapshot['status'] ?? $rideBooking->status,
+            'payment_status' => $snapshot['payment_status'] ?? $rideBooking->payment_status,
+            'start_ride_pin' => $snapshot['start_ride_pin'] ?? null,
+            'start_pin_verified_at' => $snapshot['start_pin_verified_at'] ?? null,
+            'last_admin_change_snapshot' => null,
+            'last_admin_changed_at' => null,
+            'last_admin_changed_by' => null,
+        ]);
+
+        return response()->json([
+            'message' => 'Last change undone successfully.',
+            'ride_booking' => $rideBooking->fresh(['driver:id,name,email,phone']),
+        ]);
+    }
+
+    private function captureAdminSnapshot(RideBooking $rideBooking): void
+    {
+        $rideBooking->last_admin_change_snapshot = [
+            'driver_id' => $rideBooking->driver_id,
+            'status' => $rideBooking->status,
+            'payment_status' => $rideBooking->payment_status,
+            'start_ride_pin' => $rideBooking->start_ride_pin,
+            'start_pin_verified_at' => $rideBooking->start_pin_verified_at?->toDateTimeString(),
+        ];
+        $rideBooking->save();
+    }
+
+    private function canUndoLastChange(RideBooking $rideBooking): bool
+    {
+        if (!$rideBooking->last_admin_changed_at || empty($rideBooking->last_admin_change_snapshot)) {
+            return false;
+        }
+
+        return $rideBooking->last_admin_changed_at->greaterThan(now()->subMinutes(10));
     }
 }

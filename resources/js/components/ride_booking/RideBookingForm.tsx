@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react'
+import { usePage } from '@inertiajs/react'
 import { notificationService } from '@/services/notification'
 
 interface Location {
@@ -48,11 +49,24 @@ const RideBookingForm: React.FC<RideBookingFormProps> = ({
   onBookingCreated,
   onBack
 }) => {
+  const { auth } = usePage().props as { auth?: { user?: Record<string, any> | null } }
+  const authUser = auth?.user ?? null
+  const accountName = typeof authUser?.name === 'string' ? authUser.name : ''
+  const accountEmail = typeof authUser?.email === 'string' ? authUser.email : ''
+  const accountPhone = typeof authUser?.phone === 'string'
+    ? authUser.phone
+    : typeof authUser?.phone_number === 'string'
+      ? authUser.phone_number
+      : typeof authUser?.mobile === 'string'
+        ? authUser.mobile
+        : ''
+  const shouldSkipCustomerDetailsStep = Boolean(authUser)
+
   const [formData, setFormData] = useState({
     service_type: 'point_to_point',
-    customer_name: '',
-    customer_email: '',
-    customer_phone: '',
+    customer_name: accountName,
+    customer_email: accountEmail,
+    customer_phone: accountPhone,
     scheduled_at: '',
     special_requests: '',
     payment_method: 'cash'
@@ -61,12 +75,24 @@ const RideBookingForm: React.FC<RideBookingFormProps> = ({
   const [pricing, setPricing] = useState<PricingEstimate | null>(null)
   const [loading, setLoading] = useState(false)
   const [estimating, setEstimating] = useState(false)
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
 
   useEffect(() => {
     if (pickupLocation) {
       estimatePrice()
     }
-  }, [pickupLocation, dropoffLocation])
+  }, [pickupLocation, dropoffLocation, formData.service_type, formData.scheduled_at])
+
+  useEffect(() => {
+    if (!authUser) return
+
+    setFormData((prev) => ({
+      ...prev,
+      customer_name: prev.customer_name || accountName,
+      customer_email: prev.customer_email || accountEmail,
+      customer_phone: prev.customer_phone || accountPhone,
+    }))
+  }, [authUser, accountName, accountEmail, accountPhone])
 
   const estimatePrice = async () => {
     setEstimating(true)
@@ -75,7 +101,9 @@ const RideBookingForm: React.FC<RideBookingFormProps> = ({
         pickup_lat: pickupLocation.lat,
         pickup_lng: pickupLocation.lng,
         service_type: formData.service_type,
-        scheduled_at: new Date().toISOString()
+        scheduled_at: formData.scheduled_at
+          ? new Date(formData.scheduled_at).toISOString()
+          : new Date(Date.now() + 15 * 60 * 1000).toISOString()
       }
 
       if (dropoffLocation) {
@@ -83,20 +111,32 @@ const RideBookingForm: React.FC<RideBookingFormProps> = ({
         estimateData.dropoff_lng = dropoffLocation.lng
       }
 
-      const response = await fetch('/api/ride-bookings/estimate', {
-        method: 'POST',
+      const params = new URLSearchParams({
+        pickup_lat: String(estimateData.pickup_lat),
+        pickup_lng: String(estimateData.pickup_lng),
+        service_type: String(estimateData.service_type),
+        scheduled_at: String(estimateData.scheduled_at),
+      })
+
+      if (estimateData.dropoff_lat !== undefined && estimateData.dropoff_lng !== undefined) {
+        params.set('dropoff_lat', String(estimateData.dropoff_lat))
+        params.set('dropoff_lng', String(estimateData.dropoff_lng))
+      }
+
+      const response = await fetch(`/api/ride-bookings/estimate?${params.toString()}`, {
+        method: 'GET',
         headers: {
-          'Content-Type': 'application/json',
-          'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '',
+          Accept: 'application/json',
         },
-        body: JSON.stringify(estimateData)
       })
 
       if (response.ok) {
         const data = await response.json()
         setPricing(data)
+        setFieldErrors({})
       } else {
-        notificationService.error('Failed to estimate price')
+        const payload = await response.json().catch(() => ({}))
+        notificationService.error(payload?.message || 'Failed to estimate price')
       }
     } catch (error) {
       console.error('Error estimating price:', error)
@@ -108,25 +148,25 @@ const RideBookingForm: React.FC<RideBookingFormProps> = ({
 
   const handleInputChange = (field: string, value: string) => {
     setFormData(prev => ({ ...prev, [field]: value }))
-
-    // Re-estimate price if service type changes
-    if (field === 'service_type') {
-      setTimeout(() => estimatePrice(), 100)
-    }
+    setFieldErrors((prev) => {
+      if (!prev[field]) return prev
+      const next = { ...prev }
+      delete next[field]
+      return next
+    })
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
 
-    if (!pricing) {
-      notificationService.error('Price estimation is required')
-      return
-    }
-
     setLoading(true)
+    setFieldErrors({})
     try {
       const bookingData = {
         ...formData,
+        customer_name: formData.customer_name || accountName,
+        customer_email: formData.customer_email || accountEmail,
+        customer_phone: formData.customer_phone || accountPhone,
         pickup_location: pickupLocation.address,
         pickup_lat: pickupLocation.lat,
         pickup_lng: pickupLocation.lng,
@@ -139,6 +179,7 @@ const RideBookingForm: React.FC<RideBookingFormProps> = ({
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          Accept: 'application/json',
           'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '',
         },
         body: JSON.stringify(bookingData)
@@ -149,7 +190,19 @@ const RideBookingForm: React.FC<RideBookingFormProps> = ({
       if (response.ok) {
         notificationService.success('Ride booked successfully!')
         onBookingCreated(result.ride_booking)
+      } else if (response.status === 401) {
+        notificationService.error('Please login to book a ride.')
+        window.location.href = '/login'
       } else {
+        if (result?.errors && typeof result.errors === 'object') {
+          const nextErrors: Record<string, string> = {}
+          Object.entries(result.errors).forEach(([key, messages]) => {
+            if (Array.isArray(messages) && messages[0]) {
+              nextErrors[key] = String(messages[0])
+            }
+          })
+          setFieldErrors(nextErrors)
+        }
         notificationService.error(result.message || 'Failed to book ride')
       }
     } catch (error) {
@@ -227,7 +280,7 @@ const RideBookingForm: React.FC<RideBookingFormProps> = ({
               </div>
               <div className="flex justify-between">
                 <span>Duration:</span>
-                <span>~{Math.ceil(pricing.estimated_duration / 60)} min</span>
+                <span>~{Math.ceil(pricing.estimated_duration / 60)} hour(s)</span>
               </div>
               <div className="flex justify-between">
                 <span>Drivers nearby:</span>
@@ -244,6 +297,12 @@ const RideBookingForm: React.FC<RideBookingFormProps> = ({
         )}
 
         <form onSubmit={handleSubmit} className="space-y-4">
+          {Object.keys(fieldErrors).length > 0 && (
+            <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+              {fieldErrors.pickup_location || fieldErrors.dropoff_location || 'Please correct the highlighted fields and try again.'}
+            </div>
+          )}
+
           {/* Service Type */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">Service Type</label>
@@ -256,45 +315,57 @@ const RideBookingForm: React.FC<RideBookingFormProps> = ({
               <option value="hourly_rental">Hourly Rental</option>
               <option value="round_trip">Round Trip</option>
             </select>
+            {fieldErrors.service_type && <p className="mt-1 text-xs text-red-600">{fieldErrors.service_type}</p>}
           </div>
 
           {/* Customer Details */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Full Name</label>
-              <input
-                type="text"
-                required
-                value={formData.customer_name}
-                onChange={(e) => handleInputChange('customer_name', e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                placeholder="Enter your full name"
-              />
+          {shouldSkipCustomerDetailsStep ? (
+            <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800">
+              Customer details are auto-filled from your account.
             </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Phone Number</label>
-              <input
-                type="tel"
-                required
-                value={formData.customer_phone}
-                onChange={(e) => handleInputChange('customer_phone', e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                placeholder="Enter your phone number"
-              />
-            </div>
-          </div>
+          ) : (
+            <>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Full Name</label>
+                  <input
+                    type="text"
+                    required
+                    value={formData.customer_name}
+                    onChange={(e) => handleInputChange('customer_name', e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    placeholder="Enter your full name"
+                  />
+                  {fieldErrors.customer_name && <p className="mt-1 text-xs text-red-600">{fieldErrors.customer_name}</p>}
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Phone Number</label>
+                  <input
+                    type="tel"
+                    required
+                    value={formData.customer_phone}
+                    onChange={(e) => handleInputChange('customer_phone', e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    placeholder="Enter your phone number"
+                  />
+                  {fieldErrors.customer_phone && <p className="mt-1 text-xs text-red-600">{fieldErrors.customer_phone}</p>}
+                </div>
+              </div>
 
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Email Address</label>
-            <input
-              type="email"
-              required
-              value={formData.customer_email}
-              onChange={(e) => handleInputChange('customer_email', e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              placeholder="Enter your email address"
-            />
-          </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Email Address</label>
+                <input
+                  type="email"
+                  required
+                  value={formData.customer_email}
+                  onChange={(e) => handleInputChange('customer_email', e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  placeholder="Enter your email address"
+                />
+                {fieldErrors.customer_email && <p className="mt-1 text-xs text-red-600">{fieldErrors.customer_email}</p>}
+              </div>
+            </>
+          )}
 
           {/* Schedule Time */}
           <div>
@@ -307,6 +378,7 @@ const RideBookingForm: React.FC<RideBookingFormProps> = ({
               min={new Date().toISOString().slice(0, 16)}
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
             />
+            {fieldErrors.scheduled_at && <p className="mt-1 text-xs text-red-600">{fieldErrors.scheduled_at}</p>}
           </div>
 
           {/* Special Requests */}
@@ -333,15 +405,16 @@ const RideBookingForm: React.FC<RideBookingFormProps> = ({
               <option value="card">Card</option>
               <option value="wallet">Digital Wallet</option>
             </select>
+            {fieldErrors.payment_method && <p className="mt-1 text-xs text-red-600">{fieldErrors.payment_method}</p>}
           </div>
 
           {/* Submit Button */}
           <button
             type="submit"
-            disabled={loading || !pricing}
+            disabled={loading || estimating}
             className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white font-semibold py-3 px-6 rounded-lg transition-colors"
           >
-            {loading ? 'Booking...' : `Book Ride - ${pricing ? formatCurrency(pricing.pricing.subtotal) : 'Calculating...'}`}
+            {loading ? 'Booking...' : estimating ? 'Calculating Fare...' : `Book Ride${pricing ? ` - ${formatCurrency(pricing.pricing.subtotal)}` : ''}`}
           </button>
         </form>
       </div>

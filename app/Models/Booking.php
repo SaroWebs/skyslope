@@ -71,7 +71,12 @@ class Booking extends Model
      */
     public function user(): BelongsTo
     {
-        return $this->belongsTo(User::class);
+        return $this->belongsTo(Customer::class, 'user_id');
+    }
+
+    public function customer(): BelongsTo
+    {
+        return $this->user();
     }
 
     /**
@@ -103,7 +108,7 @@ class Booking extends Model
      */
     public function driver()
     {
-        return $this->belongsTo(User::class, 'assigned_driver');
+        return $this->belongsTo(Driver::class, 'assigned_driver');
     }
 
     /**

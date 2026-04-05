@@ -8,6 +8,9 @@ interface DestinationCardProps {
 }
 
 const DestinationCard: React.FC<DestinationCardProps> = ({ place }) => {
+  const legacyMedia = Array.isArray((place as any).place_media) ? ((place as any).place_media as any[]) : []
+  const media = Array.isArray(place.media) ? place.media : legacyMedia
+
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'available':
@@ -48,8 +51,8 @@ const DestinationCard: React.FC<DestinationCardProps> = ({ place }) => {
       <Card.Section>
         <Box style={{
           height: '200px',
-          background: place.place_media && place.place_media.length > 0
-            ? `url(/storage/${place.place_media[0].file_path})`
+          background: media.length > 0
+            ? `url(/storage/${media[0].file_path})`
             : 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
           backgroundSize: 'cover',
           backgroundPosition: 'center',
@@ -58,7 +61,7 @@ const DestinationCard: React.FC<DestinationCardProps> = ({ place }) => {
           alignItems: 'center',
           justifyContent: 'center'
         }}>
-          {!place.place_media || place.place_media.length === 0 ? (
+          {media.length === 0 ? (
             <Text size="xl" c="white" fw={500}>
               {place.name}
             </Text>

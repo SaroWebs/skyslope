@@ -23,6 +23,7 @@ const AdminLayout = ({ children, title = 'Admin Panel' }: AdminLayoutProps) => {
         { name: 'Users', href: '/admin/users', icon: '👥', current: url.startsWith('/admin/users') },
         { name: 'Tours', href: '/admin/tours', icon: '🗺️', current: url.startsWith('/admin/tours') },
         { name: 'Bookings', href: '/admin/bookings', icon: '📋', current: url.startsWith('/admin/bookings') },
+        { name: 'Ride Bookings', href: '/admin/ride-bookings', icon: '🚕', current: url.startsWith('/admin/ride-bookings') },
         { name: 'Places', href: '/admin/places', icon: '📍', current: url.startsWith('/admin/places') },
         { name: 'Car Rentals', href: '/admin/car-rentals', icon: '🚗', current: url.startsWith('/admin/car-rentals') },
         { name: 'Car Categories', href: '/admin/car-categories', icon: '🏷️', current: url.startsWith('/admin/car-categories') },

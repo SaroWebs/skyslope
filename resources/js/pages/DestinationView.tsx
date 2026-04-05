@@ -1,355 +1,269 @@
 import WebsiteLayout from '@/layoutes/WebsiteLayout'
+import { Place, Tour } from '@/types'
 import { Head, Link } from '@inertiajs/react'
-import React, { useEffect } from 'react'
-import { Place, PlaceMedia } from '@/types'
 import { motion } from 'framer-motion'
-import Slider from 'react-slick'
-import { Parallax } from 'react-parallax'
-import 'slick-carousel/slick/slick.css'
-import 'slick-carousel/slick/slick-theme.css'
-import {
-  Container,
-  Title,
-  Text,
-  Badge,
-  Button,
-  Group,
-  Stack,
-  Card,
-  Grid,
-  Box,
-  Image,
-  Divider,
-  AspectRatio
-} from '@mantine/core'
+import React, { useMemo } from 'react'
 
 type Props = {
   place: Place
 }
 
+const getStatusStyles = (status: string) => {
+  switch (status) {
+    case 'available':
+      return 'bg-emerald-100 text-emerald-800 ring-emerald-200'
+    case 'restricted':
+      return 'bg-amber-100 text-amber-800 ring-amber-200'
+    case 'unavailable':
+      return 'bg-rose-100 text-rose-800 ring-rose-200'
+    default:
+      return 'bg-gray-100 text-gray-700 ring-gray-200'
+  }
+}
+
+const formatDate = (value: string) =>
+  new Date(value).toLocaleDateString('en-US', {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+  })
+
 const DestinationView = ({ place }: Props) => {
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'available':
-        return 'green'
-      case 'unavailable':
-        return 'red'
-      case 'restricted':
-        return 'orange'
-      default:
-        return 'gray'
-    }
-  }
+  const media = place.media ?? []
+  const heroImage = media[0] ? `/storage/${media[0].file_path}` : null
+  const hasCoordinates = typeof place.lat === 'number' && typeof place.lng === 'number'
+  const statusLabel = place.status ? `${place.status[0].toUpperCase()}${place.status.slice(1)}` : 'Unknown'
 
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric'
+  const featuredTours = useMemo(() => {
+    const itineraries = place.itineraries ?? []
+    const tourMap = new Map<number, { tour: Tour; dayCount: number }>()
+
+    itineraries.forEach((itinerary) => {
+      const tour = itinerary.tour
+      if (!tour?.id) return
+
+      const existing = tourMap.get(tour.id)
+      if (!existing) {
+        tourMap.set(tour.id, {
+          tour,
+          dayCount: itinerary.day_index || 1,
+        })
+        return
+      }
+
+      if ((itinerary.day_index || 0) > existing.dayCount) {
+        existing.dayCount = itinerary.day_index
+      }
     })
-  }
 
-  const sliderSettings = {
-    dots: true,
-    infinite: true,
-    speed: 500,
-    slidesToShow: 1,
-    slidesToScroll: 1,
-    autoplay: true,
-    autoplaySpeed: 3000,
-  }
-
-  useEffect(() => {
-    if (place) {
-      console.log(place);
-    }
-  }, [place])
-  
-
+    return Array.from(tourMap.values())
+  }, [place.itineraries])
 
   return (
-    <WebsiteLayout page='destinations'>
+    <WebsiteLayout page="destinations">
       <Head>
         <title>{place.name ? `${place.name} - SkySlope` : 'Destination - SkySlope'}</title>
-        <meta name="description" content={place.description || 'Explore this amazing destination'} />
-        <meta name="keywords" content={`destination, ${place.name || 'travel'}, northeast india`} />
+        <meta name="description" content={place.description || 'Explore this destination with SkySlope'} />
       </Head>
 
-      <Container size="xl" py="xl">
-        {/* Hero Section */}
-        <Parallax bgImage={place.media && place.media.length > 0 ? `/storage/${place.media[0].file_path}` : undefined} strength={300}>
-          <motion.div
-            initial={{ opacity: 0, y: 50 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.8 }}
-          >
-            <Card mb="xl" withBorder className='mx-4 my-3 shadow-lg rounded-md' style={{ backgroundColor: '#ffffffcc'}}>
-              <Grid gutter="xl">
-                <Grid.Col span={{ base: 12, md: 6 }}>
-                  {place.media && place.media.length > 0 ? (
-                    <AspectRatio ratio={16/9}>
-                      <Image
-                        src={`/storage/${place.media[0].file_path}`}
-                        alt={place.media[0].description || place.name}
-                        fit="cover"
-                        radius="md"
-                      />
-                    </AspectRatio>
-                  ) : (
-                    <Box style={{
-                      height: '300px',
-                      background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
-                      borderRadius: '8px',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center'
-                    }}>
-                      <Text size="xl" c="white" fw={500}>
-                        {place.name}
-                      </Text>
-                    </Box>
-                  )}
-                </Grid.Col>
-
-            <Grid.Col span={{ base: 12, md: 6 }}>
-              <Stack gap="md">
-                <div>
-                  <Group gap="xs" mb="xs">
-                    <Title order={1} size="h1" c="dark.9">
-                      {place.name}
-                    </Title>
-                    <Badge color={getStatusColor(place.status)} size="lg">
-                      {place.status.charAt(0).toUpperCase() + place.status.slice(1)}
-                    </Badge>
-                  </Group>
-                  <Text size="lg" c="dimmed" mt="sm">
-                    {place.description}
-                  </Text>
-                </div>
-
-                {place.lat && place.lng && typeof place.lat === 'number' && typeof place.lng === 'number' && (
-                  <div>
-                    <Group gap="xs" mb="xs">
-                      <Text size="sm" c="dimmed">Location:</Text>
-                    </Group>
-                    <Text size="md" c="dark.9">
-                      📍 {place.lat.toFixed(6)}, {place.lng.toFixed(6)}
-                    </Text>
-                  </div>
-                )}
-
-                <div>
-                  <Group gap="xs" mb="xs">
-                    <Text size="sm" c="dimmed">Added:</Text>
-                  </Group>
-                  <Text size="md" c="dark.9">
-                    {formatDate(place.created_at)}
-                  </Text>
-                </div>
-
-                {place.itineraries && place.itineraries.length > 0 && (
-                  <div>
-                    <Group gap="xs" mb="xs">
-                      <Text size="sm" c="dimmed">Featured in tours:</Text>
-                    </Group>
-                    <Text size="md" c="dark.9">
-                      {place.itineraries.length} tour{place.itineraries.length > 1 ? 's' : ''}
-                    </Text>
-                  </div>
-                )}
-
-                <Group gap="md" mt="lg">
-                  <Button
-                    size="lg"
-                    style={{
-                      background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
-                      '&:hover': {
-                        background: 'linear-gradient(135deg, #059669 0%, #047857 100%)',
-                      }
-                    }}
-                  >
-                    Plan Trip
-                  </Button>
-                  <Button variant="light" size="lg" component={Link} href="/destinations">
-                    Back to Destinations
-                  </Button>
-                </Group>
-              </Stack>
-            </Grid.Col>
-          </Grid>
-        </Card>
-          </motion.div>
-        </Parallax>
-
-        <Grid gutter="xl">
-          {/* Media Gallery */}
-          {place.media && place.media.length > 1 && (
-            <Grid.Col span={12}>
-              <motion.div
-                initial={{ opacity: 0, y: 50 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.8, delay: 0.2 }}
-              >
-                <Card shadow="md" radius="md" withBorder>
-                  <Title order={2} size="h2" mb="md" c="dark.9">
-                    Photo Gallery
-                  </Title>
-
-                  <Slider {...sliderSettings}>
-                    {place.media.map((media) => (
-                      <div key={media.id}>
-                        <AspectRatio ratio={16/9}>
-                          <Image
-                            src={`/storage/${media.file_path}`}
-                            alt={media.description || place.name}
-                            fit="cover"
-                            radius="md"
-                            style={{ cursor: 'pointer' }}
-                          />
-                        </AspectRatio>
-                      </div>
-                    ))}
-                  </Slider>
-                </Card>
-              </motion.div>
-            </Grid.Col>
+      <section className="relative overflow-hidden">
+        <div className="absolute inset-0">
+          {heroImage ? (
+            <img src={heroImage} alt={place.name} className="h-full w-full object-cover" />
+          ) : (
+            <div className="h-full w-full bg-gradient-to-br from-emerald-700 via-teal-700 to-cyan-800" />
           )}
+          <div className="absolute inset-0 bg-black/50" />
+        </div>
 
-          {/* Tours featuring this destination */}
-          {place.itineraries && place.itineraries.length > 0 && (
-            <Grid.Col span={{ base: 12, md: 6 }}>
-              <motion.div
-                initial={{ opacity: 0, x: -50 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ duration: 0.8, delay: 0.3 }}
-              >
-                <Card shadow="md" radius="md" withBorder>
-                  <Title order={3} size="h3" mb="md" c="dark.9">
-                    Tours Featuring This Destination
-                  </Title>
+        <div className="relative mx-auto max-w-7xl px-4 py-16 sm:px-6 lg:px-8 lg:py-24">
+          <motion.div initial={{ opacity: 0, y: 24 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.45 }}>
+            <p className="mb-6 text-sm font-medium uppercase tracking-[0.18em] text-emerald-200">
+              Destination Spotlight
+            </p>
 
-                  <Stack gap="xs">
-                    {place.itineraries && Array.from(new Set(place.itineraries.map(it => it.tour?.id).filter(Boolean)))
-                      .slice(0, 5)
-                      .map(tourId => {
-                        const itinerary = place.itineraries?.find(it => it.tour?.id === tourId);
-                        const tour = itinerary?.tour;
-                        return tour ? (
-                          <Card key={tour.id} padding="sm" radius="sm" withBorder={false} bg="gray.0">
-                            <Group justify="space-between" align="flex-start">
-                              <div style={{ flex: 1 }}>
-                                <Text size="md" c="dark.9" fw={500} mb="xs">
-                                  {tour.title}
-                                </Text>
-                                <Text size="sm" c="dimmed" lineClamp={2}>
-                                  {tour.description}
-                                </Text>
-                                <Group gap="xs" mt="xs">
-                                  <Badge size="sm" color="blue" variant="light">
-                                    {place.itineraries && Math.max(...place.itineraries.filter(it => it.tour?.id === tour.id).map(it => it.day_index))} Days
-                                  </Badge>
-                                  <Text size="sm" c="dimmed">
-                                    ₹{tour.price?.toLocaleString()} per person
-                                  </Text>
-                                </Group>
-                              </div>
-                            </Group>
-                          </Card>
-                        ) : null;
-                      })}
+            <div className="grid grid-cols-1 gap-8 lg:grid-cols-3">
+              <div className="lg:col-span-2">
+                <h1 className="text-4xl font-black leading-tight text-white sm:text-5xl lg:text-6xl">{place.name}</h1>
+                <p className="mt-5 max-w-3xl text-base leading-relaxed text-gray-200 sm:text-lg">{place.description}</p>
 
-                    {place.itineraries && Array.from(new Set(place.itineraries.map(it => it.tour?.id).filter(Boolean))).length > 5 && (
-                      <Text size="sm" c="dimmed" ta="center" mt="xs">
-                        +{Array.from(new Set(place.itineraries.map(it => it.tour?.id).filter(Boolean))).length - 5} more tours
-                      </Text>
-                    )}
-                  </Stack>
+                <div className="mt-7 flex flex-wrap items-center gap-3">
+                  <span className={`rounded-full px-3 py-1 text-sm font-semibold ring-1 ${getStatusStyles(place.status)}`}>
+                    {statusLabel}
+                  </span>
+                  <span className="rounded-full bg-white/15 px-3 py-1 text-sm font-medium text-white ring-1 ring-white/30">
+                    {featuredTours.length} curated tours
+                  </span>
+                  <span className="rounded-full bg-white/15 px-3 py-1 text-sm font-medium text-white ring-1 ring-white/30">
+                    {media.length} photos
+                  </span>
+                </div>
 
-                  <Button
-                    variant="light"
-                    fullWidth
-                    mt="md"
-                    component={Link}
+                <div className="mt-8 flex flex-wrap gap-3">
+                  <Link
                     href="/tours"
+                    className="rounded-lg bg-white px-5 py-3 text-sm font-semibold text-gray-900 transition hover:bg-gray-100"
                   >
-                    View All Tours
-                  </Button>
-                </Card>
-              </motion.div>
-            </Grid.Col>
-          )}
-
-          {/* Quick Info */}
-          <Grid.Col span={{ base: 12, md: place.itineraries && place.itineraries.length > 0 ? 6 : 12 }}>
-            <motion.div
-              initial={{ opacity: 0, x: 50 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ duration: 0.8, delay: 0.4 }}
-            >
-              <Card shadow="md" radius="md" withBorder>
-                <Title order={3} size="h3" mb="md" c="dark.9">
-                  Quick Information
-                </Title>
-
-              <Stack gap="md">
-                <div>
-                  <Group gap="xs" mb="xs">
-                    <Text size="sm" c="dimmed">Status:</Text>
-                  </Group>
-                  <Badge color={getStatusColor(place.status)} size="md">
-                    {place.status.charAt(0).toUpperCase() + place.status.slice(1)}
-                  </Badge>
+                    Explore Tours
+                  </Link>
+                  <Link
+                    href="/destinations"
+                    className="rounded-lg border border-white/60 px-5 py-3 text-sm font-semibold text-white transition hover:bg-white/15"
+                  >
+                    Back to Destinations
+                  </Link>
                 </div>
+              </div>
 
-                <div>
-                  <Group gap="xs" mb="xs">
-                    <Text size="sm" c="dimmed">Coordinates:</Text>
-                  </Group>
-                  <Text size="sm" c="dark.9" style={{ fontFamily: 'monospace' }}>
-                    {place.lat && place.lng && typeof place.lat === 'number' && typeof place.lng === 'number'
-                      ? `${place.lat.toFixed(6)}, ${place.lng.toFixed(6)}`
-                      : 'Not available'}
-                  </Text>
-                </div>
-
-                <div>
-                  <Group gap="xs" mb="xs">
-                    <Text size="sm" c="dimmed">Added to collection:</Text>
-                  </Group>
-                  <Text size="sm" c="dark.9">
-                    {formatDate(place.created_at)}
-                  </Text>
-                </div>
-
-                <Divider />
-
-                <div>
-                  <Text size="sm" c="dimmed" mb="xs">
-                    Ready to explore this destination?
-                  </Text>
-                  <Group gap="sm">
-                    <Button
-                      size="sm"
-                      style={{
-                        background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
-                        '&:hover': {
-                          background: 'linear-gradient(135deg, #059669 0%, #047857 100%)',
-                        }
-                      }}
+              <div className="self-end rounded-2xl border border-white/20 bg-white/10 p-5 backdrop-blur-sm">
+                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-emerald-200">Destination Facts</p>
+                <div className="mt-4 space-y-4">
+                  <div>
+                    <p className="text-xs uppercase tracking-wide text-gray-300">Added On</p>
+                    <p className="mt-1 text-sm font-medium text-white">{formatDate(place.created_at)}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs uppercase tracking-wide text-gray-300">Coordinates</p>
+                    <p className="mt-1 text-sm font-medium text-white">
+                      {hasCoordinates ? `${place.lat.toFixed(6)}, ${place.lng.toFixed(6)}` : 'Not available'}
+                    </p>
+                  </div>
+                  {hasCoordinates && (
+                    <a
+                      href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${place.lat},${place.lng}`)}`}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="inline-flex w-full justify-center rounded-lg bg-emerald-500 px-4 py-2 text-sm font-semibold text-white transition hover:bg-emerald-600"
                     >
-                      Plan Visit
-                    </Button>
-                    <Button variant="light" size="sm" component={Link} href="/tours">
-                      Find Tours
-                    </Button>
-                  </Group>
+                      Open in Maps
+                    </a>
+                  )}
                 </div>
-              </Stack>
-            </Card>
-            </motion.div>
-          </Grid.Col>
-        </Grid>
-      </Container>
+              </div>
+            </div>
+          </motion.div>
+        </div>
+      </section>
+
+      <section className="mx-auto max-w-7xl px-4 py-10 sm:px-6 lg:px-8 lg:py-14">
+        <div className="grid grid-cols-1 gap-8 lg:grid-cols-3">
+          <div className="space-y-8 lg:col-span-2">
+            <motion.article
+              initial={{ opacity: 0, y: 24 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.45, delay: 0.1 }}
+              className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm"
+            >
+              <h2 className="text-2xl font-bold text-gray-900">About This Destination</h2>
+              <p className="mt-4 text-base leading-relaxed text-gray-700">{place.description}</p>
+            </motion.article>
+
+            {media.length > 0 && (
+              <motion.article
+                initial={{ opacity: 0, y: 24 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.45, delay: 0.15 }}
+                className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm"
+              >
+                <h2 className="text-2xl font-bold text-gray-900">Gallery</h2>
+                <div className="mt-5 grid grid-cols-1 gap-4 sm:grid-cols-2">
+                  {media.slice(0, 6).map((item, index) => (
+                    <div key={item.id} className={index === 0 ? 'sm:col-span-2' : ''}>
+                      <img
+                        src={`/storage/${item.file_path}`}
+                        alt={item.description || place.name}
+                        className={`w-full rounded-xl object-cover ${index === 0 ? 'h-72' : 'h-52'}`}
+                      />
+                    </div>
+                  ))}
+                </div>
+              </motion.article>
+            )}
+
+            <motion.article
+              initial={{ opacity: 0, y: 24 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.45, delay: 0.2 }}
+              className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm"
+            >
+              <div className="flex items-center justify-between gap-3">
+                <h2 className="text-2xl font-bold text-gray-900">Tours Featuring This Destination</h2>
+                <Link href="/tours" className="text-sm font-semibold text-emerald-700 hover:text-emerald-800">
+                  View all tours
+                </Link>
+              </div>
+
+              {featuredTours.length === 0 ? (
+                <p className="mt-4 text-sm text-gray-600">No curated tours are available for this destination yet.</p>
+              ) : (
+                <div className="mt-5 space-y-4">
+                  {featuredTours.slice(0, 5).map(({ tour, dayCount }) => (
+                    <div key={tour.id} className="rounded-xl border border-gray-200 bg-gray-50 p-4">
+                      <h3 className="text-lg font-semibold text-gray-900">{tour.title}</h3>
+                      <p className="mt-2 line-clamp-2 text-sm text-gray-700">{tour.description}</p>
+                      <div className="mt-3 flex flex-wrap items-center gap-3 text-sm">
+                        <span className="rounded-full bg-emerald-100 px-2.5 py-1 font-medium text-emerald-800">
+                          {dayCount} days
+                        </span>
+                        <span className="font-semibold text-gray-900">₹{Number(tour.price || 0).toLocaleString('en-IN')}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </motion.article>
+          </div>
+
+          <motion.aside
+            initial={{ opacity: 0, y: 24 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.45, delay: 0.25 }}
+            className="h-fit rounded-2xl border border-gray-200 bg-white p-6 shadow-sm"
+          >
+            <h2 className="text-xl font-bold text-gray-900">Plan Your Visit</h2>
+            <p className="mt-3 text-sm leading-relaxed text-gray-600">
+              Make the most of your experience by checking available tours and preparing your route in advance.
+            </p>
+
+            <div className="mt-6 space-y-3">
+              <Link
+                href="/tours"
+                className="inline-flex w-full items-center justify-center rounded-lg bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-emerald-700"
+              >
+                Find Matching Tours
+              </Link>
+              <Link
+                href="/book-now"
+                className="inline-flex w-full items-center justify-center rounded-lg border border-gray-300 px-4 py-2.5 text-sm font-semibold text-gray-800 transition hover:bg-gray-50"
+              >
+                Book Now
+              </Link>
+            </div>
+
+            <div className="mt-8 border-t border-gray-200 pt-6">
+              <h3 className="text-sm font-semibold uppercase tracking-[0.14em] text-gray-500">Snapshot</h3>
+              <div className="mt-4 space-y-3 text-sm text-gray-700">
+                <div className="flex items-center justify-between">
+                  <span>Status</span>
+                  <span className="font-semibold">{statusLabel}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span>Tours</span>
+                  <span className="font-semibold">{featuredTours.length}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span>Photos</span>
+                  <span className="font-semibold">{media.length}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span>Added</span>
+                  <span className="font-semibold">{formatDate(place.created_at)}</span>
+                </div>
+              </div>
+            </div>
+          </motion.aside>
+        </div>
+      </section>
     </WebsiteLayout>
   )
 }

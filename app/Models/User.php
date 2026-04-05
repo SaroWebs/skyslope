@@ -21,7 +21,6 @@ class User extends Authenticatable
         'name',
         'email',
         'phone',
-        'role',
         'password',
     ];
 
@@ -46,22 +45,6 @@ class User extends Authenticatable
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
         ];
-    }
-
-    /**
-     * Get the bookings for the user.
-     */
-    public function bookings()
-    {
-        return $this->hasMany(Booking::class);
-    }
-
-    /**
-     * Get the car rentals for the user.
-     */
-    public function carRentals()
-    {
-        return $this->hasMany(CarRental::class);
     }
 
     /**
@@ -211,7 +194,7 @@ class User extends Authenticatable
      */
     public function isDriver(): bool
     {
-        return $this->hasRole('driver');
+        return false;
     }
 
     /**
@@ -219,6 +202,6 @@ class User extends Authenticatable
      */
     public function isCustomer(): bool
     {
-        return $this->hasRole('customer');
+        return false;
     }
 }

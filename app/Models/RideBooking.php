@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Str;
 
 class RideBooking extends Model
@@ -40,13 +41,21 @@ class RideBooking extends Model
         'payment_method',
         'vehicle_number',
         'special_requests',
+        'driver_notes',
         'cancellation_reason',
         'current_lat',
         'current_lng',
         'last_location_update',
+        'start_ride_pin',
+        'start_pin_verified_at',
+        'last_admin_change_snapshot',
+        'last_admin_changed_at',
+        'last_admin_changed_by',
         'whatsapp_notification',
         'email_notification',
         'sms_notification',
+        'commission_amount',
+        'driver_share',
     ];
 
     protected $casts = [
@@ -60,6 +69,9 @@ class RideBooking extends Model
         'current_lat' => 'decimal:8',
         'current_lng' => 'decimal:8',
         'last_location_update' => 'datetime',
+        'start_pin_verified_at' => 'datetime',
+        'last_admin_change_snapshot' => 'array',
+        'last_admin_changed_at' => 'datetime',
         'base_fare' => 'decimal:2',
         'distance_fare' => 'decimal:2',
         'time_fare' => 'decimal:2',
@@ -67,9 +79,15 @@ class RideBooking extends Model
         'surge_multiplier' => 'decimal:2',
         'total_fare' => 'decimal:2',
         'distance_km' => 'decimal:2',
+        'commission_amount' => 'decimal:2',
+        'driver_share' => 'decimal:2',
         'whatsapp_notification' => 'boolean',
         'email_notification' => 'boolean',
         'sms_notification' => 'boolean',
+    ];
+
+    protected $hidden = [
+        'start_ride_pin',
     ];
 
     /**
@@ -98,12 +116,22 @@ class RideBooking extends Model
         return $bookingNumber;
     }
 
+    public static function generateStartRidePin(): string
+    {
+        return str_pad((string) random_int(0, 9999), 4, '0', STR_PAD_LEFT);
+    }
+
     /**
      * Get the user that owns the booking.
      */
     public function user(): BelongsTo
     {
-        return $this->belongsTo(User::class);
+        return $this->belongsTo(Customer::class, 'user_id');
+    }
+
+    public function customer(): BelongsTo
+    {
+        return $this->user();
     }
 
     /**
@@ -111,7 +139,17 @@ class RideBooking extends Model
      */
     public function driver(): BelongsTo
     {
-        return $this->belongsTo(User::class, 'driver_id');
+        return $this->belongsTo(Driver::class, 'driver_id');
+    }
+
+    public function reviews(): HasMany
+    {
+        return $this->hasMany(RideBookingReview::class, 'ride_booking_id');
+    }
+
+    public function tips(): HasMany
+    {
+        return $this->hasMany(RideBookingTip::class, 'ride_booking_id');
     }
 
     /**

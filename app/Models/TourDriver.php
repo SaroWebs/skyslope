@@ -30,6 +30,6 @@ class TourDriver extends Model
      */
     public function user(): BelongsTo
     {
-        return $this->belongsTo(User::class);
+        return $this->belongsTo(Driver::class, 'user_id');
     }
 }

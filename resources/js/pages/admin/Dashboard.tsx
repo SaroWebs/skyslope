@@ -9,6 +9,7 @@ interface DashboardProps {
         total_users: number;
         total_tours: number;
         total_bookings: number;
+        total_ride_bookings?: number;
         total_places: number;
         active_tours?: number;
         recent_bookings?: any[];
@@ -21,7 +22,7 @@ export default function Dashboard({ title, user, stats, recent_users, upcoming_t
     return (
         <AdminLayout title={title}>
             {/* Stats Cards */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6 mb-8">
                         <div className="bg-white overflow-hidden shadow rounded-lg">
                             <div className="p-5">
                                 <div className="flex items-center">
@@ -81,6 +82,28 @@ export default function Dashboard({ title, user, stats, recent_users, upcoming_t
                                             </dt>
                                             <dd className="text-lg font-medium text-gray-900">
                                                 {stats.total_bookings}
+                                            </dd>
+                                        </dl>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="bg-white overflow-hidden shadow rounded-lg">
+                            <div className="p-5">
+                                <div className="flex items-center">
+                                    <div className="flex-shrink-0">
+                                        <div className="w-8 h-8 bg-indigo-500 rounded-md flex items-center justify-center">
+                                            <span className="text-white font-bold text-xs">RB</span>
+                                        </div>
+                                    </div>
+                                    <div className="ml-5 w-0 flex-1">
+                                        <dl>
+                                            <dt className="text-sm font-medium text-gray-500 truncate">
+                                                Ride Bookings
+                                            </dt>
+                                            <dd className="text-lg font-medium text-gray-900">
+                                                {stats.total_ride_bookings ?? 0}
                                             </dd>
                                         </dl>
                                     </div>
@@ -191,7 +214,7 @@ export default function Dashboard({ title, user, stats, recent_users, upcoming_t
                             <h3 className="text-lg leading-6 font-medium text-gray-900 mb-4">
                                 Quick Actions
                             </h3>
-                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
                                 <Link
                                     href="/admin/users/create"
                                     className="inline-flex items-center justify-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700"
@@ -209,6 +232,12 @@ export default function Dashboard({ title, user, stats, recent_users, upcoming_t
                                     className="inline-flex items-center justify-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50"
                                 >
                                     View Bookings
+                                </Link>
+                                <Link
+                                    href="/admin/ride-bookings"
+                                    className="inline-flex items-center justify-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50"
+                                >
+                                    Manage Ride Bookings
                                 </Link>
                                 <Link
                                     href="/admin/settings"

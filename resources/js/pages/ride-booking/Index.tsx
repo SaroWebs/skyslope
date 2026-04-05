@@ -1,8 +1,6 @@
 import React, { useState, useEffect } from 'react'
-import { Head, usePage } from '@inertiajs/react'
+import { Head } from '@inertiajs/react'
 import WebsiteLayout from '@/layoutes/WebsiteLayout'
-import { notificationService } from '@/services/notification'
-import LocationSelector from '@/components/ride_booking/LocationSelector'
 import RideBookingForm from '@/components/ride_booking/RideBookingForm'
 import RideTracker from '@/components/ride_booking/RideTracker'
 import RideBookingSearch from '@/components/ride_booking/RideBookingSearch'
@@ -24,6 +22,7 @@ interface RideBooking {
   scheduled_at: string
   total_fare: number
   driver?: {
+    id?: number
     name: string
     phone: string
   }
@@ -32,13 +31,10 @@ interface RideBooking {
 }
 
 const RideBooking = () => {
-  const { auth } = usePage().props
-
-  const [currentStep, setCurrentStep] = useState<'search' | 'pickup' | 'dropoff' | 'booking' | 'tracking'>('search')
+  const [currentStep, setCurrentStep] = useState<'search' | 'booking' | 'tracking'>('search')
   const [pickupLocation, setPickupLocation] = useState<Location | null>(null)
   const [dropoffLocation, setDropoffLocation] = useState<Location | null>(null)
   const [activeBooking, setActiveBooking] = useState<RideBooking | null>(null)
-  const [loading, setLoading] = useState(false)
 
   // Check for localStorage data on component mount
   useEffect(() => {
@@ -50,10 +46,8 @@ const RideBooking = () => {
           setPickupLocation(parsed.pickup)
           if (parsed.dropoff) {
             setDropoffLocation(parsed.dropoff)
-            setCurrentStep('booking')
-          } else {
-            setCurrentStep('dropoff')
           }
+          setCurrentStep('booking')
           // Clear the storage after retrieving
           localStorage.removeItem('ride_booking_search')
         }
@@ -63,37 +57,13 @@ const RideBooking = () => {
     }
   }, [])
 
-  // Handles pickup location selection
-  const handlePickupLocationSelected = (pickup: Location) => {
-    setPickupLocation(pickup)
-    setCurrentStep('dropoff')
-  }
-
-  // Handles dropoff location selection
-  const handleDropoffLocationSelected = (dropoff: Location) => {
-    setDropoffLocation(dropoff)
-    setCurrentStep('booking')
-  }
-
   const handleBookingCreated = (booking: RideBooking) => {
     setActiveBooking(booking)
     setCurrentStep('tracking')
   }
 
-  // Back to dropoff selection, or to pickup if no dropoff yet
-  const handleBackFromDropoff = () => {
-    setCurrentStep('search')
-    setDropoffLocation(null)
-  }
-
   const handleBackFromBooking = () => {
-    if (pickupLocation && dropoffLocation) {
-      setCurrentStep('dropoff')
-      setDropoffLocation(null)
-    } else if (pickupLocation) {
-      setCurrentStep('pickup')
-      setDropoffLocation(null)
-    }
+    setCurrentStep('search')
   }
 
   const handleBookingCancelled = () => {
@@ -105,12 +75,8 @@ const RideBooking = () => {
 
   const handleSearchLocationsSelected = (pickup: Location, dropoff?: Location) => {
     setPickupLocation(pickup)
-    if (dropoff) {
-      setDropoffLocation(dropoff)
-      setCurrentStep('booking')
-    } else {
-      setCurrentStep('dropoff')
-    }
+    setDropoffLocation(dropoff || null)
+    setCurrentStep('booking')
   }
 
   return (
@@ -131,8 +97,6 @@ const RideBooking = () => {
               </div>
               <div className="flex items-center space-x-2">
                 <div className={`w-3 h-3 rounded-full ${currentStep === 'search' ? 'bg-blue-500' : 'bg-gray-300'}`}></div>
-                <div className={`w-3 h-3 rounded-full ${currentStep === 'pickup' ? 'bg-blue-500' : 'bg-gray-300'}`}></div>
-                <div className={`w-3 h-3 rounded-full ${currentStep === 'dropoff' ? 'bg-blue-500' : 'bg-gray-300'}`}></div>
                 <div className={`w-3 h-3 rounded-full ${currentStep === 'booking' ? 'bg-blue-500' : 'bg-gray-300'}`}></div>
                 <div className={`w-3 h-3 rounded-full ${currentStep === 'tracking' ? 'bg-blue-500' : 'bg-gray-300'}`}></div>
               </div>
@@ -143,7 +107,7 @@ const RideBooking = () => {
         {/* Main Content */}
         <div className="container-modern py-8 px-4">
           {/* Search Section */}
-          {(currentStep === 'search' || currentStep === 'pickup') && (
+          {currentStep === 'search' && (
             <div className="mb-8">
               <RideBookingSearch 
                 onLocationsSelected={handleSearchLocationsSelected}
@@ -151,24 +115,6 @@ const RideBooking = () => {
                 initialDropoff={dropoffLocation}
               />
             </div>
-          )}
-
-          {currentStep === 'pickup' && (
-            <LocationSelector
-              onLocationSelected={handlePickupLocationSelected}
-              initialPickup={pickupLocation}
-              selectType="pickup"
-            />
-          )}
-
-          {currentStep === 'dropoff' && pickupLocation && (
-            <LocationSelector
-              onLocationSelected={handleDropoffLocationSelected}
-              initialPickup={pickupLocation}
-              initialDropoff={dropoffLocation}
-              selectType="dropoff"
-              onBack={handleBackFromDropoff}
-            />
           )}
 
           {currentStep === 'booking' && pickupLocation && (

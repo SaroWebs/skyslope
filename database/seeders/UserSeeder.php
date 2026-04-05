@@ -4,6 +4,8 @@ namespace Database\Seeders;
 
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\Hash;
+use App\Models\Customer;
+use App\Models\Driver;
 use App\Models\User;
 
 class UserSeeder extends Seeder
@@ -28,7 +30,7 @@ class UserSeeder extends Seeder
                 'name' => 'John Smith',
                 'email' => 'john@example.com',
                 'phone' => '+1-555-0101',
-                'role' => 'customer',
+                'account_type' => 'customer',
                 'email_verified_at' => now(),
                 'password' => Hash::make('password'),
                 'created_at' => now(),
@@ -38,7 +40,7 @@ class UserSeeder extends Seeder
                 'name' => 'Sarah Johnson',
                 'email' => 'sarah@example.com',
                 'phone' => '+1-555-0102',
-                'role' => 'customer',
+                'account_type' => 'customer',
                 'email_verified_at' => now(),
                 'password' => Hash::make('password'),
                 'created_at' => now(),
@@ -58,7 +60,7 @@ class UserSeeder extends Seeder
                 'name' => 'Emma Davis',
                 'email' => 'emma@example.com',
                 'phone' => '+1-555-0104',
-                'role' => 'driver',
+                'account_type' => 'driver',
                 'email_verified_at' => now(),
                 'password' => Hash::make('password'),
                 'created_at' => now(),
@@ -67,6 +69,30 @@ class UserSeeder extends Seeder
         ];
 
         foreach ($users as $userData) {
+            $accountType = $userData['account_type'] ?? null;
+
+            if ($accountType === 'customer') {
+                unset($userData['account_type']);
+
+                Customer::updateOrCreate(
+                    ['email' => $userData['email']],
+                    $userData
+                );
+
+                continue;
+            }
+
+            if ($accountType === 'driver') {
+                unset($userData['account_type']);
+
+                Driver::updateOrCreate(
+                    ['email' => $userData['email']],
+                    $userData
+                );
+
+                continue;
+            }
+
             $role = $userData['role'];
             unset($userData['role']);
 

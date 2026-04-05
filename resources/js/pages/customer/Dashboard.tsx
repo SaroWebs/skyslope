@@ -33,6 +33,12 @@ const getRideStatusColor = (status: string) => {
 }
 
 export default function Dashboard({ title, user, my_bookings, ride_bookings = [], available_tours }: DashboardProps) {
+    const formatDate = (value?: string) => {
+        if (!value) return 'N/A'
+        const parsed = new Date(value)
+        return Number.isNaN(parsed.getTime()) ? 'N/A' : parsed.toLocaleDateString()
+    }
+
     return (
         <>
             <Head title={title} />
@@ -70,12 +76,12 @@ export default function Dashboard({ title, user, my_bookings, ride_bookings = []
                                     {my_bookings.length > 0 ? (
                                         my_bookings.map((booking) => (
                                             <div key={booking.id} className="border rounded-lg p-4">
-                                                <h4 className="font-medium text-gray-900">{booking.tour.name}</h4>
+                                                <h4 className="font-medium text-gray-900">{booking.tour?.title || 'Tour'}</h4>
                                                 <p className="text-sm text-gray-500">
-                                                    Booked on: {new Date(booking.created_at).toLocaleDateString()}
+                                                    Booked on: {formatDate(booking.created_at)}
                                                 </p>
                                                 <p className="text-sm text-gray-500">
-                                                    Tour Date: {new Date(booking.tour.start_date).toLocaleDateString()}
+                                                    Tour Date: {formatDate(booking.tour?.available_from)}
                                                 </p>
                                                 <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
                                                     booking.status === 'confirmed'
@@ -123,7 +129,7 @@ export default function Dashboard({ title, user, my_bookings, ride_bookings = []
                                                             </p>
                                                         )}
                                                         <p className="text-sm text-gray-500">
-                                                            {new Date(booking.scheduled_at).toLocaleDateString()}
+                                                            {formatDate(booking.scheduled_at)}
                                                         </p>
                                                     </div>
                                                     <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getRideStatusColor(booking.status)}`}>
@@ -132,7 +138,7 @@ export default function Dashboard({ title, user, my_bookings, ride_bookings = []
                                                 </div>
                                                 <div className="mt-2">
                                                     <Link
-                                                        href={`/ride-bookings/${booking.id}`}
+                                                        href={`/customer/ride-bookings/${booking.id}`}
                                                         className="text-sm text-blue-600 hover:text-blue-500"
                                                     >
                                                         View Details →
@@ -165,9 +171,9 @@ export default function Dashboard({ title, user, my_bookings, ride_bookings = []
                                     {available_tours.length > 0 ? (
                                         available_tours.map((tour) => (
                                             <div key={tour.id} className="border rounded-lg p-4">
-                                                <h4 className="font-medium text-gray-900">{tour.name}</h4>
+                                                <h4 className="font-medium text-gray-900">{tour.title}</h4>
                                                 <p className="text-sm text-gray-500">
-                                                    {new Date(tour.start_date).toLocaleDateString()} - {new Date(tour.end_date).toLocaleDateString()}
+                                                    {formatDate(tour.available_from)} - {formatDate(tour.available_to)}
                                                 </p>
                                                 <p className="text-sm text-gray-500">{tour.description}</p>
                                                 <div className="mt-2">
