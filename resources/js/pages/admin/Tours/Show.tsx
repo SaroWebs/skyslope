@@ -1,6 +1,40 @@
 import React from 'react';
-import { Link } from '@inertiajs/react';
-import AdminLayout from '../../../layoutes/AdminLayout';
+import { Head, Link } from '@inertiajs/react';
+import AdminLayout from '../../../layouts/AdminLayout';
+import { 
+    Paper, 
+    Stack, 
+    Group, 
+    Text, 
+    Button, 
+    Badge, 
+    SimpleGrid, 
+    Avatar, 
+    ThemeIcon, 
+    Divider, 
+    Timeline, 
+    Box, 
+    Tooltip,
+    ActionIcon,
+    rem,
+    Grid
+} from '@mantine/core';
+import { 
+    ArrowLeft, 
+    Pencil, 
+    Calendar, 
+    IndianRupee, 
+    Users, 
+    UserCheck, 
+    MapPin, 
+    Clock, 
+    Info, 
+    TrendingUp, 
+    Tag,
+    Navigation,
+    BookOpen,
+    ShieldCheck
+} from 'lucide-react';
 
 interface Tour {
     id: number;
@@ -57,215 +91,241 @@ interface Tour {
 
 interface ShowTourProps {
     title: string;
-    user: any;
     tour: Tour;
 }
 
-export default function Show({ title, user, tour }: ShowTourProps) {
+export default function Show({ title, tour }: ShowTourProps) {
+    const finalPrice = tour.price * (1 - tour.discount / 100);
+
     return (
         <AdminLayout title={title}>
-            <div className="bg-white shadow rounded-lg">
-                <div className="px-4 py-5 sm:p-6">
-                    <div className="flex justify-between items-center mb-6">
-                        <h2 className="text-lg font-medium text-gray-900">Tour Details</h2>
-                        <div className="flex space-x-3">
-                            <Link
-                                href="/admin/tours"
-                                className="bg-gray-600 text-white px-4 py-2 rounded-md hover:bg-gray-700 text-sm font-medium"
-                            >
-                                Back to Tours
-                            </Link>
-                            <Link
-                                href={`/admin/tours/${tour.id}/edit`}
-                                className="bg-yellow-600 text-white px-4 py-2 rounded-md hover:bg-yellow-700 text-sm font-medium"
-                            >
-                                Edit Tour
-                            </Link>
-                        </div>
-                    </div>
+            <Head title={`Tour: ${tour.title}`} />
 
-                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                        {/* Main Content */}
-                        <div className="lg:col-span-2 space-y-6">
-                            {/* Basic Information */}
-                            <div className="bg-gray-50 rounded-lg p-6">
-                                <h3 className="text-lg font-medium text-gray-900 mb-4">Basic Information</h3>
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                    <div>
-                                        <dt className="text-sm font-medium text-gray-500">Tour Name</dt>
-                                        <dd className="mt-1 text-sm text-gray-900">{tour.title}</dd>
-                                    </div>
-                                    <div>
-                                        <dt className="text-sm font-medium text-gray-500">Price</dt>
-                                        <dd className="mt-1 text-sm text-gray-900">${tour.price}</dd>
-                                    </div>
-                                    <div>
-                                        <dt className="text-sm font-medium text-gray-500">Discount</dt>
-                                        <dd className="mt-1 text-sm text-gray-900">{tour.discount}%</dd>
-                                    </div>
-                                    <div>
-                                        <dt className="text-sm font-medium text-gray-500">Final Price</dt>
-                                        <dd className="mt-1 text-sm text-gray-900">${(tour.price * (1 - tour.discount / 100)).toFixed(2)}</dd>
-                                    </div>
-                                    <div>
-                                        <dt className="text-sm font-medium text-gray-500">Available From</dt>
-                                        <dd className="mt-1 text-sm text-gray-900">
-                                            {new Date(tour.available_from).toLocaleDateString()}
-                                        </dd>
-                                    </div>
-                                    <div>
-                                        <dt className="text-sm font-medium text-gray-500">Available To</dt>
-                                        <dd className="mt-1 text-sm text-gray-900">
-                                            {new Date(tour.available_to).toLocaleDateString()}
-                                        </dd>
-                                    </div>
-                                </div>
-                            </div>
+            <Stack gap="xl">
+                {/* Header Action Bar */}
+                <Group justify="space-between" align="flex-end">
+                    <Stack gap={2}>
+                        <Group gap="xs">
+                            <ThemeIcon variant="light" color="blue" size="sm">
+                                <Navigation size={14} />
+                            </ThemeIcon>
+                            <Text size="xs" fw={700} color="dimmed" tt="uppercase">Tour Management Console</Text>
+                        </Group>
+                        <Text size="h3" fw={800}>{tour.title}</Text>
+                    </Stack>
+                    <Group gap="sm">
+                        <Button 
+                            component={Link} 
+                            href="/admin/tours" 
+                            variant="light" 
+                            color="gray" 
+                            leftSection={<ArrowLeft size={16} />}
+                            radius="md"
+                        >
+                            Back to Index
+                        </Button>
+                        <Button 
+                            component={Link} 
+                            href={`/admin/tours/${tour.id}/edit`} 
+                            color="yellow" 
+                            leftSection={<Pencil size={16} />}
+                            radius="md"
+                        >
+                            Edit Package
+                        </Button>
+                    </Group>
+                </Group>
 
-                            {/* Description */}
-                            <div className="bg-gray-50 rounded-lg p-6">
-                                <h3 className="text-lg font-medium text-gray-900 mb-4">Description</h3>
-                                <p className="text-sm text-gray-900 whitespace-pre-wrap">{tour.description}</p>
-                            </div>
-
-                            {/* Itineraries */}
-                            {tour.itineraries && tour.itineraries.length > 0 && (
-                                <div className="bg-gray-50 rounded-lg p-6">
-                                    <div className="flex justify-between items-center mb-4">
-                                        <h3 className="text-lg font-medium text-gray-900">Itineraries</h3>
-                                        <Link
-                                            href={`/admin/tours/${tour.id}/itineraries`}
-                                            className="bg-blue-600 text-white px-3 py-1 rounded text-sm hover:bg-blue-700"
-                                        >
-                                            Manage Itineraries
-                                        </Link>
-                                    </div>
-                                    <div className="space-y-4">
-                                        {tour.itineraries.map((itinerary) => (
-                                            <div key={itinerary.id} className="border-l-4 border-blue-500 pl-4">
-                                                <div className="flex justify-between items-start">
-                                                    <h4 className="font-medium text-gray-900">
-                                                        Day {itinerary.day_index}
-                                                        {itinerary.time && (
-                                                            <span className="text-sm text-gray-600 ml-2">
-                                                                at {itinerary.time}
-                                                            </span>
-                                                        )}
-                                                    </h4>
-                                                    <Link
-                                                        href={`/admin/tours/${tour.id}/itineraries/${itinerary.id}/edit`}
-                                                        className="text-blue-600 hover:text-blue-500 text-sm"
-                                                    >
-                                                        Edit
-                                                    </Link>
-                                                </div>
-                                                {itinerary.place && (
-                                                    <div className="mt-2">
-                                                        <h5 className="text-sm font-medium text-gray-700">
-                                                            Place: {itinerary.place.name}
-                                                        </h5>
-                                                        <p className="text-sm text-gray-600 mt-1">
-                                                            {itinerary.place.description}
-                                                        </p>
-                                                    </div>
-                                                )}
-                                                {itinerary.details && (
-                                                    <p className="text-sm text-gray-600 mt-2">
-                                                        <span className="font-medium">Details:</span> {itinerary.details}
-                                                    </p>
-                                                )}
-                                            </div>
-                                        ))}
-                                    </div>
-                                </div>
-                            )}
-                        </div>
-
-                        {/* Sidebar */}
-                        <div className="space-y-6">
-                            {/* Staff */}
-                            <div className="bg-gray-50 rounded-lg p-6">
-                                <h3 className="text-lg font-medium text-gray-900 mb-4">Staff</h3>
+                <Grid gutter="xl">
+                    <Grid.Col span={{ base: 12, lg: 8 }}>
+                        <Stack gap="xl">
+                            {/* Detailed Economics */}
+                            <Paper p="xl" radius="md" withBorder shadow="sm">
+                                <Text fw={800} size="lg" mb="xl">Financial Overview</Text>
+                                <SimpleGrid cols={{ base: 1, sm: 3 }} spacing="xl">
+                                    <Box>
+                                        <Text size="xs" color="dimmed" fw={700} tt="uppercase">Base Price</Text>
+                                        <Group gap={4} mt={4}>
+                                            <IndianRupee size={16} color="gray" />
+                                            <Text size="xl" fw={800}>{parseFloat(tour.price.toString()).toLocaleString()}</Text>
+                                        </Group>
+                                    </Box>
+                                    <Box>
+                                        <Text size="xs" color="dimmed" fw={700} tt="uppercase">Active Discount</Text>
+                                        <Group gap={4} mt={4}>
+                                            <Tag size={16} color="var(--mantine-color-red-6)" />
+                                            <Text size="xl" fw={800} color="red.7">{tour.discount}% OFF</Text>
+                                        </Group>
+                                    </Box>
+                                    <Box>
+                                        <Text size="xs" color="dimmed" fw={700} tt="uppercase">Market Price</Text>
+                                        <Group gap={4} mt={4}>
+                                            <TrendingUp size={16} color="var(--mantine-color-green-6)" />
+                                            <Text size="xl" fw={800} color="green.7">₹{finalPrice.toLocaleString()}</Text>
+                                        </Group>
+                                    </Box>
+                                </SimpleGrid>
                                 
-                                {/* Guides */}
-                                <div className="mb-4">
-                                    <h4 className="text-sm font-medium text-gray-700 mb-2">
-                                        Guides ({tour.guides?.length || 0})
-                                    </h4>
-                                    {tour.guides && tour.guides.length > 0 ? (
-                                        <div className="space-y-2">
-                                            {tour.guides.map((guide) => (
-                                                <div key={guide.id} className="text-sm">
-                                                    <div className="font-medium text-gray-900">{guide.user.name}</div>
-                                                    <div className="text-gray-600">{guide.user.email}</div>
-                                                </div>
-                                            ))}
-                                        </div>
-                                    ) : (
-                                        <p className="text-sm text-gray-500">No guides assigned</p>
-                                    )}
-                                </div>
+                                <Divider my="xl" />
+                                
+                                <SimpleGrid cols={{ base: 1, sm: 2 }}>
+                                    <Group gap="md">
+                                        <ThemeIcon variant="light" color="blue" radius="md">
+                                            <Calendar size={18} />
+                                        </ThemeIcon>
+                                        <Stack gap={0}>
+                                            <Text size="xs" color="dimmed" fw={700}>STARTING WINDOW</Text>
+                                            <Text fw={700}>{new Date(tour.available_from).toLocaleDateString()}</Text>
+                                        </Stack>
+                                    </Group>
+                                    <Group gap="md">
+                                        <ThemeIcon variant="light" color="blue" radius="md">
+                                            <Calendar size={18} />
+                                        </ThemeIcon>
+                                        <Stack gap={0}>
+                                            <Text size="xs" color="dimmed" fw={700}>ENDING WINDOW</Text>
+                                            <Text fw={700}>{new Date(tour.available_to).toLocaleDateString()}</Text>
+                                        </Stack>
+                                    </Group>
+                                </SimpleGrid>
+                            </Paper>
 
-                                {/* Drivers */}
-                                <div>
-                                    <h4 className="text-sm font-medium text-gray-700 mb-2">
-                                        Drivers ({tour.drivers?.length || 0})
-                                    </h4>
-                                    {tour.drivers && tour.drivers.length > 0 ? (
-                                        <div className="space-y-2">
-                                            {tour.drivers.map((driver) => (
-                                                <div key={driver.id} className="text-sm">
-                                                    <div className="font-medium text-gray-900">{driver.user.name}</div>
-                                                    <div className="text-gray-600">{driver.user.email}</div>
-                                                </div>
-                                            ))}
-                                        </div>
-                                    ) : (
-                                        <p className="text-sm text-gray-500">No drivers assigned</p>
-                                    )}
-                                </div>
-                            </div>
+                            {/* Tour Persona & Narrative */}
+                            <Paper p="xl" radius="md" withBorder shadow="sm">
+                                <Text fw={800} size="lg" mb="md">Package Narrative</Text>
+                                <Text size="sm" color="gray.7" style={{ lineHeight: 1.6 }}>{tour.description}</Text>
+                            </Paper>
 
-                            {/* Recent Bookings */}
-                            {tour.bookings && tour.bookings.length > 0 && (
-                                <div className="bg-gray-50 rounded-lg p-6">
-                                    <h3 className="text-lg font-medium text-gray-900 mb-4">Recent Bookings</h3>
-                                    <div className="space-y-3">
-                                        {tour.bookings.slice(0, 5).map((booking) => (
-                                            <div key={booking.id} className="text-sm">
-                                                <div className="font-medium text-gray-900">{booking.user.name}</div>
-                                                <div className="text-gray-600">${booking.total_amount}</div>
-                                                <div className="flex justify-between items-center mt-1">
-                                                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                                                        booking.status === 'confirmed' ? 'bg-green-100 text-green-800' :
-                                                        booking.status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
-                                                        'bg-red-100 text-red-800'
-                                                    }`}>
-                                                        {booking.status}
-                                                    </span>
-                                                    <span className="text-gray-500">
-                                                        {new Date(booking.created_at).toLocaleDateString()}
-                                                    </span>
-                                                </div>
-                                            </div>
-                                        ))}
-                                    </div>
-                                    {tour.bookings.length > 5 && (
-                                        <div className="mt-3 text-sm">
-                                            <Link
-                                                href="/admin/bookings"
-                                                className="text-blue-600 hover:text-blue-500"
+                            {/* Travel Itinerary Preview */}
+                            <Paper p="xl" radius="md" withBorder shadow="sm">
+                                <Group justify="space-between" mb="xl">
+                                    <Text fw={800} size="lg">Journey Timeline</Text>
+                                    <Button 
+                                        variant="subtle" 
+                                        size="xs" 
+                                        component={Link} 
+                                        href={`/admin/tours/${tour.id}/itineraries`}
+                                        rightSection={<ArrowRight size={14} />}
+                                    >
+                                        Manage Mapping
+                                    </Button>
+                                </Group>
+                                
+                                {tour.itineraries && tour.itineraries.length > 0 ? (
+                                    <Timeline bulletSize={24} lineWidth={2}>
+                                        {tour.itineraries.map((it) => (
+                                            <Timeline.Item 
+                                                key={it.id} 
+                                                bullet={<MapPin size={12} />} 
+                                                title={
+                                                    <Group justify="space-between">
+                                                        <Text fw={700} size="sm">Day {it.day_index}: {it.place.name}</Text>
+                                                        {it.time && <Badge size="xs" variant="outline">{it.time}</Badge>}
+                                                    </Group>
+                                                }
                                             >
-                                                View all bookings →
-                                            </Link>
-                                        </div>
+                                                <Text size="xs" color="dimmed" mb={4}>{it.place.description}</Text>
+                                                {it.details && (
+                                                    <Text size="xs" color="gray.6" italic>Note: {it.details}</Text>
+                                                )}
+                                            </Timeline.Item>
+                                        ))}
+                                    </Timeline>
+                                ) : (
+                                    <Text size="sm" color="dimmed" ta="center" py="xl">No itineraries defined for this package.</Text>
+                                )}
+                            </Paper>
+                        </Stack>
+                    </Grid.Col>
+
+                    <Grid.Col span={{ base: 12, lg: 4 }}>
+                        <Stack gap="lg">
+                            {/* Assigned Resources */}
+                            <Paper p="xl" radius="md" withBorder shadow="sm">
+                                <Text fw={800} size="md" mb="xl">Assigned Resources</Text>
+                                
+                                <Stack gap="lg">
+                                    <Box>
+                                        <Group justify="space-between" mb="sm">
+                                            <Group gap="xs">
+                                                <UserCheck size={16} color="var(--mantine-color-blue-6)" />
+                                                <Text size="xs" fw={700} tt="uppercase">Tour Guides</Text>
+                                            </Group>
+                                            <Badge size="xs">{tour.guides?.length || 0}</Badge>
+                                        </Group>
+                                        <Stack gap="xs">
+                                            {tour.guides?.map(g => (
+                                                <Group key={g.id} gap="sm" p="xs" style={{ border: '1px solid #f1f3f5', borderRadius: '8px' }}>
+                                                    <Avatar size="sm" color="blue">{g.user.name.charAt(0)}</Avatar>
+                                                    <Stack gap={0}>
+                                                        <Text size="xs" fw={700}>{g.user.name}</Text>
+                                                        <Text size="xs" color="dimmed">{g.user.email}</Text>
+                                                    </Stack>
+                                                </Group>
+                                            ))}
+                                            {(!tour.guides || tour.guides.length === 0) && <Text size="xs" color="dimmed">No guides assigned.</Text>}
+                                        </Stack>
+                                    </Box>
+
+                                    <Box>
+                                        <Group justify="space-between" mb="sm">
+                                            <Group gap="xs">
+                                                <Users size={16} color="var(--mantine-color-teal-6)" />
+                                                <Text size="xs" fw={700} tt="uppercase">Fleet Support</Text>
+                                            </Group>
+                                            <Badge size="xs">{tour.drivers?.length || 0}</Badge>
+                                        </Group>
+                                        <Stack gap="xs">
+                                            {tour.drivers?.map(d => (
+                                                <Group key={d.id} gap="sm" p="xs" style={{ border: '1px solid #f1f3f5', borderRadius: '8px' }}>
+                                                    <Avatar size="sm" color="teal">{d.user.name.charAt(0)}</Avatar>
+                                                    <Stack gap={0}>
+                                                        <Text size="xs" fw={700}>{d.user.name}</Text>
+                                                        <Text size="xs" color="dimmed">{d.user.email}</Text>
+                                                    </Stack>
+                                                </Group>
+                                            ))}
+                                            {(!tour.drivers || tour.drivers.length === 0) && <Text size="xs" color="dimmed">No drivers assigned.</Text>}
+                                        </Stack>
+                                    </Box>
+                                </Stack>
+                            </Paper>
+
+                            {/* Booking Intelligence */}
+                            <Paper p="xl" radius="md" withBorder shadow="sm">
+                                <Group justify="space-between" mb="xl">
+                                    <Group gap="xs">
+                                        <BookOpen size={16} color="var(--mantine-color-indigo-6)" />
+                                        <Text fw={800} size="md">Sales Ledger</Text>
+                                    </Group>
+                                    <Badge color="indigo">{tour.bookings?.length || 0}</Badge>
+                                </Group>
+
+                                <Stack gap="md">
+                                    {tour.bookings?.slice(0, 5).map(b => (
+                                        <Box key={b.id} p="sm" style={{ border: '1px solid #f1f3f5', borderRadius: '8px' }}>
+                                            <Group justify="space-between" mb={4}>
+                                                <Text size="xs" fw={700}>{b.user.name}</Text>
+                                                <Text size="xs" fw={800} color="green.8">₹{parseFloat(b.total_amount.toString()).toLocaleString()}</Text>
+                                            </Group>
+                                            <Group justify="space-between">
+                                                <Badge size="xs" color={b.status === 'confirmed' ? 'green' : 'yellow'} variant="light">
+                                                    {b.status}
+                                                </Badge>
+                                                <Text size="xs" color="dimmed">{new Date(b.created_at).toLocaleDateString()}</Text>
+                                            </Group>
+                                        </Box>
+                                    ))}
+                                    {(!tour.bookings || tour.bookings.length === 0) && <Text size="xs" color="dimmed" ta="center">No bookings recorded.</Text>}
+                                    {tour.bookings && tour.bookings.length > 5 && (
+                                        <Button variant="subtle" size="xs" fullWidth mt="xs">View All Transactions</Button>
                                     )}
-                                </div>
-                            )}
-                        </div>
-                    </div>
-                </div>
-            </div>
+                                </Stack>
+                            </Paper>
+                        </Stack>
+                    </Grid.Col>
+                </Grid>
+            </Stack>
         </AdminLayout>
     );
 }

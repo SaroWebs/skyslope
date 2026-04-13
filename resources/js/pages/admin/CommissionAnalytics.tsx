@@ -1,441 +1,409 @@
 import React, { useState, useEffect } from 'react';
 import { Head } from '@inertiajs/react';
-import { Card, Badge, Table, Select, Button, Loader } from '@mantine/core';
+import AdminLayout from '@/layouts/AdminLayout';
+import { 
+    Card, 
+    Badge, 
+    Table, 
+    Select, 
+    Button, 
+    Loader, 
+    Group, 
+    Stack, 
+    Text, 
+    Paper, 
+    SimpleGrid, 
+    ThemeIcon, 
+    Progress,
+    Box,
+    rem,
+    Divider,
+    ScrollArea,
+    ActionIcon,
+    Tooltip
+} from '@mantine/core';
 import {
-  DollarSign,
-  TrendingUp,
-  Calendar,
-  Download,
-  Filter,
-  BarChart3,
-  ArrowUpRight,
-  Clock,
+    DollarSign,
+    TrendingUp,
+    Calendar,
+    Download,
+    Filter,
+    BarChart3,
+    ArrowUpRight,
+    Clock,
+    User,
+    Wallet,
+    Percent,
+    Car,
+    FileSpreadsheet,
+    ChevronRight,
+    Target
 } from 'lucide-react';
 import axios from '@/lib/axios';
 
 interface CommissionStats {
-  total_commission: number;
-  today_commission: number;
-  month_commission: number;
-  pending_commission: number;
-  commission_count: number;
-  average_commission: number;
-  by_service_type: {
-    type: string;
-    count: number;
-    total: number;
-    percentage: number;
-  }[];
-  by_driver: {
-    driver_id: number;
-    driver_name: string;
-    total_rides: number;
     total_commission: number;
-    total_earnings: number;
-  }[];
-  daily_trend: {
-    date: string;
-    commission: number;
-    rides: number;
-  }[];
+    today_commission: number;
+    month_commission: number;
+    pending_commission: number;
+    commission_count: number;
+    average_commission: number;
+    by_service_type: {
+        type: string;
+        count: number;
+        total: number;
+        percentage: number;
+    }[];
+    by_driver: {
+        driver_id: number;
+        driver_name: string;
+        total_rides: number;
+        total_commission: number;
+        total_earnings: number;
+    }[];
+    daily_trend: {
+        date: string;
+        commission: number;
+        rides: number;
+    }[];
 }
 
 interface CommissionTransaction {
-  id: number;
-  booking_number: string;
-  driver_name: string;
-  service_type: string;
-  total_fare: number;
-  commission_amount: number;
-  driver_share: number;
-  status: string;
-  created_at: string;
+    id: number;
+    booking_number: string;
+    driver_name: string;
+    service_type: string;
+    total_fare: number;
+    commission_amount: number;
+    driver_share: number;
+    status: string;
+    created_at: string;
 }
 
 const CommissionAnalytics: React.FC = () => {
-  const [stats, setStats] = useState<CommissionStats | null>(null);
-  const [transactions, setTransactions] = useState<CommissionTransaction[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [dateRange, setDateRange] = useState<{ start: string; end: string }>({
-    start: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-    end: new Date().toISOString().split('T')[0]
-  });
-  const [serviceType, setServiceType] = useState<string>('all');
+    const [stats, setStats] = useState<CommissionStats | null>(null);
+    const [transactions, setTransactions] = useState<CommissionTransaction[]>([]);
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState<string | null>(null);
+    const [dateRange, setDateRange] = useState<{ start: string; end: string }>({
+        start: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+        end: new Date().toISOString().split('T')[0]
+    });
+    const [serviceType, setServiceType] = useState<string>('all');
 
-  useEffect(() => {
-    fetchCommissionData();
-  }, [dateRange, serviceType]);
+    useEffect(() => {
+        fetchCommissionData();
+    }, [dateRange, serviceType]);
 
-  const fetchCommissionData = async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const [statsRes, transactionsRes] = await Promise.all([
-        axios.get('/admin/api/commission-stats', {
-          baseURL: '',
-          params: {
-            start_date: dateRange.start,
-            end_date: dateRange.end,
-            service_type: serviceType
-          }
-        }),
-        axios.get('/admin/api/commission-transactions', {
-          baseURL: '',
-          params: {
-            start_date: dateRange.start,
-            end_date: dateRange.end,
-            service_type: serviceType
-          }
-        })
-      ]);
+    const fetchCommissionData = async () => {
+        setLoading(true);
+        setError(null);
+        try {
+            const [statsRes, transactionsRes] = await Promise.all([
+                axios.get('/admin/api/commission-stats', {
+                    baseURL: '',
+                    params: {
+                        start_date: dateRange.start,
+                        end_date: dateRange.end,
+                        service_type: serviceType
+                    }
+                }),
+                axios.get('/admin/api/commission-transactions', {
+                    baseURL: '',
+                    params: {
+                        start_date: dateRange.start,
+                        end_date: dateRange.end,
+                        service_type: serviceType
+                    }
+                })
+            ]);
 
-      if (statsRes.data.success) {
-        setStats(statsRes.data.data);
-      }
-      if (transactionsRes.data.success) {
-        setTransactions(transactionsRes.data.data);
-      }
-    } catch (error) {
-      console.error('Error fetching commission data:', error);
-      setStats(null);
-      setTransactions([]);
-      setError('Unable to load commission analytics right now.');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const exportToCsv = () => {
-    if (!transactions.length) return;
-
-    const headers = ['Booking', 'Driver', 'Service Type', 'Total Fare', 'Commission', 'Driver Share', 'Status', 'Date'];
-    const rows = transactions.map(t => [
-      t.booking_number,
-      t.driver_name,
-      t.service_type,
-      t.total_fare,
-      t.commission_amount,
-      t.driver_share,
-      t.status,
-      new Date(t.created_at).toLocaleDateString()
-    ]);
-
-    const csv = [headers, ...rows].map(row => row.join(',')).join('\n');
-    const blob = new Blob([csv], { type: 'text/csv' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `commission-report-${dateRange.start}-to-${dateRange.end}.csv`;
-    a.click();
-  };
-
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('en-IN', {
-      style: 'currency',
-      currency: 'INR',
-      minimumFractionDigits: 0
-    }).format(amount);
-  };
-
-  const getServiceTypeLabel = (type: string) => {
-    const labels: Record<string, string> = {
-      'point_to_point': 'Point to Point',
-      'hourly_rental': 'Hourly Rental',
-      'round_trip': 'Round Trip'
+            if (statsRes.data.success) setStats(statsRes.data.data);
+            if (transactionsRes.data.success) setTransactions(transactionsRes.data.data);
+        } catch (error) {
+            console.error('Error fetching commission data:', error);
+            setError('Unable to load commission analytics right now.');
+        } finally {
+            setLoading(false);
+        }
     };
-    return labels[type] || type;
-  };
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <Loader size="lg" />
-      </div>
+    const exportToCsv = () => {
+        if (!transactions.length) return;
+        const headers = ['Booking', 'Driver', 'Service Type', 'Total Fare', 'Commission', 'Driver Share', 'Status', 'Date'];
+        const rows = transactions.map(t => [
+            t.booking_number, t.driver_name, t.service_type, t.total_fare, t.commission_amount, t.driver_share, t.status, new Date(t.created_at).toLocaleDateString()
+        ]);
+        const csv = [headers, ...rows].map(row => row.join(',')).join('\n');
+        const blob = new Blob([csv], { type: 'text/csv' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `commission-report-${dateRange.start}-to-${dateRange.end}.csv`;
+        a.click();
+    };
+
+    const formatCurrency = (amount: number) => {
+        return new Intl.NumberFormat('en-IN', {
+            style: 'currency',
+            currency: 'INR',
+            minimumFractionDigits: 0
+        }).format(amount);
+    };
+
+    if (loading) return (
+        <AdminLayout title="Commission Analytics">
+            <Box h={400} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <Loader size="xl" variant="bars" />
+            </Box>
+        </AdminLayout>
     );
-  }
 
-  return (
-    <>
-      <Head title="Commission Analytics" />
+    return (
+        <AdminLayout title="Commission Analytics">
+            <Head title="Commission Analytics" />
 
-      <div className="space-y-6">
-        {/* Header */}
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-          <div>
-            <h1 className="text-2xl font-bold text-gray-900">Commission Analytics</h1>
-            <p className="text-gray-500">Track and analyze platform commission earnings</p>
-          </div>
-          <div className="flex items-center gap-3">
-            <Button variant="outline" onClick={exportToCsv}>
-              <Download className="w-4 h-4 mr-2" />
-              Export CSV
-            </Button>
-          </div>
-        </div>
+            <Stack gap="xl">
+                {/* Header Section */}
+                <Group justify="space-between" align="flex-end">
+                    <Stack gap={2}>
+                        <Text size="h3" fw={800}>Commission Portfolio</Text>
+                        <Text size="sm" color="dimmed">Detailed revenue intelligence and platform commission distribution.</Text>
+                    </Stack>
+                    <Group gap="sm">
+                        <Button 
+                            variant="light" 
+                            color="blue" 
+                            leftSection={<FileSpreadsheet size={16} />}
+                            onClick={exportToCsv}
+                        >
+                            Export Report
+                        </Button>
+                    </Group>
+                </Group>
 
-        {/* Filters */}
-        <Card className="p-4">
-          <div className="flex flex-wrap items-center gap-4">
-            <div className="flex items-center gap-2">
-              <Calendar className="w-5 h-5 text-gray-400" />
-              <input
-                type="date"
-                value={dateRange.start}
-                onChange={(e) => setDateRange({ ...dateRange, start: e.target.value })}
-                className="border rounded-lg px-3 py-2"
-              />
-              <span className="text-gray-500">to</span>
-              <input
-                type="date"
-                value={dateRange.end}
-                onChange={(e) => setDateRange({ ...dateRange, end: e.target.value })}
-                className="border rounded-lg px-3 py-2"
-              />
-            </div>
-            <Select
-              value={serviceType}
-              onChange={(value) => setServiceType(value || 'all')}
-              data={[
-                { value: 'all', label: 'All Service Types' },
-                { value: 'point_to_point', label: 'Point to Point' },
-                { value: 'hourly_rental', label: 'Hourly Rental' },
-                { value: 'round_trip', label: 'Round Trip' }
-              ]}
-              className="w-48"
-            />
-            <Button onClick={fetchCommissionData}>
-              <Filter className="w-4 h-4 mr-2" />
-              Apply
-            </Button>
-          </div>
-        </Card>
+                {/* Quick Filters */}
+                <Paper p="md" radius="md" withBorder shadow="sm">
+                    <Group justify="space-between">
+                        <Group gap="md">
+                            <Group gap={8}>
+                                <Calendar size={16} color="gray" />
+                                <input
+                                    type="date"
+                                    value={dateRange.start}
+                                    onChange={(e) => setDateRange({ ...dateRange, start: e.target.value })}
+                                    style={{ border: '1px solid #e9ecef', borderRadius: '8px', padding: '6px 12px', fontSize: '14px' }}
+                                />
+                                <Text size="sm" color="dimmed">to</Text>
+                                <input
+                                    type="date"
+                                    value={dateRange.end}
+                                    onChange={(e) => setDateRange({ ...dateRange, end: e.target.value })}
+                                    style={{ border: '1px solid #e9ecef', borderRadius: '8px', padding: '6px 12px', fontSize: '14px' }}
+                                />
+                            </Group>
+                            <Divider orientation="vertical" />
+                            <Select
+                                value={serviceType}
+                                onChange={(value) => setServiceType(value || 'all')}
+                                data={[
+                                    { value: 'all', label: 'All Services' },
+                                    { value: 'point_to_point', label: 'Local Rides' },
+                                    { value: 'hourly_rental', label: 'Rentals' },
+                                    { value: 'round_trip', label: 'Round Trips' }
+                                ]}
+                                radius="md"
+                                leftSection={<Car size={16} color="gray" />}
+                            />
+                        </Group>
+                        <Button color="blue" radius="md" onClick={fetchCommissionData} leftSection={<Filter size={16} />}>
+                            Run Analysis
+                        </Button>
+                    </Group>
+                </Paper>
 
-        {error && (
-          <Card className="border border-red-200 bg-red-50 p-4 text-red-700">
-            {error}
-          </Card>
-        )}
+                {/* Key Metrics */}
+                <SimpleGrid cols={{ base: 1, sm: 2, lg: 4 }} spacing="lg">
+                    <Paper p="xl" radius="md" withBorder shadow="xs">
+                        <Group justify="space-between">
+                            <Stack gap={0}>
+                                <Text size="xs" color="dimmed" fw={700} tt="uppercase">Accumulated Commission</Text>
+                                <Text size="h3" fw={800}>{formatCurrency(stats?.total_commission || 0)}</Text>
+                            </Stack>
+                            <ThemeIcon size={48} radius="md" color="green" variant="light">
+                                <Wallet size={24} />
+                            </ThemeIcon>
+                        </Group>
+                        <Group gap={4} mt="sm">
+                            <ArrowUpRight size={14} color="var(--mantine-color-green-7)" />
+                            <Text size="xs" color="green.7" fw={600}>+12.5% vs last period</Text>
+                        </Group>
+                    </Paper>
 
-        {/* Stats Cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          <Card className="p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-gray-500">Total Commission</p>
-                <p className="text-2xl font-bold text-gray-900">
-                  {formatCurrency(stats?.total_commission || 0)}
-                </p>
-              </div>
-              <div className="p-3 bg-green-100 rounded-full">
-                <DollarSign className="w-6 h-6 text-green-600" />
-              </div>
-            </div>
-            <div className="mt-2 flex items-center text-sm text-green-600">
-              <ArrowUpRight className="w-4 h-4 mr-1" />
-              <span>+12.5% from last period</span>
-            </div>
-          </Card>
+                    <Paper p="xl" radius="md" withBorder shadow="xs">
+                        <Group justify="space-between">
+                            <Stack gap={0}>
+                                <Text size="xs" color="dimmed" fw={700} tt="uppercase">Today's Revenue</Text>
+                                <Text size="h3" fw={800}>{formatCurrency(stats?.today_commission || 0)}</Text>
+                            </Stack>
+                            <ThemeIcon size={48} radius="md" color="blue" variant="light">
+                                <TrendingUp size={24} />
+                            </ThemeIcon>
+                        </Group>
+                        <Text size="xs" color="dimmed" mt="sm">{stats?.commission_count || 0} Successful rides today</Text>
+                    </Paper>
 
-          <Card className="p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-gray-500">Today's Commission</p>
-                <p className="text-2xl font-bold text-gray-900">
-                  {formatCurrency(stats?.today_commission || 0)}
-                </p>
-              </div>
-              <div className="p-3 bg-blue-100 rounded-full">
-                <TrendingUp className="w-6 h-6 text-blue-600" />
-              </div>
-            </div>
-            <div className="mt-2 flex items-center text-sm text-gray-500">
-              <Clock className="w-4 h-4 mr-1" />
-              <span>{stats?.commission_count || 0} rides today</span>
-            </div>
-          </Card>
+                    <Paper p="xl" radius="md" withBorder shadow="xs">
+                        <Group justify="space-between">
+                            <Stack gap={0}>
+                                <Text size="xs" color="dimmed" fw={700} tt="uppercase">Monthly Target</Text>
+                                <Text size="h3" fw={800}>{formatCurrency(stats?.month_commission || 0)}</Text>
+                            </Stack>
+                            <ThemeIcon size={48} radius="md" color="indigo" variant="light">
+                                <Target size={24} />
+                            </ThemeIcon>
+                        </Group>
+                        <Progress value={75} mt="md" color="indigo" size="xs" radius="xl" />
+                    </Paper>
 
-          <Card className="p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-gray-500">This Month</p>
-                <p className="text-2xl font-bold text-gray-900">
-                  {formatCurrency(stats?.month_commission || 0)}
-                </p>
-              </div>
-              <div className="p-3 bg-purple-100 rounded-full">
-                <Calendar className="w-6 h-6 text-purple-600" />
-              </div>
-            </div>
-            <div className="mt-2 flex items-center text-sm text-green-600">
-              <ArrowUpRight className="w-4 h-4 mr-1" />
-              <span>+8.3% from last month</span>
-            </div>
-          </Card>
+                    <Paper p="xl" radius="md" withBorder shadow="xs">
+                        <Group justify="space-between">
+                            <Stack gap={0}>
+                                <Text size="xs" color="dimmed" fw={700} tt="uppercase">Avg per Transaction</Text>
+                                <Text size="h3" fw={800}>{formatCurrency(stats?.average_commission || 0)}</Text>
+                            </Stack>
+                            <ThemeIcon size={48} radius="md" color="orange" variant="light">
+                                <BarChart3 size={24} />
+                            </ThemeIcon>
+                        </Group>
+                        <Text size="xs" color="dimmed" mt="sm">Net platform yield efficiency</Text>
+                    </Paper>
+                </SimpleGrid>
 
-          <Card className="p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-gray-500">Avg Commission</p>
-                <p className="text-2xl font-bold text-gray-900">
-                  {formatCurrency(stats?.average_commission || 0)}
-                </p>
-              </div>
-              <div className="p-3 bg-orange-100 rounded-full">
-                <BarChart3 className="w-6 h-6 text-orange-600" />
-              </div>
-            </div>
-            <div className="mt-2 flex items-center text-sm text-gray-500">
-              <span>Per ride average</span>
-            </div>
-          </Card>
-        </div>
+                {/* Intelligence Layer */}
+                <Grid gutter="xl">
+                    <Grid.Col span={{ base: 12, lg: 5 }}>
+                        <Paper p="xl" radius="md" withBorder h="100%">
+                            <Text fw={800} mb="xl" size="lg">Service Performance</Text>
+                            <Stack gap="xl">
+                                {stats?.by_service_type.map((item) => (
+                                    <Box key={item.type}>
+                                        <Group justify="space-between" mb={6}>
+                                            <Group gap="xs">
+                                                <Badge color="blue" variant="dot" size="sm">{item.type.replace('_', ' ')}</Badge>
+                                                <Text size="xs" color="dimmed">({item.count} rides)</Text>
+                                            </Group>
+                                            <Text size="sm" fw={700}>{formatCurrency(item.total)}</Text>
+                                        </Group>
+                                        <Progress value={item.percentage} color="blue" radius="xl" size="sm" />
+                                        <Text size="xs" color="dimmed" mt={4} ta="right">{item.percentage}% of total revenue</Text>
+                                    </Box>
+                                ))}
+                            </Stack>
+                        </Paper>
+                    </Grid.Col>
 
-        {/* Charts Row */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* Service Type Breakdown */}
-          <Card className="p-4">
-            <h3 className="text-lg font-semibold mb-4">Commission by Service Type</h3>
-            <div className="space-y-4">
-              {stats?.by_service_type.map((item) => (
-                <div key={item.type}>
-                  <div className="flex items-center justify-between mb-1">
-                    <span className="text-sm font-medium">{getServiceTypeLabel(item.type)}</span>
-                    <span className="text-sm text-gray-500">{formatCurrency(item.total)}</span>
-                  </div>
-                  <div className="w-full bg-gray-200 rounded-full h-2">
-                    <div
-                      className="bg-orange-500 h-2 rounded-full"
-                      style={{ width: `${item.percentage}%` }}
-                    />
-                  </div>
-                  <div className="flex items-center justify-between text-xs text-gray-500 mt-1">
-                    <span>{item.count} rides</span>
-                    <span>{item.percentage}%</span>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </Card>
+                    <Grid.Col span={{ base: 12, lg: 7 }}>
+                        <Paper p="xl" radius="md" withBorder h="100%">
+                            <Text fw={800} mb="xl" size="lg">Top Yield Drivers</Text>
+                            <ScrollArea h={350} offsetScrollbars>
+                                <Table verticalSpacing="sm">
+                                    <Table.Thead>
+                                        <Table.Tr>
+                                            <Table.Th>Driver Portfolio</Table.Th>
+                                            <Table.Th>Volume</Table.Th>
+                                            <Table.Th>Commission</Table.Th>
+                                            <Table.Th>Earnings</Table.Th>
+                                        </Table.Tr>
+                                    </Table.Thead>
+                                    <Table.Tbody>
+                                        {stats?.by_driver.map((driver) => (
+                                            <Table.Tr key={driver.driver_id}>
+                                                <Table.Td>
+                                                    <Group gap="sm">
+                                                        <Avatar radius="xl" size="sm" color="blue">{driver.driver_name.charAt(0)}</Avatar>
+                                                        <Text size="sm" fw={600}>{driver.driver_name}</Text>
+                                                    </Group>
+                                                </Table.Td>
+                                                <Table.Td><Text size="sm">{driver.total_rides}</Text></Table.Td>
+                                                <Table.Td><Text size="sm" fw={700} color="green.7">{formatCurrency(driver.total_commission)}</Text></Table.Td>
+                                                <Table.Td><Text size="sm" color="dimmed">{formatCurrency(driver.total_earnings)}</Text></Table.Td>
+                                            </Table.Tr>
+                                        ))}
+                                    </Table.Tbody>
+                                </Table>
+                            </ScrollArea>
+                        </Paper>
+                    </Grid.Col>
+                </Grid>
 
-          {/* Daily Trend */}
-          <Card className="p-4">
-            <h3 className="text-lg font-semibold mb-4">Daily Commission Trend</h3>
-            <div className="space-y-2">
-              {stats?.daily_trend.map((day) => (
-                <div key={day.date} className="flex items-center gap-4">
-                  <div className="w-20 text-sm text-gray-500">
-                    {new Date(day.date).toLocaleDateString('en-IN', { weekday: 'short' })}
-                  </div>
-                  <div className="flex-1">
-                    <div className="w-full bg-gray-200 rounded-full h-4 relative">
-                      <div
-                        className="bg-gradient-to-r from-orange-400 to-orange-600 h-4 rounded-full"
-                        style={{ width: `${(day.commission / 10000) * 100}%` }}
-                      />
-                    </div>
-                  </div>
-                  <div className="w-24 text-right">
-                    <span className="text-sm font-medium">{formatCurrency(day.commission)}</span>
-                    <span className="text-xs text-gray-500 ml-1">({day.rides})</span>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </Card>
-        </div>
-
-        {/* Top Drivers */}
-        <Card className="p-4">
-          <h3 className="text-lg font-semibold mb-4">Top Drivers by Commission</h3>
-          <div className="overflow-x-auto">
-            <Table>
-              <Table.Thead>
-                <Table.Tr>
-                  <Table.Th>Driver</Table.Th>
-                  <Table.Th>Total Rides</Table.Th>
-                  <Table.Th>Total Commission</Table.Th>
-                  <Table.Th>Driver Earnings</Table.Th>
-                  <Table.Th>Performance</Table.Th>
-                </Table.Tr>
-              </Table.Thead>
-              <Table.Tbody>
-                {stats?.by_driver.map((driver, index) => (
-                  <Table.Tr key={driver.driver_id}>
-                    <Table.Td>
-                      <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 bg-orange-100 rounded-full flex items-center justify-center text-orange-600 font-semibold">
-                          {index + 1}
-                        </div>
-                        <span className="font-medium">{driver.driver_name}</span>
-                      </div>
-                    </Table.Td>
-                    <Table.Td>{driver.total_rides}</Table.Td>
-                    <Table.Td className="font-semibold text-green-600">
-                      {formatCurrency(driver.total_commission)}
-                    </Table.Td>
-                    <Table.Td>{formatCurrency(driver.total_earnings)}</Table.Td>
-                    <Table.Td>
-                      <Badge color="green">
-                        {((driver.total_commission / driver.total_earnings) * 100).toFixed(1)}% rate
-                      </Badge>
-                    </Table.Td>
-                  </Table.Tr>
-                ))}
-              </Table.Tbody>
-            </Table>
-          </div>
-        </Card>
-
-        {/* Recent Transactions */}
-        <Card className="p-4">
-          <h3 className="text-lg font-semibold mb-4">Recent Commission Transactions</h3>
-          <div className="overflow-x-auto">
-            <Table>
-              <Table.Thead>
-                <Table.Tr>
-                  <Table.Th>Booking</Table.Th>
-                  <Table.Th>Driver</Table.Th>
-                  <Table.Th>Service Type</Table.Th>
-                  <Table.Th>Total Fare</Table.Th>
-                  <Table.Th>Commission</Table.Th>
-                  <Table.Th>Driver Share</Table.Th>
-                  <Table.Th>Status</Table.Th>
-                  <Table.Th>Date</Table.Th>
-                </Table.Tr>
-              </Table.Thead>
-              <Table.Tbody>
-                {transactions.map((transaction) => (
-                  <Table.Tr key={transaction.id}>
-                    <Table.Td className="font-medium">{transaction.booking_number}</Table.Td>
-                    <Table.Td>{transaction.driver_name}</Table.Td>
-                    <Table.Td>
-                      <Badge variant="outline">
-                        {getServiceTypeLabel(transaction.service_type)}
-                      </Badge>
-                    </Table.Td>
-                    <Table.Td>{formatCurrency(transaction.total_fare)}</Table.Td>
-                    <Table.Td className="font-semibold text-orange-600">
-                      {formatCurrency(transaction.commission_amount)}
-                    </Table.Td>
-                    <Table.Td>{formatCurrency(transaction.driver_share)}</Table.Td>
-                    <Table.Td>
-                      <Badge color={transaction.status === 'completed' ? 'green' : 'yellow'}>
-                        {transaction.status}
-                      </Badge>
-                    </Table.Td>
-                    <Table.Td>
-                      {new Date(transaction.created_at).toLocaleDateString()}
-                    </Table.Td>
-                  </Table.Tr>
-                ))}
-              </Table.Tbody>
-            </Table>
-          </div>
-        </Card>
-      </div>
-    </>
-  );
+                {/* Audit Trail */}
+                <Paper p="xl" radius="md" withBorder shadow="sm">
+                    <Text fw={800} mb="xl" size="lg">Live Commission Ledger</Text>
+                    <Table.ScrollContainer minWidth={1000}>
+                        <Table verticalSpacing="md" highlightOnHover>
+                            <Table.Thead>
+                                <Table.Tr>
+                                    <Table.Th>Booking Ref</Table.Th>
+                                    <Table.Th>Driver Partner</Table.Th>
+                                    <Table.Th>Service</Table.Th>
+                                    <Table.Th>Fare Detail</Table.Th>
+                                    <Table.Th>Platform Cut</Table.Th>
+                                    <Table.Th>Status</Table.Th>
+                                    <Table.Th />
+                                </Table.Tr>
+                            </Table.Thead>
+                            <Table.Tbody>
+                                {transactions.map((t) => (
+                                    <Table.Tr key={t.id}>
+                                        <Table.Td><Text size="sm" fw={700}>{t.booking_number}</Text></Table.Td>
+                                        <Table.Td><Text size="sm">{t.driver_name}</Text></Table.Td>
+                                        <Table.Td><Badge variant="light" size="sm">{t.service_type.replace('_', ' ')}</Badge></Table.Td>
+                                        <Table.Td><Text size="xs" color="dimmed">Total: {formatCurrency(t.total_fare)}</Text></Table.Td>
+                                        <Table.Td>
+                                            <Stack gap={0}>
+                                                <Text size="sm" fw={700} color="orange.8">{formatCurrency(t.commission_amount)}</Text>
+                                                <Text size="xs" color="dimmed">Share: {formatCurrency(t.driver_share)}</Text>
+                                            </Stack>
+                                        </Table.Td>
+                                        <Table.Td>
+                                            <Badge color={t.status === 'completed' ? 'green' : 'yellow'} radius="sm" variant="dot">
+                                                {t.status.toUpperCase()}
+                                            </Badge>
+                                        </Table.Td>
+                                        <Table.Td>
+                                            <ActionIcon variant="subtle" color="gray" component={Link} href={`/admin/ride-bookings/${t.id}`}>
+                                                <ChevronRight size={16} />
+                                            </ActionIcon>
+                                        </Table.Td>
+                                    </Table.Tr>
+                                ))}
+                            </Table.Tbody>
+                        </Table>
+                    </Table.ScrollContainer>
+                </Paper>
+            </Stack>
+        </AdminLayout>
+    );
 };
 
 export default CommissionAnalytics;
+
+// Grid helper as it was missing from standard imports but used in logic
+const Grid = ({ children, gutter }: any) => (
+    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(12, 1fr)', gap: gutter === 'xl' ? '32px' : '16px' }}>
+        {children}
+    </div>
+);
+Grid.Col = ({ children, span }: any) => {
+    let gridSpan = 'span 12';
+    if (typeof span === 'object') {
+        // Base case for simplicity, fully functional grid requires complex CSS mapping
+        gridSpan = `span 12`;
+        if (window.innerWidth >= 1200 && span.lg) gridSpan = `span ${span.lg}`;
+        else if (window.innerWidth >= 768 && span.md) gridSpan = `span ${span.md}`;
+    } else {
+        gridSpan = `span ${span}`;
+    }
+    return <div style={{ gridColumn: gridSpan }}>{children}</div>;
+};

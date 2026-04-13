@@ -8,10 +8,11 @@ use Illuminate\Database\Eloquent\Relations\MorphMany;
 use Illuminate\Database\Eloquent\Relations\MorphOne;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
+use Laravel\Sanctum\HasApiTokens;
 
 class Customer extends Authenticatable
 {
-    use HasFactory, Notifiable;
+    use HasApiTokens, HasFactory, Notifiable;
 
     protected $table = 'customers';
 
@@ -20,6 +21,13 @@ class Customer extends Authenticatable
         'email',
         'phone',
         'password',
+        'profile_photo',
+        'date_of_birth',
+        'gender',
+        'emergency_contact_name',
+        'emergency_contact_phone',
+        'is_active',
+        'phone_verified_at',
     ];
 
     protected $hidden = [
@@ -30,34 +38,39 @@ class Customer extends Authenticatable
     protected function casts(): array
     {
         return [
-            'email_verified_at' => 'datetime',
-            'password' => 'hashed',
+            'email_verified_at'  => 'datetime',
+            'phone_verified_at'  => 'datetime',
+            'date_of_birth'      => 'date',
+            'is_active'          => 'boolean',
+            'password'           => 'hashed',
         ];
     }
 
-    public function bookings(): HasMany
+    // ── Relationships ──────────────────────────────────────────────
+
+    public function tourBookings(): HasMany
     {
-        return $this->hasMany(Booking::class, 'user_id');
+        return $this->hasMany(TourBooking::class, 'customer_id');
     }
 
     public function carRentals(): HasMany
     {
-        return $this->hasMany(CarRental::class, 'user_id');
+        return $this->hasMany(CarRental::class, 'customer_id');
     }
 
     public function rideBookings(): HasMany
     {
-        return $this->hasMany(RideBooking::class, 'user_id');
+        return $this->hasMany(RideBooking::class, 'customer_id');
     }
 
     public function insurancePolicies(): HasMany
     {
-        return $this->hasMany(InsurancePolicy::class, 'user_id');
+        return $this->hasMany(InsurancePolicy::class, 'customer_id');
     }
 
     public function extendedCareRequests(): HasMany
     {
-        return $this->hasMany(ExtendedCare::class, 'user_id');
+        return $this->hasMany(ExtendedCare::class, 'customer_id');
     }
 
     public function wallet(): MorphOne
@@ -70,18 +83,10 @@ class Customer extends Authenticatable
         return $this->morphMany(WithdrawalRequest::class, 'owner');
     }
 
-    public function isAdmin(): bool
-    {
-        return false;
-    }
+    // ── Helpers ────────────────────────────────────────────────────
 
-    public function isDriver(): bool
-    {
-        return false;
-    }
-
-    public function isCustomer(): bool
-    {
-        return true;
-    }
+    public function isAdmin(): bool    { return false; }
+    public function isDriver(): bool   { return false; }
+    public function isCustomer(): bool { return true; }
+    public function isGuide(): bool    { return false; }
 }

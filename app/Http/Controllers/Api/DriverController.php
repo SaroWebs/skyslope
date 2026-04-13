@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Events\RideStatusUpdated;
+use App\Events\RideAssigned;
 use App\Http\Controllers\Controller;
 use App\Models\DriverAvailability;
 use App\Models\RideBooking;
@@ -24,7 +25,7 @@ class DriverController extends Controller
         $ride = RideBooking::query()
             ->where('driver_id', $user->id)
             ->whereIn('status', ['driver_assigned', 'driver_arriving', 'pickup', 'in_transit'])
-            ->with('user:id,name,phone')
+            ->with('customer:id,name,phone')
             ->orderByDesc('updated_at')
             ->first();
 
@@ -49,7 +50,7 @@ class DriverController extends Controller
         $query = RideBooking::query()
             ->whereNull('driver_id')
             ->whereIn('status', ['pending', 'confirmed'])
-            ->with('user:id,name,phone')
+            ->with('customer:id,name,phone')
             ->orderBy('scheduled_at')
             ->limit(25);
 
@@ -127,7 +128,8 @@ class DriverController extends Controller
                 'last_ping' => now(),
             ]);
 
-            broadcast(new RideStatusUpdated($locked, 'driver_assigned', 'Driver assigned'));
+            broadcast(new RideStatusUpdated($locked, 'driver_assigned', 'Driver assigned', 'pending'));
+            broadcast(new RideAssigned($locked, $user->id));
 
             $accepted = true;
         });
@@ -139,7 +141,7 @@ class DriverController extends Controller
             ], 409);
         }
 
-        $booking->refresh()->load('user:id,name,phone');
+        $booking->refresh()->load('customer:id,name,phone');
 
         return response()->json([
             'success' => true,
@@ -197,7 +199,7 @@ class DriverController extends Controller
         return response()->json([
             'success' => true,
             'message' => 'Payment status updated.',
-            'ride' => $this->mapRide($booking->fresh(['user:id,name,phone'])),
+            'ride' => $this->mapRide($booking->fresh(['customer:id,name,phone'])),
         ]);
     }
 
@@ -229,7 +231,7 @@ class DriverController extends Controller
         return response()->json([
             'success' => true,
             'message' => 'Ride note updated.',
-            'ride' => $this->mapRide($booking->fresh(['user:id,name,phone'])),
+            'ride' => $this->mapRide($booking->fresh(['customer:id,name,phone'])),
         ]);
     }
 
@@ -253,8 +255,8 @@ class DriverController extends Controller
             'payment_method' => $ride->payment_method,
             'driver_notes' => $ride->driver_notes,
             'vehicle_number' => $ride->vehicle_number,
-            'customer_name' => $ride->customer_name ?: ($ride->user?->name ?? 'Customer'),
-            'customer_phone' => $ride->customer_phone ?: ($ride->user?->phone ?? ''),
+            'customer_name' => $ride->customer_name ?: ($ride->customer?->name ?? 'Customer'),
+            'customer_phone' => $ride->customer_phone ?: ($ride->customer?->phone ?? ''),
         ];
     }
 }

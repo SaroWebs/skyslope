@@ -1,4 +1,4 @@
-import WebsiteLayout from '@/layoutes/WebsiteLayout'
+import WebsiteLayout from '@/layouts/WebsiteLayout'
 import { Place, Tour } from '@/types'
 import { Head, Link } from '@inertiajs/react'
 import { motion } from 'framer-motion'

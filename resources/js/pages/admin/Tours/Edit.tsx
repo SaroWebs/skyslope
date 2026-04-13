@@ -1,31 +1,56 @@
 import React from 'react';
-import { Link, useForm } from '@inertiajs/react';
-import AdminLayout from '../../../layoutes/AdminLayout';
+import { Head, Link, useForm } from '@inertiajs/react';
+import AdminLayout from '../../../layouts/AdminLayout';
+import { 
+    Paper, 
+    Stack, 
+    TextInput, 
+    NumberInput, 
+    Textarea, 
+    Button, 
+    Group, 
+    Text, 
+    SimpleGrid, 
+    ThemeIcon, 
+    Divider,
+    Box,
+    rem
+} from '@mantine/core';
+import { 
+    Pencil, 
+    ArrowLeft, 
+    IndianRupee, 
+    Tag, 
+    Calendar, 
+    Save, 
+    FileText,
+    Info,
+    History
+} from 'lucide-react';
 
 interface Tour {
     id: number;
     title: string;
     description: string;
-    price: number;
-    discount: number;
+    price: number | string;
+    discount: number | string;
     available_from: string;
     available_to: string;
 }
 
 interface EditTourProps {
     title: string;
-    user: any;
     tour: Tour;
 }
 
-export default function Edit({ title, user, tour }: EditTourProps) {
+export default function Edit({ title, tour }: EditTourProps) {
     const { data, setData, put, processing, errors } = useForm({
         title: tour.title,
         description: tour.description,
-        price: tour.price.toString(),
-        discount: tour.discount ? tour.discount.toString() : '',
-        available_from: tour.available_from,
-        available_to: tour.available_to,
+        price: tour.price,
+        discount: tour.discount,
+        available_from: tour.available_from ? new Date(tour.available_from).toISOString().split('T')[0] : '',
+        available_to: tour.available_to ? new Date(tour.available_to).toISOString().split('T')[0] : '',
     });
 
     const handleSubmit = (e: React.FormEvent) => {
@@ -35,137 +60,160 @@ export default function Edit({ title, user, tour }: EditTourProps) {
 
     return (
         <AdminLayout title={title}>
-            <div className="bg-white shadow rounded-lg">
-                <div className="px-4 py-5 sm:p-6">
-                    <div className="flex justify-between items-center mb-6">
-                        <h2 className="text-lg font-medium text-gray-900">Edit Tour</h2>
-                        <Link
-                            href="/admin/tours"
-                            className="bg-gray-600 text-white px-4 py-2 rounded-md hover:bg-gray-700 text-sm font-medium"
-                        >
-                            Back to Tours
-                        </Link>
-                    </div>
+            <Head title={`Edit Tour: ${tour.title}`} />
 
+            <Stack gap="lg" maw={800} mx="auto">
+                <Group justify="space-between" align="flex-end">
+                    <Stack gap={2}>
+                        <Group gap="xs">
+                            <ThemeIcon variant="light" color="yellow" size="sm">
+                                <Pencil size={14} />
+                            </ThemeIcon>
+                            <Text size="xs" fw={700} color="dimmed" tt="uppercase">Experience Refining</Text>
+                        </Group>
+                        <Text size="h3" fw={800}>Update Package Details</Text>
+                    </Stack>
+                    <Button 
+                        component={Link} 
+                        href={`/admin/tours/${tour.id}`} 
+                        variant="subtle" 
+                        color="gray" 
+                        leftSection={<ArrowLeft size={16} />}
+                        radius="md"
+                    >
+                        Package Details
+                    </Button>
+                </Group>
+
+                <Paper p="xl" radius="md" withBorder shadow="sm">
                     <form onSubmit={handleSubmit}>
-                        <div className="grid grid-cols-1 gap-6">
-                            <div>
-                                <label htmlFor="title" className="block text-sm font-medium text-gray-700">
-                                    Tour Name
-                                </label>
-                                <input
-                                    type="text"
-                                    id="title"
-                                    value={data.title}
-                                    onChange={(e) => setData('title', e.target.value)}
-                                    className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
-                                    required
-                                />
-                                {errors.title && <div className="text-red-600 text-sm mt-1">{errors.title}</div>}
-                            </div>
+                        <Stack gap="xl">
+                            <Box>
+                                <Group gap={8} mb="xs">
+                                    <FileText size={16} color="var(--mantine-color-blue-6)" />
+                                    <Text fw={700} size="sm">Modify Foundational Data</Text>
+                                </Group>
+                                <Stack gap="md">
+                                    <TextInput
+                                        label="Marketable Package Title"
+                                        placeholder="e.g. Majestic Meghalaya 5D4N"
+                                        required
+                                        value={data.title}
+                                        onChange={(e) => setData('title', e.currentTarget.value)}
+                                        error={errors.title}
+                                        radius="md"
+                                    />
+                                    <Textarea
+                                        label="Detailed Narrative"
+                                        placeholder="Describe the unique elements of this tour..."
+                                        required
+                                        minRows={4}
+                                        value={data.description}
+                                        onChange={(e) => setData('description', e.currentTarget.value)}
+                                        error={errors.description}
+                                        radius="md"
+                                    />
+                                </Stack>
+                            </Box>
 
-                            <div>
-                                <label htmlFor="description" className="block text-sm font-medium text-gray-700">
-                                    Description
-                                </label>
-                                <textarea
-                                    id="description"
-                                    value={data.description}
-                                    onChange={(e) => setData('description', e.target.value)}
-                                    rows={4}
-                                    className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
-                                    required
-                                />
-                                {errors.description && <div className="text-red-600 text-sm mt-1">{errors.description}</div>}
-                            </div>
+                            <Divider variant="dashed" />
 
-                            <div className="grid grid-cols-2 gap-4">
-                                <div>
-                                    <label htmlFor="price" className="block text-sm font-medium text-gray-700">
-                                        Price ($)
-                                    </label>
-                                    <input
+                            <Box>
+                                <Group gap={8} mb="xs">
+                                    <IndianRupee size={16} color="var(--mantine-color-green-6)" />
+                                    <Text fw={700} size="sm">Economic Readjustment</Text>
+                                </Group>
+                                <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="lg">
+                                    <TextInput
+                                        label="Adjusted Price"
                                         type="number"
-                                        step="0.01"
-                                        min="0"
-                                        id="price"
+                                        placeholder="0.00"
+                                        leftSection={<IndianRupee size={16} color="gray" />}
+                                        required
                                         value={data.price}
-                                        onChange={(e) => setData('price', e.target.value)}
-                                        className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
-                                        required
+                                        onChange={(e) => setData('price', e.currentTarget.value)}
+                                        error={errors.price}
+                                        radius="md"
                                     />
-                                    {errors.price && <div className="text-red-600 text-sm mt-1">{errors.price}</div>}
-                                </div>
-
-                                <div>
-                                    <label htmlFor="discount" className="block text-sm font-medium text-gray-700">
-                                        Discount (%)
-                                    </label>
-                                    <input
+                                    <TextInput
+                                        label="Seasonal Incentive (%)"
                                         type="number"
-                                        step="0.01"
-                                        min="0"
-                                        max="100"
-                                        id="discount"
+                                        placeholder="0"
+                                        leftSection={<Tag size={16} color="gray" />}
                                         value={data.discount}
-                                        onChange={(e) => setData('discount', e.target.value)}
-                                        className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
+                                        onChange={(e) => setData('discount', e.currentTarget.value)}
+                                        error={errors.discount}
+                                        radius="md"
                                     />
-                                    {errors.discount && <div className="text-red-600 text-sm mt-1">{errors.discount}</div>}
-                                </div>
-                            </div>
+                                </SimpleGrid>
+                            </Box>
 
-                            <div className="grid grid-cols-2 gap-4">
-                                <div>
-                                    <label htmlFor="available_from" className="block text-sm font-medium text-gray-700">
-                                        Available From
-                                    </label>
-                                    <input
+                            <Divider variant="dashed" />
+
+                            <Box>
+                                <Group gap={8} mb="xs">
+                                    <Calendar size={16} color="var(--mantine-color-indigo-6)" />
+                                    <Text fw={700} size="sm">Update Temporal Window</Text>
+                                </Group>
+                                <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="lg">
+                                    <TextInput
+                                        label="Valid From"
                                         type="date"
-                                        id="available_from"
+                                        required
                                         value={data.available_from}
-                                        onChange={(e) => setData('available_from', e.target.value)}
-                                        className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
-                                        required
+                                        onChange={(e) => setData('available_from', e.currentTarget.value)}
+                                        error={errors.available_from}
+                                        radius="md"
                                     />
-                                    {errors.available_from && <div className="text-red-600 text-sm mt-1">{errors.available_from}</div>}
-                                </div>
-
-                                <div>
-                                    <label htmlFor="available_to" className="block text-sm font-medium text-gray-700">
-                                        Available To
-                                    </label>
-                                    <input
+                                    <TextInput
+                                        label="Valid To"
                                         type="date"
-                                        id="available_to"
-                                        value={data.available_to}
-                                        onChange={(e) => setData('available_to', e.target.value)}
-                                        className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
                                         required
+                                        value={data.available_to}
+                                        onChange={(e) => setData('available_to', e.currentTarget.value)}
+                                        error={errors.available_to}
+                                        radius="md"
                                     />
-                                    {errors.available_to && <div className="text-red-600 text-sm mt-1">{errors.available_to}</div>}
-                                </div>
-                            </div>
-                        </div>
+                                </SimpleGrid>
+                            </Box>
 
-                        <div className="mt-6 flex justify-end">
-                            <Link
-                                href="/admin/tours"
-                                className="mr-3 bg-gray-300 text-gray-700 px-4 py-2 rounded-md hover:bg-gray-400 text-sm font-medium"
-                            >
-                                Cancel
-                            </Link>
-                            <button
-                                type="submit"
-                                disabled={processing}
-                                className="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 text-sm font-medium disabled:opacity-50"
-                            >
-                                {processing ? 'Updating...' : 'Update Tour'}
-                            </button>
-                        </div>
+                            <Group justify="flex-end" pt="xl">
+                                <Button 
+                                    component={Link} 
+                                    href={`/admin/tours/${tour.id}`} 
+                                    variant="subtle" 
+                                    color="gray"
+                                    radius="md"
+                                >
+                                    Cancel Changes
+                                </Button>
+                                <Button 
+                                    type="submit" 
+                                    color="yellow" 
+                                    size="md" 
+                                    radius="md" 
+                                    leftSection={<Save size={18} />}
+                                    loading={processing}
+                                >
+                                    Commit Redeployment
+                                </Button>
+                            </Group>
+                        </Stack>
                     </form>
-                </div>
-            </div>
+                </Paper>
+
+                <Paper p="lg" radius="md" bg="yellow.0" withBorder>
+                    <Group gap="sm" align="flex-start">
+                        <ThemeIcon color="yellow" variant="light">
+                            <History size={16} />
+                        </ThemeIcon>
+                        <Box style={{ flex: 1 }}>
+                            <Text size="sm" fw={700} color="yellow.9">Audit Note:</Text>
+                            <Text size="xs" color="yellow.9">System overrides for active bookings will not occur. Significant price adjustments should be communicated to currently scheduled guests.</Text>
+                        </Box>
+                    </Group>
+                </Paper>
+            </Stack>
         </AdminLayout>
     );
 }

@@ -9,9 +9,10 @@ use App\Models\Customer;
 use App\Models\Driver;
 use App\Models\User;
 use App\Models\Tour;
-use App\Models\Booking;
+use App\Models\TourBooking;
+use App\Models\TourSchedule;
 use App\Models\Place;
-use App\Models\Itinerary;
+use App\Models\TourItinerary;
 use App\Models\PlaceMedia;
 use App\Models\Role;
 use App\Models\RideBooking;
@@ -34,14 +35,14 @@ class AdminController extends Controller
                 'total_customers' => Customer::count(),
                 'total_drivers' => Driver::count(),
                 'total_tours' => Tour::count(),
-                'total_bookings' => Booking::count(),
+                'total_bookings' => TourBooking::count(),
                 'total_ride_bookings' => RideBooking::count(),
                 'total_places' => Place::count(),
                 'active_tours' => Tour::where('available_from', '>=', now())->count(),
-                'recent_bookings' => Booking::with('user', 'tour')->latest()->take(5)->get(),
+                'recent_bookings' => TourBooking::with('customer', 'tour')->latest()->take(5)->get(),
             ],
             'recent_users' => User::with('roles')->latest()->take(5)->get(),
-            'upcoming_tours' => Tour::with('guides', 'drivers')->where('available_from', '>=', now())->take(5)->get(),
+            'upcoming_tours' => Tour::with('guides', 'tourDrivers.driver')->where('available_from', '>=', now())->take(5)->get(),
         ]);
     }
 
@@ -171,7 +172,7 @@ class AdminController extends Controller
      */
     public function tours()
     {
-        $toursPaginator = Tour::with('guides.user', 'drivers.user')
+        $toursPaginator = Tour::with('guides.user', 'drivers.driver')
             ->withCount('itineraries')
             ->paginate(12);
 
@@ -336,7 +337,7 @@ class AdminController extends Controller
         ]);
 
         // Check for duplicate day_index and time
-        $existingItinerary = Itinerary::where('tour_id', $tour->id)
+        $existingItinerary = TourItinerary::where('tour_id', $tour->id)
             ->where('day_index', $request->day_index)
             ->where('time', $request->time)
             ->first();
@@ -353,7 +354,7 @@ class AdminController extends Controller
     /**
      * Show tour itinerary details
      */
-    public function showTourItinerary(Tour $tour, Itinerary $itinerary)
+    public function showTourItinerary(Tour $tour, TourItinerary $itinerary)
     {
         if ($itinerary->tour_id !== $tour->id) {
             return back()->with('error', 'Itinerary not found for this tour');
@@ -370,7 +371,7 @@ class AdminController extends Controller
     /**
      * Show edit tour itinerary form
      */
-    public function editTourItinerary(Tour $tour, Itinerary $itinerary)
+    public function editTourItinerary(Tour $tour, TourItinerary $itinerary)
     {
         if ($itinerary->tour_id !== $tour->id) {
             return back()->with('error', 'Itinerary not found for this tour');
@@ -390,7 +391,7 @@ class AdminController extends Controller
     /**
      * Update tour itinerary
      */
-    public function updateTourItinerary(Request $request, Tour $tour, Itinerary $itinerary)
+    public function updateTourItinerary(Request $request, Tour $tour, TourItinerary $itinerary)
     {
         if ($itinerary->tour_id !== $tour->id) {
             return back()->with('error', 'Itinerary not found for this tour');
@@ -408,7 +409,7 @@ class AdminController extends Controller
             $dayIndex = $request->day_index ?? $itinerary->day_index;
             $time = $request->time ?? $itinerary->time;
 
-            $existingItinerary = Itinerary::where('tour_id', $tour->id)
+            $existingItinerary = TourItinerary::where('tour_id', $tour->id)
                 ->where('day_index', $dayIndex)
                 ->where('time', $time)
                 ->where('id', '!=', $itinerary->id)
@@ -427,7 +428,7 @@ class AdminController extends Controller
     /**
      * Delete tour itinerary
      */
-    public function deleteTourItinerary(Tour $tour, Itinerary $itinerary)
+    public function deleteTourItinerary(Tour $tour, TourItinerary $itinerary)
     {
         if ($itinerary->tour_id !== $tour->id) {
             return back()->with('error', 'Itinerary not found for this tour');
@@ -439,15 +440,87 @@ class AdminController extends Controller
     }
 
     /**
-     * Bookings management
+     * Tour Bookings management
      */
-    public function bookings()
+    public function tourBookings()
     {
-        return inertia('admin/Bookings', [
-            'title' => 'Booking Management',
+        return inertia('admin/TourBookings/Index', [
+            'title' => 'Tour Booking Management',
             'user' => Auth::user(),
-            'bookings' => Booking::with('user', 'tour')->paginate(15),
+            'bookings' => TourBooking::with(['customer', 'tourSchedule.tour'])->latest()->paginate(15),
         ]);
+    }
+
+    /**
+     * Tour Schedules Management
+     */
+    public function tourSchedules(Tour $tour)
+    {
+        return inertia('admin/Tours/Schedules', [
+            'title' => 'Tour Schedules',
+            'user' => Auth::user(),
+            'tour' => $tour,
+            'schedules' => $tour->schedules()->with(['guideAssignments.guide', 'driverAssignments.driver'])->latest('departure_date')->paginate(15),
+        ]);
+    }
+
+    public function createTourSchedule(Tour $tour)
+    {
+        return inertia('admin/Tours/Schedules/Create', [
+            'title' => 'Create Tour Schedule',
+            'user' => Auth::user(),
+            'tour' => $tour,
+        ]);
+    }
+
+    public function storeTourSchedule(Request $request, Tour $tour)
+    {
+        $validated = $request->validate([
+            'departure_date' => 'required|date',
+            'return_date' => 'nullable|date|after_or_equal:departure_date',
+            'total_seats' => 'required|integer|min:1',
+            'price_override' => 'nullable|numeric|min:0',
+            'status' => 'required|in:open,sold_out,closed,cancelled,completed',
+        ]);
+
+        $tour->schedules()->create($validated);
+
+        return redirect()->route('admin.tours.schedules', $tour)->with('success', 'Tour schedule created.');
+    }
+
+    public function updateTourSchedule(Request $request, Tour $tour, TourSchedule $schedule)
+    {
+        $validated = $request->validate([
+            'departure_date' => 'required|date',
+            'return_date' => 'nullable|date|after_or_equal:departure_date',
+            'total_seats' => 'required|integer|min:1',
+            'price_override' => 'nullable|numeric|min:0',
+            'status' => 'required|in:open,sold_out,closed,cancelled,completed',
+        ]);
+
+        $schedule->update($validated);
+
+        return redirect()->back()->with('success', 'Tour schedule updated.');
+    }
+
+    public function deleteTourSchedule(Tour $tour, TourSchedule $schedule)
+    {
+        $schedule->delete();
+        return redirect()->back()->with('success', 'Tour schedule deleted.');
+    }
+
+    public function assignGuideToSchedule(Request $request, Tour $tour, TourSchedule $schedule)
+    {
+        $request->validate(['guide_id' => 'required|exists:guides,id']);
+        $schedule->guideAssignments()->create(['guide_id' => $request->guide_id]);
+        return redirect()->back()->with('success', 'Guide assigned.');
+    }
+
+    public function assignDriverToSchedule(Request $request, Tour $tour, TourSchedule $schedule)
+    {
+        $request->validate(['driver_id' => 'required|exists:drivers,id']);
+        $schedule->driverAssignments()->create(['driver_id' => $request->driver_id]);
+        return redirect()->back()->with('success', 'Driver assigned.');
     }
 
     /**
@@ -1133,7 +1206,7 @@ class AdminController extends Controller
      */
     public function rideBookings(Request $request)
     {
-        $query = RideBooking::with(['user', 'driver']);
+        $query = RideBooking::with(['customer', 'driver']);
 
         // Filter by status if provided
         if ($request->has('status') && !empty($request->status)) {

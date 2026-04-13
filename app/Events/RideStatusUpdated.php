@@ -17,56 +17,54 @@ class RideStatusUpdated implements ShouldBroadcast
 
     public RideBooking $booking;
     public string $status;
+    public ?string $previousStatus;
     public ?string $message;
 
-    /**
-     * Create a new event instance.
-     */
-    public function __construct(RideBooking $booking, string $status, ?string $message = null)
+    public function __construct(RideBooking $booking, string $status, ?string $message = null, ?string $previousStatus = null)
     {
         $this->booking = $booking;
         $this->status = $status;
         $this->message = $message;
+        $this->previousStatus = $previousStatus;
     }
 
-    /**
-     * Get the channels the event should broadcast on.
-     *
-     * @return array<int, \Illuminate\Broadcasting\Channel>
-     */
     public function broadcastOn(): array
     {
         $channels = [
             new PrivateChannel("ride.{$this->booking->id}"),
-            new PrivateChannel("user.{$this->booking->user_id}.rides"),
         ];
 
-        // Also broadcast to driver if assigned
+        // Broadcast to customer channel
+        if ($this->booking->customer_id) {
+            $channels[] = new PrivateChannel("customer.{$this->booking->customer_id}");
+        }
+
+        // Broadcast to driver channel
         if ($this->booking->driver_id) {
-            $channels[] = new PrivateChannel("driver.{$this->booking->driver_id}.rides");
+            $channels[] = new PrivateChannel("driver.{$this->booking->driver_id}");
         }
 
         return $channels;
     }
 
-    /**
-     * The event's broadcast name.
-     */
     public function broadcastAs(): string
     {
-        return 'status.updated';
+        return 'ride.status.updated';
     }
 
-    /**
-     * Get the data to broadcast.
-     */
     public function broadcastWith(): array
     {
         return [
-            'booking_id' => $this->booking->id,
+            'ride_id' => $this->booking->id,
             'booking_number' => $this->booking->booking_number,
             'status' => $this->status,
+            'previous_status' => $this->previousStatus,
             'message' => $this->message,
+            'pickup_location' => $this->booking->pickup_location,
+            'dropoff_location' => $this->booking->dropoff_location,
+            'total_fare' => $this->booking->total_fare,
+            'driver_id' => $this->booking->driver_id,
+            'customer_id' => $this->booking->customer_id,
             'timestamp' => now()->toIso8601String(),
         ];
     }

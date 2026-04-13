@@ -1,6 +1,36 @@
 import React from 'react';
-import { Link } from '@inertiajs/react';
-import AdminLayout from '../../../layoutes/AdminLayout';
+import { Head, Link, usePage } from '@inertiajs/react';
+import AdminLayout from '../../../layouts/AdminLayout';
+import { 
+    Paper, 
+    Stack, 
+    Group, 
+    Text, 
+    Button, 
+    Badge, 
+    Timeline, 
+    ThemeIcon, 
+    Image, 
+    Box, 
+    SimpleGrid,
+    ActionIcon,
+    Tooltip,
+    Divider,
+    rem
+} from '@mantine/core';
+import { 
+    Plus, 
+    MapPin, 
+    Clock, 
+    ArrowLeft, 
+    Pencil, 
+    Eye, 
+    Info, 
+    Calendar,
+    Navigation,
+    Camera,
+    Mountain
+} from 'lucide-react';
 
 interface Place {
     id: number;
@@ -29,12 +59,11 @@ interface Tour {
 
 interface TourItinerariesProps {
     title: string;
-    user: any;
     tour: Tour;
     itineraries: Itinerary[];
 }
 
-export default function TourItineraries({ title, user, tour, itineraries }: TourItinerariesProps) {
+export default function TourItineraries({ title, tour, itineraries }: TourItinerariesProps) {
     // Group itineraries by day
     const groupedItineraries = itineraries.reduce((groups: Record<number, Itinerary[]>, itinerary) => {
         const day = itinerary.day_index;
@@ -51,133 +80,180 @@ export default function TourItineraries({ title, user, tour, itineraries }: Tour
 
     return (
         <AdminLayout title={title}>
-            <div className="bg-white shadow rounded-lg">
-                <div className="px-4 py-5 sm:p-6">
-                    <div className="flex justify-between items-center mb-6">
-                        <h2 className="text-lg font-medium text-gray-900">
-                            Itineraries for: {tour.title}
-                        </h2>
-                        <div className="flex space-x-3">
-                            <Link
-                                href={`/admin/tours/${tour.id}`}
-                                className="bg-gray-600 text-white px-4 py-2 rounded-md hover:bg-gray-700 text-sm font-medium"
-                            >
-                                Back to Tour
-                            </Link>
-                            <Link
-                                href={`/admin/tours/${tour.id}/itineraries/create`}
-                                className="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 text-sm font-medium"
-                            >
-                                Add Itinerary
-                            </Link>
-                        </div>
-                    </div>
+            <Head title={`Itinerary: ${tour.title}`} />
 
-                    {itineraries.length === 0 ? (
-                        <div className="text-center py-12">
-                            <div className="text-gray-500 text-lg mb-4">No itineraries found</div>
-                            <Link
-                                href={`/admin/tours/${tour.id}/itineraries/create`}
-                                className="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 text-sm font-medium"
+            <Stack gap="xl">
+                <Group justify="space-between" align="flex-end">
+                    <Stack gap={2}>
+                        <Group gap="xs">
+                            <ThemeIcon variant="light" color="blue" size="sm">
+                                <Navigation size={14} />
+                            </ThemeIcon>
+                            <Text size="xs" fw={700} color="dimmed" tt="uppercase">Tour Journey Map</Text>
+                        </Group>
+                        <Text size="h3" fw={800}>{tour.title}</Text>
+                        <Text size="sm" color="dimmed" lineClamp={1}>{tour.description}</Text>
+                    </Stack>
+                    <Group gap="sm">
+                        <Button 
+                            component={Link} 
+                            href={`/admin/tours/${tour.id}`} 
+                            variant="light" 
+                            color="gray" 
+                            leftSection={<ArrowLeft size={16} />}
+                            radius="md"
+                        >
+                            Back to Details
+                        </Button>
+                        <Button 
+                            component={Link} 
+                            href={`/admin/tours/${tour.id}/itineraries/create`} 
+                            color="blue" 
+                            leftSection={<Plus size={16} />}
+                            radius="md"
+                        >
+                            Add Location
+                        </Button>
+                    </Group>
+                </Group>
+
+                {itineraries.length === 0 ? (
+                    <Paper p={60} radius="md" withBorder shadow="sm" style={{ textAlign: 'center' }}>
+                        <Stack align="center" gap="md">
+                            <Mountain size={64} strokeWidth={1} color="var(--mantine-color-gray-4)" />
+                            <Text fw={700} size="lg">No locations mapped yet</Text>
+                            <Text color="dimmed" maw={400}>Start building the travel experience by adding destinations and daily activities to this tour.</Text>
+                            <Button 
+                                component={Link} 
+                                href={`/admin/tours/${tour.id}/itineraries/create`} 
+                                mt="md"
+                                radius="md"
+                                size="md"
                             >
-                                Create First Itinerary
-                            </Link>
-                        </div>
-                    ) : (
-                        <div className="space-y-8">
-                            {sortedDays.map((day) => (
-                                <div key={day} className="border rounded-lg overflow-hidden">
-                                    <div className="bg-blue-50 px-6 py-4 border-b">
-                                        <h3 className="text-lg font-medium text-gray-900">
-                                            Day {day}
-                                        </h3>
-                                    </div>
-                                    <div className="divide-y">
-                                        {groupedItineraries[day]
-                                            .sort((a, b) => {
-                                                if (!a.time && !b.time) return 0;
-                                                if (!a.time) return 1;
-                                                if (!b.time) return -1;
-                                                return a.time.localeCompare(b.time);
-                                            })
-                                            .map((itinerary) => (
-                                                <div key={itinerary.id} className="p-6 hover:bg-gray-50">
-                                                    <div className="flex justify-between items-start">
-                                                        <div className="flex-1">
-                                                            <div className="flex items-center space-x-3">
-                                                                <h4 className="text-lg font-medium text-gray-900">
-                                                                    {itinerary.place.name}
-                                                                </h4>
+                                Define First Stop
+                            </Button>
+                        </Stack>
+                    </Paper>
+                ) : (
+                    <SimpleGrid cols={{ base: 1, lg: 1 }} spacing="xl">
+                        {sortedDays.map((day) => (
+                            <Paper key={day} p="xl" radius="md" withBorder shadow="sm">
+                                <Group justify="space-between" mb="xl">
+                                    <Group gap="md">
+                                        <ThemeIcon color="blue" variant="filled" size="xl" radius="md">
+                                            <Calendar size={20} />
+                                        </ThemeIcon>
+                                        <Stack gap={0}>
+                                            <Text size="xl" fw={800}>Day {day}</Text>
+                                            <Text size="xs" color="dimmed" fw={700} tt="uppercase">Daily Schedule</Text>
+                                        </Stack>
+                                    </Group>
+                                    <Badge variant="light" size="lg" radius="sm">
+                                        {groupedItineraries[day].length} Locations
+                                    </Badge>
+                                </Group>
+
+                                <Timeline bulletSize={32} lineWidth={2}>
+                                    {groupedItineraries[day]
+                                        .sort((a, b) => {
+                                            if (!a.time && !b.time) return 0;
+                                            if (!a.time) return 1;
+                                            if (!b.time) return -1;
+                                            return a.time.localeCompare(b.time);
+                                        })
+                                        .map((itinerary) => (
+                                            <Timeline.Item 
+                                                key={itinerary.id} 
+                                                bullet={<Clock size={16} />}
+                                                title={
+                                                    <Group justify="space-between" align="flex-start">
+                                                        <Box>
+                                                            <Group gap={8}>
+                                                                <Text fw={800} size="lg">{itinerary.place.name}</Text>
                                                                 {itinerary.time && (
-                                                                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-                                                                        {itinerary.time}
-                                                                    </span>
+                                                                    <Badge variant="dot" size="sm" color="blue">{itinerary.time}</Badge>
                                                                 )}
-                                                            </div>
-                                                            
-                                                            <p className="text-sm text-gray-600 mt-1">
+                                                            </Group>
+                                                            <Text size="sm" color="dimmed" mt={4} lineClamp={2}>
                                                                 {itinerary.place.description}
-                                                            </p>
-                                                            
-                                                            {itinerary.details && (
-                                                                <p className="text-sm text-gray-700 mt-2">
-                                                                    <span className="font-medium">Details:</span> {itinerary.details}
-                                                                </p>
+                                                            </Text>
+                                                        </Box>
+                                                        <Group gap={4}>
+                                                            <Tooltip label="Edit Connection">
+                                                                <ActionIcon 
+                                                                    component={Link} 
+                                                                    href={`/admin/tours/${tour.id}/itineraries/${itinerary.id}/edit`} 
+                                                                    variant="light" 
+                                                                    color="yellow"
+                                                                >
+                                                                    <Pencil size={14} />
+                                                                </ActionIcon>
+                                                            </Tooltip>
+                                                            <Tooltip label="Full Profile">
+                                                                <ActionIcon 
+                                                                    component={Link} 
+                                                                    href={`/admin/tours/${tour.id}/itineraries/${itinerary.id}`} 
+                                                                    variant="light" 
+                                                                    color="blue"
+                                                                >
+                                                                    <Eye size={14} />
+                                                                </ActionIcon>
+                                                            </Tooltip>
+                                                        </Group>
+                                                    </Group>
+                                                }
+                                            >
+                                                <Stack gap="md" mt="sm">
+                                                    {itinerary.details && (
+                                                        <Paper p="sm" bg="gray.0" radius="sm" withBorder>
+                                                            <Group gap={8} align="flex-start">
+                                                                <Info size={14} color="var(--mantine-color-blue-6)" style={{ marginTop: '4px' }} />
+                                                                <Text size="sm" color="gray.7" fw={500}>{itinerary.details}</Text>
+                                                            </Group>
+                                                        </Paper>
+                                                    )}
+
+                                                    {itinerary.place.media && itinerary.place.media.length > 0 && (
+                                                        <Group gap="xs">
+                                                            {itinerary.place.media.slice(0, 4).map((media) => (
+                                                                <Box key={media.id} pos="relative">
+                                                                    <Image
+                                                                        src={`/storage/${media.file_path}`}
+                                                                        radius="sm"
+                                                                        w={80}
+                                                                        h={60}
+                                                                        fallbackSrc="https://placehold.co/100x75?text=No+Img"
+                                                                    />
+                                                                    {media.file_type === 'video' && (
+                                                                        <Box 
+                                                                            pos="absolute" 
+                                                                            top={0} 
+                                                                            left={0} 
+                                                                            w="100%" 
+                                                                            h="100%" 
+                                                                            style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.2)' }}
+                                                                        >
+                                                                            <Camera size={14} color="white" />
+                                                                        </Box>
+                                                                    )}
+                                                                </Box>
+                                                            ))}
+                                                            {itinerary.place.media.length > 4 && (
+                                                                <Paper withBorder radius="sm" w={80} h={60} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                                                    <Text size="xs" fw={700} color="dimmed">+{itinerary.place.media.length - 4}</Text>
+                                                                </Paper>
                                                             )}
-                                                            
-                                                            {/* Media Preview */}
-                                                            {itinerary.place.media && itinerary.place.media.length > 0 && (
-                                                                <div className="mt-3">
-                                                                    <div className="flex space-x-2">
-                                                                        {itinerary.place.media.slice(0, 3).map((media) => (
-                                                                            <div key={media.id} className="w-16 h-16 bg-gray-200 rounded overflow-hidden">
-                                                                                {media.file_type === 'image' ? (
-                                                                                    <img
-                                                                                        src={`/storage/${media.file_path}`}
-                                                                                        alt="Place media"
-                                                                                        className="w-full h-full object-cover"
-                                                                                    />
-                                                                                ) : (
-                                                                                    <div className="w-full h-full flex items-center justify-center text-xs text-gray-500">
-                                                                                        📹
-                                                                                    </div>
-                                                                                )}
-                                                                            </div>
-                                                                        ))}
-                                                                        {itinerary.place.media.length > 3 && (
-                                                                            <div className="w-16 h-16 bg-gray-100 rounded flex items-center justify-center text-xs text-gray-500">
-                                                                                +{itinerary.place.media.length - 3}
-                                                                            </div>
-                                                                        )}
-                                                                    </div>
-                                                                </div>
-                                                            )}
-                                                        </div>
-                                                        
-                                                        <div className="flex space-x-2 ml-4">
-                                                            <Link
-                                                                href={`/admin/tours/${tour.id}/itineraries/${itinerary.id}`}
-                                                                className="text-blue-600 hover:text-blue-500 text-sm font-medium"
-                                                            >
-                                                                View
-                                                            </Link>
-                                                            <Link
-                                                                href={`/admin/tours/${tour.id}/itineraries/${itinerary.id}/edit`}
-                                                                className="text-yellow-600 hover:text-yellow-500 text-sm font-medium"
-                                                            >
-                                                                Edit
-                                                            </Link>
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                            ))}
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
-                    )}
-                </div>
-            </div>
+                                                        </Group>
+                                                    )}
+                                                </Stack>
+                                            </Timeline.Item>
+                                        ))}
+                                </Timeline>
+                            </Paper>
+                        ))}
+                    </SimpleGrid>
+                )}
+            </Stack>
         </AdminLayout>
     );
 }

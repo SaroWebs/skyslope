@@ -6,6 +6,12 @@ import { resolvePageComponent } from 'laravel-vite-plugin/inertia-helpers';
 import { createRoot } from 'react-dom/client';
 import { MantineProvider } from '@mantine/core';
 import { useState, useCallback, useContext, createContext } from 'react';
+import { AuthProvider } from './context/AuthContext';
+import echo from './lib/echo';
+
+if (typeof window !== 'undefined') {
+  (window as any).Echo = echo;
+}
 
 const appName = import.meta.env.VITE_APP_NAME || 'Laravel';
 
@@ -130,9 +136,11 @@ createInertiaApp({
 
         root.render(
             <MantineProvider>
-                <NotificationProvider>
-                    <App {...props} />
-                </NotificationProvider>
+                <AuthProvider>
+                    <NotificationProvider>
+                        <App {...props} />
+                    </NotificationProvider>
+                </AuthProvider>
             </MantineProvider>
         );
     },

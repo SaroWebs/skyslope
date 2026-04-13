@@ -1,527 +1,380 @@
 import React, { useState, useEffect } from 'react';
-import ModernCard, { CardContent, CardHeader, CardTitle } from '@/components/ui/ModernCard';
+import { Head, Link } from '@inertiajs/react';
+import AdminLayout from '@/layouts/AdminLayout';
+import { 
+    Card, 
+    Badge, 
+    Table, 
+    Group, 
+    Stack, 
+    Text, 
+    Paper, 
+    SimpleGrid, 
+    ThemeIcon, 
+    Button,
+    ActionIcon,
+    Tooltip,
+    Avatar,
+    Select,
+    TextInput,
+    Divider,
+    Progress,
+    Box,
+    Loader,
+    ScrollArea,
+    Tabs,
+    rem
+} from '@mantine/core';
 import {
-  Shield,
-  Users,
-  DollarSign,
-  FileText,
-  Eye,
-  Edit,
-  Trash2,
-  Search,
-  Filter,
-  Plus,
-  CheckCircle,
-  XCircle,
-  Clock
+    Shield,
+    Users,
+    DollarSign,
+    FileText,
+    Eye,
+    Pencil,
+    Trash,
+    Search,
+    Filter,
+    Plus,
+    CheckCircle2,
+    XCircle,
+    Clock,
+    AlertCircle,
+    ArrowRight,
+    TrendingUp,
+    ShieldCheck,
+    CreditCard
 } from 'lucide-react';
-import { Badge, Button } from '@mantine/core';
 
 interface InsurancePolicy {
-  id: number;
-  policy_number: string;
-  user: {
-    name: string;
-    email: string;
-  };
-  insurance_type: string;
-  coverage_amount: number;
-  premium_amount: number;
-  start_date: string;
-  end_date: string;
-  status: string;
-  payment_status: string;
-  created_at: string;
+    id: number;
+    policy_number: string;
+    user: {
+        name: string;
+        email: string;
+    };
+    insurance_type: string;
+    coverage_amount: number;
+    premium_amount: number;
+    start_date: string;
+    end_date: string;
+    status: string;
+    payment_status: string;
+    created_at: string;
 }
 
 interface Claim {
-  id: number;
-  claim_number: string;
-  policy: {
-    policy_number: string;
-    user: {
-      name: string;
+    id: number;
+    claim_number: string;
+    policy: {
+        policy_number: string;
+        user: {
+            name: string;
+        };
     };
-  };
-  incident_date: string;
-  incident_description: string;
-  claim_amount: number;
-  status: string;
-  approved_by?: string;
-  approved_at?: string;
-  created_at: string;
+    incident_date: string;
+    incident_description: string;
+    claim_amount: number;
+    status: string;
+    approved_by?: string;
+    approved_at?: string;
+    created_at: string;
 }
 
-const PolicyStats: React.FC<{ policies: InsurancePolicy[] }> = ({ policies }) => {
-  const totalPolicies = policies.length;
-  const activePolicies = policies.filter(p => p.status === 'active').length;
-  const expiredPolicies = policies.filter(p => p.status === 'expired').length;
-  const totalCoverage = policies.reduce((sum, p) => sum + p.coverage_amount, 0);
-  const totalPremium = policies.reduce((sum, p) => sum + p.premium_amount, 0);
-
-  return (
-    <ModernCard>
-      <CardHeader>
-        <CardTitle className="flex items-center space-x-2">
-          <Shield className="h-5 w-5" />
-          <span>Policy Statistics</span>
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        <div className="text-center p-4 bg-blue-50 rounded-lg">
-          <Shield className="mx-auto h-8 w-8 text-blue-600 mb-2" />
-          <div className="text-2xl font-bold text-blue-900">{totalPolicies}</div>
-          <div className="text-sm text-blue-600">Total Policies</div>
-        </div>
-        <div className="text-center p-4 bg-green-50 rounded-lg">
-          <CheckCircle className="mx-auto h-8 w-8 text-green-600 mb-2" />
-          <div className="text-2xl font-bold text-green-900">{activePolicies}</div>
-          <div className="text-sm text-green-600">Active Policies</div>
-        </div>
-        <div className="text-center p-4 bg-red-50 rounded-lg">
-          <XCircle className="mx-auto h-8 w-8 text-red-600 mb-2" />
-          <div className="text-2xl font-bold text-red-900">{expiredPolicies}</div>
-          <div className="text-sm text-red-600">Expired Policies</div>
-        </div>
-        <div className="text-center p-4 bg-purple-50 rounded-lg">
-          <DollarSign className="mx-auto h-8 w-8 text-purple-600 mb-2" />
-          <div className="text-2xl font-bold text-purple-900">₹{totalPremium.toLocaleString()}</div>
-          <div className="text-sm text-purple-600">Total Premium</div>
-        </div>
-      </CardContent>
-    </ModernCard>
-  );
-};
-
-const ClaimStats: React.FC<{ claims: Claim[] }> = ({ claims }) => {
-  const totalClaims = claims.length;
-  const pendingClaims = claims.filter(c => c.status === 'pending').length;
-  const approvedClaims = claims.filter(c => c.status === 'approved').length;
-  const rejectedClaims = claims.filter(c => c.status === 'rejected').length;
-  const totalClaimAmount = claims.reduce((sum, c) => sum + c.claim_amount, 0);
-
-  return (
-    <ModernCard>
-      <CardHeader>
-        <CardTitle className="flex items-center space-x-2">
-          <FileText className="h-5 w-5" />
-          <span>Claim Statistics</span>
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        <div className="text-center p-4 bg-yellow-50 rounded-lg">
-          <FileText className="mx-auto h-8 w-8 text-yellow-600 mb-2" />
-          <div className="text-2xl font-bold text-yellow-900">{totalClaims}</div>
-          <div className="text-sm text-yellow-600">Total Claims</div>
-        </div>
-        <div className="text-center p-4 bg-orange-50 rounded-lg">
-          <Clock className="mx-auto h-8 w-8 text-orange-600 mb-2" />
-          <div className="text-2xl font-bold text-orange-900">{pendingClaims}</div>
-          <div className="text-sm text-orange-600">Pending Claims</div>
-        </div>
-        <div className="text-center p-4 bg-green-50 rounded-lg">
-          <CheckCircle className="mx-auto h-8 w-8 text-green-600 mb-2" />
-          <div className="text-2xl font-bold text-green-900">{approvedClaims}</div>
-          <div className="text-sm text-green-600">Approved Claims</div>
-        </div>
-        <div className="text-center p-4 bg-red-50 rounded-lg">
-          <XCircle className="mx-auto h-8 w-8 text-red-600 mb-2" />
-          <div className="text-2xl font-bold text-red-900">{rejectedClaims}</div>
-          <div className="text-sm text-red-600">Rejected Claims</div>
-        </div>
-      </CardContent>
-    </ModernCard>
-  );
-};
-
-const RevenueStats: React.FC<{ policies: InsurancePolicy[]; claims: Claim[] }> = ({ policies, claims }) => {
-  const totalRevenue = policies.reduce((sum, p) => sum + p.premium_amount, 0);
-  const totalPayouts = claims.filter(c => c.status === 'paid').reduce((sum, c) => sum + c.claim_amount, 0);
-  const netRevenue = totalRevenue - totalPayouts;
-
-  return (
-    <ModernCard>
-      <CardHeader>
-        <CardTitle className="flex items-center space-x-2">
-          <DollarSign className="h-5 w-5" />
-          <span>Revenue Statistics</span>
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div className="text-center p-4 bg-green-50 rounded-lg">
-          <DollarSign className="mx-auto h-8 w-8 text-green-600 mb-2" />
-          <div className="text-2xl font-bold text-green-900">₹{totalRevenue.toLocaleString()}</div>
-          <div className="text-sm text-green-600">Total Revenue</div>
-        </div>
-        <div className="text-center p-4 bg-red-50 rounded-lg">
-          <DollarSign className="mx-auto h-8 w-8 text-red-600 mb-2" />
-          <div className="text-2xl font-bold text-red-900">₹{totalPayouts.toLocaleString()}</div>
-          <div className="text-sm text-red-600">Total Payouts</div>
-        </div>
-        <div className="text-center p-4 bg-blue-50 rounded-lg">
-          <DollarSign className="mx-auto h-8 w-8 text-blue-600 mb-2" />
-          <div className="text-2xl font-bold text-blue-900">₹{netRevenue.toLocaleString()}</div>
-          <div className="text-sm text-blue-600">Net Revenue</div>
-        </div>
-      </CardContent>
-    </ModernCard>
-  );
-};
-
-const PolicyManagement: React.FC<{ policies: InsurancePolicy[] }> = ({ policies }) => {
-  const [searchTerm, setSearchTerm] = useState('');
-  const [statusFilter, setStatusFilter] = useState('all');
-
-  const filteredPolicies = policies.filter(policy => {
-    const matchesSearch = policy.policy_number.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         policy.user.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         policy.user.email.toLowerCase().includes(searchTerm.toLowerCase());
-    
-    const matchesStatus = statusFilter === 'all' || policy.status === statusFilter;
-    
-    return matchesSearch && matchesStatus;
-  });
-
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'active': return 'bg-green-100 text-green-800';
-      case 'expired': return 'bg-red-100 text-red-800';
-      case 'cancelled': return 'bg-gray-100 text-gray-800';
-      default: return 'bg-gray-100 text-gray-800';
-    }
-  };
-
-  return (
-    <ModernCard>
-      <CardHeader>
-        <div className="flex items-center justify-between">
-          <CardTitle>Policy Management</CardTitle>
-          <Button variant="outline" onClick={() => {}}>
-            <Plus className="mr-2 h-4 w-4" />
-            Add Policy
-          </Button>
-        </div>
-      </CardHeader>
-      <CardContent>
-        <div className="flex flex-col md:flex-row gap-4 mb-4">
-          <div className="flex-1 relative">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
-            <input
-              type="text"
-              placeholder="Search policies by number, name, or email..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-          </div>
-          <select
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
-            className="px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-          >
-            <option value="all">All Status</option>
-            <option value="active">Active</option>
-            <option value="expired">Expired</option>
-            <option value="cancelled">Cancelled</option>
-          </select>
-        </div>
-        
-        <div className="overflow-x-auto">
-          <table className="w-full table-auto">
-            <thead>
-              <tr className="border-b">
-                <th className="text-left p-2">Policy Number</th>
-                <th className="text-left p-2">User</th>
-                <th className="text-left p-2">Type</th>
-                <th className="text-left p-2">Coverage</th>
-                <th className="text-left p-2">Premium</th>
-                <th className="text-left p-2">Status</th>
-                <th className="text-left p-2">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredPolicies.map((policy) => (
-                <tr key={policy.id} className="border-b hover:bg-gray-50">
-                  <td className="p-2">{policy.policy_number}</td>
-                  <td className="p-2">
-                    <div>
-                      <div className="font-semibold">{policy.user.name}</div>
-                      <div className="text-sm text-gray-600">{policy.user.email}</div>
-                    </div>
-                  </td>
-                  <td className="p-2 capitalize">{policy.insurance_type}</td>
-                  <td className="p-2">₹{policy.coverage_amount.toLocaleString()}</td>
-                  <td className="p-2">₹{policy.premium_amount.toLocaleString()}</td>
-                  <td className="p-2">
-                    <Badge className={getStatusColor(policy.status)}>
-                      {policy.status}
-                    </Badge>
-                  </td>
-                  <td className="p-2">
-                    <div className="flex space-x-2">
-                      <Button variant="outline" size="sm" onClick={() => {}}>
-                        <Eye className="h-4 w-4" />
-                      </Button>
-                      <Button variant="outline" size="sm" onClick={() => {}}>
-                        <Edit className="h-4 w-4" />
-                      </Button>
-                      <Button variant="outline" size="sm" onClick={() => {}}>
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </CardContent>
-    </ModernCard>
-  );
-};
-
-const ClaimManagement: React.FC<{ claims: Claim[] }> = ({ claims }) => {
-  const [searchTerm, setSearchTerm] = useState('');
-  const [statusFilter, setStatusFilter] = useState('all');
-
-  const filteredClaims = claims.filter(claim => {
-    const matchesSearch = claim.claim_number.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         claim.policy.policy_number.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         claim.policy.user.name.toLowerCase().includes(searchTerm.toLowerCase());
-    
-    const matchesStatus = statusFilter === 'all' || claim.status === statusFilter;
-    
-    return matchesSearch && matchesStatus;
-  });
-
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'pending': return 'bg-yellow-100 text-yellow-800';
-      case 'approved': return 'bg-green-100 text-green-800';
-      case 'rejected': return 'bg-red-100 text-red-800';
-      case 'paid': return 'bg-blue-100 text-blue-800';
-      default: return 'bg-gray-100 text-gray-800';
-    }
-  };
-
-  const approveClaim = (claimId: number) => {
-    // Implement approval logic
-    console.log('Approving claim:', claimId);
-  };
-
-  const rejectClaim = (claimId: number) => {
-    // Implement rejection logic
-    console.log('Rejecting claim:', claimId);
-  };
-
-  return (
-    <ModernCard>
-      <CardHeader>
-        <div className="flex items-center justify-between">
-          <CardTitle>Claim Management</CardTitle>
-        </div>
-      </CardHeader>
-      <CardContent>
-        <div className="flex flex-col md:flex-row gap-4 mb-4">
-          <div className="flex-1 relative">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
-            <input
-              type="text"
-              placeholder="Search claims by number, policy, or user..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-          </div>
-          <select
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
-            className="px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-          >
-            <option value="all">All Status</option>
-            <option value="pending">Pending</option>
-            <option value="approved">Approved</option>
-            <option value="rejected">Rejected</option>
-            <option value="paid">Paid</option>
-          </select>
-        </div>
-        
-        <div className="overflow-x-auto">
-          <table className="w-full table-auto">
-            <thead>
-              <tr className="border-b">
-                <th className="text-left p-2">Claim Number</th>
-                <th className="text-left p-2">Policy Number</th>
-                <th className="text-left p-2">User</th>
-                <th className="text-left p-2">Incident Date</th>
-                <th className="text-left p-2">Amount</th>
-                <th className="text-left p-2">Status</th>
-                <th className="text-left p-2">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredClaims.map((claim) => (
-                <tr key={claim.id} className="border-b hover:bg-gray-50">
-                  <td className="p-2">{claim.claim_number}</td>
-                  <td className="p-2">{claim.policy.policy_number}</td>
-                  <td className="p-2">{claim.policy.user.name}</td>
-                  <td className="p-2">{new Date(claim.incident_date).toLocaleDateString()}</td>
-                  <td className="p-2">₹{claim.claim_amount.toLocaleString()}</td>
-                  <td className="p-2">
-                    <Badge className={getStatusColor(claim.status)}>
-                      {claim.status}
-                    </Badge>
-                  </td>
-                  <td className="p-2">
-                    <div className="flex space-x-2">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => approveClaim(claim.id)}
-                        disabled={claim.status !== 'pending'}
-                        className="bg-green-500 hover:bg-green-600 text-white"
-                      >
-                        Approve
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => rejectClaim(claim.id)}
-                        disabled={claim.status !== 'pending'}
-                        className="bg-red-500 hover:bg-red-600 text-white"
-                      >
-                        Reject
-                      </Button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </CardContent>
-    </ModernCard>
-  );
+const formatCurrency = (amount: number) => {
+    return new Intl.NumberFormat('en-IN', {
+        style: 'currency',
+        currency: 'INR',
+        minimumFractionDigits: 0
+    }).format(amount);
 };
 
 const InsuranceManagement: React.FC = () => {
-  const [policies, setPolicies] = useState<InsurancePolicy[]>([]);
-  const [claims, setClaims] = useState<Claim[]>([]);
-  const [loading, setLoading] = useState(true);
+    const [policies, setPolicies] = useState<InsurancePolicy[]>([]);
+    const [claims, setClaims] = useState<Claim[]>([]);
+    const [loading, setLoading] = useState(true);
+    const [activeTab, setActiveTab] = useState<string | null>('policies');
 
-  useEffect(() => {
-    // Fetch insurance data
-    const fetchInsuranceData = async () => {
-      try {
-        // Mock data for now - replace with actual API calls
-        const mockPolicies: InsurancePolicy[] = [
-          {
-            id: 1,
-            policy_number: 'POL-2025-000001',
-            user: { name: 'John Doe', email: 'john@example.com' },
-            insurance_type: 'comprehensive',
-            coverage_amount: 500000,
-            premium_amount: 20000,
-            start_date: '2025-01-01',
-            end_date: '2026-01-01',
-            status: 'active',
-            payment_status: 'paid',
-            created_at: '2025-01-01T10:00:00Z'
-          },
-          {
-            id: 2,
-            policy_number: 'POL-2025-000002',
-            user: { name: 'Jane Smith', email: 'jane@example.com' },
-            insurance_type: 'third_party',
-            coverage_amount: 1000000,
-            premium_amount: 15000,
-            start_date: '2025-06-01',
-            end_date: '2026-06-01',
-            status: 'expired',
-            payment_status: 'paid',
-            created_at: '2025-06-01T10:00:00Z'
-          }
-        ];
+    useEffect(() => {
+        const fetchInsuranceData = async () => {
+            try {
+                // Mock data for premium design demonstration
+                const mockPolicies: InsurancePolicy[] = [
+                    {
+                        id: 1,
+                        policy_number: 'POL-2025-001',
+                        user: { name: 'Rahul Sharma', email: 'rahul@example.com' },
+                        insurance_type: 'Comprehensive',
+                        coverage_amount: 500000,
+                        premium_amount: 15000,
+                        start_date: '2025-01-01',
+                        end_date: '2026-01-01',
+                        status: 'active',
+                        payment_status: 'paid',
+                        created_at: '2025-01-01T10:00:00Z'
+                    },
+                    {
+                        id: 2,
+                        policy_number: 'POL-2025-002',
+                        user: { name: 'Priya Das', email: 'priya@example.com' },
+                        insurance_type: 'Third Party',
+                        coverage_amount: 1000000,
+                        premium_amount: 8000,
+                        start_date: '2024-06-01',
+                        end_date: '2025-06-01',
+                        status: 'expired',
+                        payment_status: 'paid',
+                        created_at: '2024-06-01T10:00:00Z'
+                    }
+                ];
 
-        const mockClaims: Claim[] = [
-          {
-            id: 1,
-            claim_number: 'CLM-2025-000001',
-            policy: {
-              policy_number: 'POL-2025-000001',
-              user: { name: 'John Doe' }
-            },
-            incident_date: '2025-12-15',
-            incident_description: 'Minor collision at intersection',
-            claim_amount: 15000,
-            status: 'pending',
-            created_at: '2025-12-15T14:30:00Z'
-          },
-          {
-            id: 2,
-            claim_number: 'CLM-2025-000002',
-            policy: {
-              policy_number: 'POL-2025-000002',
-              user: { name: 'Jane Smith' }
-            },
-            incident_date: '2025-11-20',
-            incident_description: 'Vehicle breakdown on highway',
-            claim_amount: 8000,
-            status: 'approved',
-            approved_by: 'Admin User',
-            approved_at: '2025-11-21T10:00:00Z',
-            created_at: '2025-11-20T16:45:00Z'
-          }
-        ];
+                const mockClaims: Claim[] = [
+                    {
+                        id: 1,
+                        claim_number: 'CLM-001',
+                        policy: { policy_number: 'POL-2025-001', user: { name: 'Rahul Sharma' } },
+                        incident_date: '2025-02-15',
+                        incident_description: 'Driver side bumper scratch',
+                        claim_amount: 12000,
+                        status: 'pending',
+                        created_at: '2025-02-15T14:30:00Z'
+                    }
+                ];
 
-        setPolicies(mockPolicies);
-        setClaims(mockClaims);
-      } catch (error) {
-        console.error('Error fetching insurance data:', error);
-      } finally {
-        setLoading(false);
-      }
+                setPolicies(mockPolicies);
+                setClaims(mockClaims);
+            } catch (error) {
+                console.error('Error fetching data:', error);
+            } finally {
+                setLoading(false);
+            }
+        };
+        fetchInsuranceData();
+    }, []);
+
+    const stats = {
+        totalPolicies: policies.length,
+        activePolicies: policies.filter(p => p.status === 'active').length,
+        pendingClaims: claims.filter(c => c.status === 'pending').length,
+        totalPremium: policies.reduce((sum, p) => sum + p.premium_amount, 0),
     };
 
-    fetchInsuranceData();
-  }, []);
-
-  if (loading) {
-    return (
-      <div className="flex justify-center items-center h-64">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
-      </div>
+    if (loading) return (
+        <AdminLayout title="Insurance Management">
+            <Box h={400} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <Loader size="xl" variant="dots" />
+            </Box>
+        </AdminLayout>
     );
-  }
 
-  return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-3xl font-bold text-gray-900">Insurance Management</h1>
-        <div className="flex space-x-2">
-          <Button variant="outline" onClick={() => {}}>
-            <Shield className="mr-2 h-4 w-4" />
-            Export Reports
-          </Button>
-          <Button onClick={() => {}}>
-            <Plus className="mr-2 h-4 w-4" />
-            Add Policy
-          </Button>
-        </div>
-      </div>
-      
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
-        <PolicyStats policies={policies} />
-        <ClaimStats claims={claims} />
-        <RevenueStats policies={policies} claims={claims} />
-      </div>
-      
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <PolicyManagement policies={policies} />
-        <ClaimManagement claims={claims} />
-      </div>
-    </div>
-  );
+    return (
+        <AdminLayout title="Insurance Management">
+            <Head title="Insurance Management" />
+
+            <Stack gap="xl">
+                <Group justify="space-between" align="flex-end">
+                    <Stack gap={2}>
+                        <Text size="h3" fw={800}>Insurance Operations</Text>
+                        <Text size="sm" color="dimmed">Fleet insurance coverage, policy lifecycle, and settlement operations.</Text>
+                    </Stack>
+                    <Group gap="sm">
+                        <Button variant="light" color="blue" leftSection={<Shield size={16} />}>Export Actuarial</Button>
+                        <Button color="blue" leftSection={<Plus size={16} />}>New Policy</Button>
+                    </Group>
+                </Group>
+
+                {/* Performance HUD */}
+                <SimpleGrid cols={{ base: 1, sm: 2, lg: 4 }} spacing="lg">
+                    <Paper p="xl" radius="md" withBorder shadow="sm">
+                        <Group justify="space-between" mb="xs">
+                            <Text size="xs" color="dimmed" fw={700} tt="uppercase">Fleet Policies</Text>
+                            <ThemeIcon variant="light" color="blue" size="lg">
+                                <ShieldCheck size={20} />
+                            </ThemeIcon>
+                        </Group>
+                        <Text size="h3" fw={800}>{stats.totalPolicies}</Text>
+                        <Text size="xs" color="blue.7" fw={600} mt={4}>{stats.activePolicies} Enforced actively</Text>
+                    </Paper>
+
+                    <Paper p="xl" radius="md" withBorder shadow="sm">
+                        <Group justify="space-between" mb="xs">
+                            <Text size="xs" color="dimmed" fw={700} tt="uppercase">Premium Yield</Text>
+                            <ThemeIcon variant="light" color="teal" size="lg">
+                                <TrendingUp size={20} />
+                            </ThemeIcon>
+                        </Group>
+                        <Text size="h3" fw={800}>{formatCurrency(stats.totalPremium)}</Text>
+                        <Text size="xs" color="dimmed" mt={4}>Cumulative annual premium</Text>
+                    </Paper>
+
+                    <Paper p="xl" radius="md" withBorder shadow="sm">
+                        <Group justify="space-between" mb="xs">
+                            <Text size="xs" color="dimmed" fw={700} tt="uppercase">Open Claims</Text>
+                            <ThemeIcon variant="light" color="orange" size="lg">
+                                <AlertCircle size={20} />
+                            </ThemeIcon>
+                        </Group>
+                        <Text size="h3" fw={800}>{stats.pendingClaims}</Text>
+                        <Text size="xs" color="orange.7" fw={600} mt={4}>Requires administrative review</Text>
+                    </Paper>
+
+                    <Paper p="xl" radius="md" withBorder shadow="sm">
+                        <Group justify="space-between" mb="xs">
+                            <Text size="xs" color="dimmed" fw={700} tt="uppercase">Capital Reserve</Text>
+                            <ThemeIcon variant="light" color="indigo" size="lg">
+                                <CreditCard size={20} />
+                            </ThemeIcon>
+                        </Group>
+                        <Text size="h3" fw={800}>{formatCurrency(stats.totalPremium * 0.4)}</Text>
+                        <Progress value={40} mt="md" color="indigo" size="xs" />
+                    </Paper>
+                </SimpleGrid>
+
+                {/* Operations Center */}
+                <Paper p="xl" radius="md" withBorder shadow="md">
+                    <Tabs value={activeTab} onChange={setActiveTab} variant="outline" radius="md">
+                        <Tabs.List mb="xl">
+                            <Tabs.Tab value="policies" leftSection={<Shield size={rem(14)} />}>Policy Registry</Tabs.Tab>
+                            <Tabs.Tab value="claims" leftSection={<FileText size={rem(14)} />}>Claims & Settlements</Tabs.Tab>
+                            <Tabs.Tab value="analytics" leftSection={<TrendingUp size={rem(14)} />} disabled>Actuarial Analysis</Tabs.Tab>
+                        </Tabs.List>
+
+                        <Tabs.Panel value="policies">
+                            <Stack gap="md">
+                                <Group justify="space-between">
+                                    <TextInput 
+                                        placeholder="Search policy # or subscriber name..." 
+                                        leftSection={<Search size={16} />}
+                                        radius="md"
+                                        style={{ width: 400 }}
+                                    />
+                                    <Select 
+                                        placeholder="Status Filter" 
+                                        data={['All', 'Active', 'Expired', 'Cancelled']}
+                                        radius="md"
+                                    />
+                                </Group>
+                                
+                                <Table.ScrollContainer minWidth={800}>
+                                    <Table verticalSpacing="md" highlightOnHover>
+                                        <Table.Thead>
+                                            <Table.Tr>
+                                                <Table.Th>Policy Identifier</Table.Th>
+                                                <Table.Th>Enforced Entity</Table.Th>
+                                                <Table.Th>Tier & Coverage</Table.Th>
+                                                <Table.Th>Financials</Table.Th>
+                                                <Table.Th>Operational Status</Table.Th>
+                                                <Table.Th />
+                                            </Table.Tr>
+                                        </Table.Thead>
+                                        <Table.Tbody>
+                                            {policies.map((policy) => (
+                                                <Table.Tr key={policy.id}>
+                                                    <Table.Td>
+                                                        <Stack gap={0}>
+                                                            <Text size="sm" fw={700}>{policy.policy_number}</Text>
+                                                            <Text size="xs" color="dimmed">{new Date(policy.created_at).toLocaleDateString()}</Text>
+                                                        </Stack>
+                                                    </Table.Td>
+                                                    <Table.Td>
+                                                        <Group gap="sm">
+                                                            <Avatar src={null} radius="xl" color="blue" size="sm">
+                                                                {policy.user.name.charAt(0)}
+                                                            </Avatar>
+                                                            <Stack gap={0}>
+                                                                <Text size="sm" fw={600}>{policy.user.name}</Text>
+                                                                <Text size="xs" color="dimmed">{policy.user.email}</Text>
+                                                            </Stack>
+                                                        </Group>
+                                                    </Table.Td>
+                                                    <Table.Td>
+                                                        <Stack gap={4}>
+                                                            <Badge variant="light" size="xs">{policy.insurance_type}</Badge>
+                                                            <Text size="sm" fw={700}>{formatCurrency(policy.coverage_amount)}</Text>
+                                                        </Stack>
+                                                    </Table.Td>
+                                                    <Table.Td>
+                                                        <Text size="sm" fw={700} color="teal.8">{formatCurrency(policy.premium_amount)}</Text>
+                                                        <Badge variant="outline" size="xs" color={policy.payment_status === 'paid' ? 'green' : 'red'}>
+                                                            {policy.payment_status.toUpperCase()}
+                                                        </Badge>
+                                                    </Table.Td>
+                                                    <Table.Td>
+                                                        <Badge 
+                                                            color={policy.status === 'active' ? 'green' : 'red'} 
+                                                            variant="dot" 
+                                                            size="sm"
+                                                        >
+                                                            {policy.status.toUpperCase()}
+                                                        </Badge>
+                                                    </Table.Td>
+                                                    <Table.Td>
+                                                        <Group gap={4} justify="flex-end">
+                                                            <Tooltip label="View Terms"><ActionIcon variant="light" color="blue"><Eye size={16} /></ActionIcon></Tooltip>
+                                                            <Tooltip label="Endorse Policy"><ActionIcon variant="light" color="yellow"><Pencil size={16} /></ActionIcon></Tooltip>
+                                                            <Tooltip label="Void Policy"><ActionIcon variant="light" color="red"><Trash size={16} /></ActionIcon></Tooltip>
+                                                        </Group>
+                                                    </Table.Td>
+                                                </Table.Tr>
+                                            ))}
+                                        </Table.Tbody>
+                                    </Table>
+                                </Table.ScrollContainer>
+                            </Stack>
+                        </Tabs.Panel>
+
+                        <Tabs.Panel value="claims">
+                            <Stack gap="md">
+                                <Table.ScrollContainer minWidth={800}>
+                                    <Table verticalSpacing="md">
+                                        <Table.Thead>
+                                            <Table.Tr>
+                                                <Table.Th>Claim #</Table.Th>
+                                                <Table.Th>Linked Policy</Table.Th>
+                                                <Table.Th>Incident Insight</Table.Th>
+                                                <Table.Th>Assessment</Table.Th>
+                                                <Table.Th>State</Table.Th>
+                                                <Table.Th />
+                                            </Table.Tr>
+                                        </Table.Thead>
+                                        <Table.Tbody>
+                                            {claims.map((claim) => (
+                                                <Table.Tr key={claim.id}>
+                                                    <Table.Td><Text fw={700} size="sm">{claim.claim_number}</Text></Table.Td>
+                                                    <Table.Td>
+                                                        <Stack gap={0}>
+                                                            <Text size="sm" fw={600}>{claim.policy.policy_number}</Text>
+                                                            <Text size="xs" color="dimmed">{claim.policy.user.name}</Text>
+                                                        </Stack>
+                                                    </Table.Td>
+                                                    <Table.Td>
+                                                        <Stack gap={4}>
+                                                            <Text size="xs" fw={700} color="dimmed">{new Date(claim.incident_date).toDateString()}</Text>
+                                                            <Text size="sm" lineClamp={1}>{claim.incident_description}</Text>
+                                                        </Stack>
+                                                    </Table.Td>
+                                                    <Table.Td><Text size="sm" fw={800} color="orange.8">{formatCurrency(claim.claim_amount)}</Text></Table.Td>
+                                                    <Table.Td>
+                                                        <Badge color="yellow" variant="filled" size="sm">PENDING REVIEW</Badge>
+                                                    </Table.Td>
+                                                    <Table.Td>
+                                                        <Group gap="sm" justify="flex-end">
+                                                            <Button size="xs" variant="filled" color="green">Approve</Button>
+                                                            <Button size="xs" variant="light" color="red">Reject</Button>
+                                                        </Group>
+                                                    </Table.Td>
+                                                </Table.Tr>
+                                            ))}
+                                        </Table.Tbody>
+                                    </Table>
+                                </Table.ScrollContainer>
+                            </Stack>
+                        </Tabs.Panel>
+                    </Tabs>
+                </Paper>
+            </Stack>
+        </AdminLayout>
+    );
 };
 
 export default InsuranceManagement;

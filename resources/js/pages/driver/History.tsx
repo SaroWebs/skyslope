@@ -1,253 +1,301 @@
-import React, { useState } from 'react'
-import { Head, Link } from '@inertiajs/react'
-import axios from '@/lib/axios'
+import React, { useState } from 'react';
+import { Head, Link, router } from '@inertiajs/react';
+import { 
+    Stack, 
+    Group, 
+    Text, 
+    Title, 
+    Paper, 
+    Button, 
+    ThemeIcon, 
+    Badge, 
+    ActionIcon, 
+    Card, 
+    Avatar, 
+    Box, 
+    rem,
+    Divider,
+    Collapse,
+    Rating,
+    Textarea,
+    Timeline,
+    SimpleGrid,
+    ScrollArea,
+    Select,
+    TextInput,
+    Pagination
+} from '@mantine/core';
+import { 
+    MapPin, 
+    Calendar, 
+    Clock, 
+    DollarSign, 
+    Star, 
+    ChevronDown, 
+    ChevronUp, 
+    Navigation, 
+    Phone, 
+    MessageCircle, 
+    History as HistoryIcon,
+    Search,
+    CheckCircle2,
+    FileText,
+    ArrowUpRight,
+    TrendingUp,
+    Map
+} from 'lucide-react';
+import AppLayout from '@/layouts/AppLayout';
+import { useAppNotifications } from '@/app';
+import axios from '@/lib/axios';
 
 interface Ride {
-  id: number
-  booking_number: string
-  status: string
-  pickup_location: string
-  dropoff_location?: string
-  scheduled_at: string
-  completed_at?: string
-  total_fare: number
-  customer_name: string
-  customer_phone?: string
-  customer_email?: string
-  pickup_lat?: number | null
-  pickup_lng?: number | null
-  dropoff_lat?: number | null
-  dropoff_lng?: number | null
-  payment_status?: string
-  payment_method?: string
-  driver_notes?: string
-  reviews?: Array<{
-    id: number
-    rating: number
-    comment?: string
-    created_at: string
-  }>
-  tips?: Array<{
-    id: number
-    amount: number
-    message?: string
-    created_at: string
-  }>
-  tips_total?: number
+    id: number;
+    booking_number: string;
+    status: string;
+    pickup_location: string;
+    dropoff_location?: string;
+    scheduled_at: string;
+    completed_at?: string;
+    total_fare: number;
+    customer_name: string;
+    customer_phone?: string;
+    customer_email?: string;
+    pickup_lat?: number | null;
+    pickup_lng?: number | null;
+    dropoff_lat?: number | null;
+    dropoff_lng?: number | null;
+    payment_status?: string;
+    payment_method?: string;
+    driver_notes?: string;
+    reviews?: Array<{
+        id: number;
+        rating: number;
+        comment?: string;
+        created_at: string;
+    }>;
+    tips?: Array<{
+        id: number;
+        amount: number;
+        message?: string;
+        created_at: string;
+    }>;
+    tips_total?: number;
 }
 
 interface PaginatedRides {
-  data: Ride[]
+    data: Ride[];
+    current_page: number;
+    last_page: number;
 }
 
 interface Props {
-  title?: string
-  rides: PaginatedRides
+    title?: string;
+    rides: PaginatedRides;
 }
 
-export default function History({ title = 'Ride History', rides }: Props) {
-  const [expandedId, setExpandedId] = useState<number | null>(null)
-  const [savingNotes, setSavingNotes] = useState<number | null>(null)
-  const [notesDraft, setNotesDraft] = useState<Record<number, string>>({})
-  const [paymentModeDraft, setPaymentModeDraft] = useState<Record<number, string>>({})
+export default function History({ title = 'Journey Ledger', rides }: Props) {
+    const addNotification = useAppNotifications();
+    const [expandedId, setExpandedId] = useState<number | null>(null);
+    const [saving, setSaving] = useState<number | null>(null);
+    const [notesDraft, setNotesDraft] = useState<Record<number, string>>({});
+    const [searchQuery, setSearchQuery] = useState('');
 
-  const saveRideNote = async (ride: Ride) => {
-    const value = notesDraft[ride.id] ?? ride.driver_notes ?? ''
-    setSavingNotes(ride.id)
-    try {
-      await axios.post(`/driver/rides/${ride.id}/notes`, {
-        driver_notes: value || null,
-      })
-      window.location.reload()
-    } catch (error) {
-      alert('Failed to save note')
-    } finally {
-      setSavingNotes(null)
-    }
-  }
+    const handleSaveNote = async (ride: Ride) => {
+        const note = notesDraft[ride.id] ?? ride.driver_notes ?? '';
+        setSaving(ride.id);
+        try {
+            await axios.post(`/driver/rides/${ride.id}/notes`, { driver_notes: note });
+            addNotification('Journey notes archived successfully', 'success');
+            router.reload({ only: ['rides'] });
+        } catch (error) {
+            addNotification('Failed to archive notes', 'error');
+        } finally {
+            setSaving(null);
+        }
+    };
 
-  const collectRidePayment = async (ride: Ride) => {
-    const paymentMode = paymentModeDraft[ride.id] || ride.payment_method || 'cash'
-    setSavingNotes(ride.id)
-    try {
-      await axios.post(`/driver/rides/${ride.id}/payment-status`, {
-        payment_status: 'paid',
-        payment_method: paymentMode,
-      })
-      window.location.reload()
-    } catch (error: any) {
-      alert(error?.response?.data?.message || 'Failed to collect payment')
-    } finally {
-      setSavingNotes(null)
-    }
-  }
+    const handleCollectPayment = async (ride: Ride, method: string) => {
+        setSaving(ride.id);
+        try {
+            await axios.post(`/driver/rides/${ride.id}/payment-status`, {
+                payment_status: 'paid',
+                payment_method: method
+            });
+            addNotification(`Payment of $${ride.total_fare} recorded via ${method.toUpperCase()}`, 'success');
+            router.reload({ only: ['rides'] });
+        } catch (error) {
+            addNotification('Critical: Failed to record payment', 'error');
+        } finally {
+            setSaving(null);
+        }
+    };
 
-  return (
-    <div className="min-h-screen bg-gray-100">
-      <Head title={title} />
-      <div className="mx-auto max-w-5xl px-4 py-6">
-        <div className="mb-6 flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-bold text-gray-900">{title}</h1>
-            <p className="text-sm text-gray-600">Completed and past rides</p>
-          </div>
-          <Link href="/driver" className="text-sm font-medium text-orange-600 hover:text-orange-700">
-            Back to dashboard
-          </Link>
-        </div>
+    const formatDate = (date: string) => new Date(date).toLocaleDateString('en-US', {
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric'
+    });
 
-        <div className="space-y-3">
-          {rides?.data?.length ? (
-            rides.data.map((ride) => (
-              <div key={ride.id} className="rounded-lg bg-white p-4 shadow-sm">
-                <div className="mb-2 flex items-center justify-between gap-2">
-                  <p className="font-semibold text-gray-900">#{ride.booking_number}</p>
-                  <span className="rounded-full bg-gray-100 px-2 py-1 text-xs font-medium text-gray-700">
-                    {ride.status}
-                  </span>
-                </div>
-                <p className="text-sm text-gray-700">Customer: {ride.customer_name}</p>
-                <p className="text-sm text-gray-600">Pickup: {ride.pickup_location}</p>
-                <p className="text-sm text-gray-600">Drop: {ride.dropoff_location || '-'}</p>
-                <div className="mt-2 flex items-center justify-between text-sm">
-                  <span className="text-gray-500">{new Date(ride.scheduled_at).toLocaleString()}</span>
-                  <span className="font-semibold text-green-600">Rs {Number(ride.total_fare).toFixed(2)}</span>
-                </div>
+    const formatTime = (date: string) => new Date(date).toLocaleTimeString('en-US', {
+        hour: '2-digit',
+        minute: '2-digit'
+    });
 
-                <div className="mt-3">
-                  <button
-                    type="button"
-                    onClick={() => setExpandedId(expandedId === ride.id ? null : ride.id)}
-                    className="rounded border border-orange-300 px-3 py-1 text-xs font-medium text-orange-700 hover:bg-orange-50"
-                  >
-                    {expandedId === ride.id ? 'Hide details' : 'View details'}
-                  </button>
-                </div>
+    return (
+        <AppLayout title="History">
+            <Head title={title} />
+            
+            <Stack gap="lg">
+                {/* Header & Filter */}
+                <Box>
+                    <Title order={4} fw={900}>Journey Ledger</Title>
+                    <Text size="xs" color="dimmed" mb="md">Audit trail for all completed assignments</Text>
+                    
+                    <TextInput 
+                        placeholder="Search by Booking ID or Customer..." 
+                        leftSection={<Search size={16} />}
+                        radius="md"
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                    />
+                </Box>
 
-                {expandedId === ride.id && (
-                  <div className="mt-4 space-y-4 rounded border border-gray-100 bg-gray-50 p-4">
-                    <div className="grid grid-cols-1 gap-3 text-sm md:grid-cols-2">
-                      <p><span className="font-semibold">Customer:</span> {ride.customer_name}</p>
-                      <p><span className="font-semibold">Phone:</span> {ride.customer_phone || '-'}</p>
-                      <p><span className="font-semibold">Email:</span> {ride.customer_email || '-'}</p>
-                      <p><span className="font-semibold">Payment:</span> {ride.payment_status || 'pending'}</p>
-                      <p><span className="font-semibold">Completed:</span> {ride.completed_at ? new Date(ride.completed_at).toLocaleString() : '-'}</p>
-                      <p><span className="font-semibold">Tips Total:</span> Rs {(ride.tips_total || 0).toFixed(2)}</p>
-                    </div>
+                <Stack gap="sm">
+                    {rides?.data?.length ? (
+                        rides.data.map((ride) => (
+                            <Paper key={ride.id} radius="md" withBorder shadow="xs" overflow="hidden">
+                                <Box p="md" onClick={() => setExpandedId(expandedId === ride.id ? null : ride.id)} style={{ cursor: 'pointer' }}>
+                                    <Group justify="space-between" mb="xs">
+                                        <Group gap="xs">
+                                            <ThemeIcon variant="light" color={ride.status === 'completed' ? 'green' : 'gray'} radius="sm" size="sm">
+                                                <HistoryIcon size={14} />
+                                            </ThemeIcon>
+                                            <Text size="sm" fw={700}>#{ride.booking_number}</Text>
+                                        </Group>
+                                        <Badge color={ride.status === 'completed' ? 'green' : 'red'} variant="outline" size="xs">
+                                            {ride.status}
+                                        </Badge>
+                                    </Group>
 
-                    {ride.payment_status !== 'paid' && (
-                      <div className="rounded border border-emerald-200 bg-emerald-50 p-3">
-                        <p className="mb-2 text-sm font-semibold text-emerald-900">Collect Payment</p>
-                        <div className="flex flex-wrap gap-2">
-                          <select
-                            value={paymentModeDraft[ride.id] || ride.payment_method || 'cash'}
-                            onChange={(e) =>
-                              setPaymentModeDraft((prev) => ({ ...prev, [ride.id]: e.target.value }))
-                            }
-                            className="rounded border border-gray-300 px-3 py-2 text-sm"
-                          >
-                            <option value="cash">Cash</option>
-                            <option value="card">Card</option>
-                            <option value="upi">UPI</option>
-                            <option value="wallet">Wallet</option>
-                            <option value="bank_transfer">Bank Transfer</option>
-                          </select>
-                          <button
-                            type="button"
-                            onClick={() => collectRidePayment(ride)}
-                            disabled={savingNotes === ride.id}
-                            className="rounded bg-emerald-600 px-3 py-2 text-sm font-medium text-white hover:bg-emerald-700 disabled:opacity-60"
-                          >
-                            Mark Paid
-                          </button>
-                        </div>
-                      </div>
+                                    <Group justify="space-between" align="flex-end">
+                                        <Stack gap={2}>
+                                            <Text size="xs" color="dimmed">{formatDate(ride.scheduled_at)} • {formatTime(ride.scheduled_at)}</Text>
+                                            <Text size="sm" fw={600} truncate w={200}>{ride.customer_name}</Text>
+                                        </Stack>
+                                        <Stack gap={0} align="flex-end">
+                                            <Text fw={900} size="sm" color="green.7">${ride.total_fare}</Text>
+                                            <Text size={rem(10)} color="dimmed" tt="uppercase">{ride.payment_status}</Text>
+                                        </Stack>
+                                    </Group>
+                                </Box>
+
+                                <Collapse in={expandedId === ride.id}>
+                                    <Divider />
+                                    <Box p="md" style={{ background: 'var(--mantine-color-gray-0)' }}>
+                                        <Stack gap="md">
+                                            {/* Journey Vector */}
+                                            <Box>
+                                                <Group gap="xs" mb={4}>
+                                                    <div style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--mantine-color-green-5)' }} />
+                                                    <Text size="xs" fw={600}>{ride.pickup_location}</Text>
+                                                </Group>
+                                                <Group gap="xs">
+                                                    <div style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--mantine-color-red-5)' }} />
+                                                    <Text size="xs" color="dimmed">{ride.dropoff_location || 'Return journey'}</Text>
+                                                </Group>
+                                            </Box>
+
+                                            <Divider dashed />
+
+                                            {/* Customer Intel */}
+                                            <SimpleGrid cols={2}>
+                                                <Box>
+                                                    <Text size={rem(10)} color="dimmed" tt="uppercase" fw={700}>Customer Contact</Text>
+                                                    <Text size="xs" fw={600}>{ride.customer_phone || 'N/A'}</Text>
+                                                </Box>
+                                                <Box>
+                                                    <Text size={rem(10)} color="dimmed" tt="uppercase" fw={700}>Gratuity Recived</Text>
+                                                    <Text size="xs" fw={600} color="green.7">${(ride.tips_total || 0).toFixed(2)}</Text>
+                                                </Box>
+                                            </SimpleGrid>
+
+                                            {/* Payment Reconciliation */}
+                                            {ride.payment_status !== 'paid' && (
+                                                <Paper p="xs" radius="sm" withBorder style={{ background: '#fff' }}>
+                                                    <Text size={rem(10)} fw={700} mb={8} tt="uppercase">Reconcile Escrow</Text>
+                                                    <Group grow gap="xs">
+                                                        <Button size="xs" color="green" onClick={() => handleCollectPayment(ride, 'cash')} loading={saving === ride.id}>Cash</Button>
+                                                        <Button size="xs" variant="outline" color="blue" onClick={() => handleCollectPayment(ride, 'wallet')} loading={saving === ride.id}>Wallet</Button>
+                                                    </Group>
+                                                </Paper>
+                                            )}
+
+                                            {/* Reviews HUD */}
+                                            {ride.reviews?.length ? (
+                                                <Box>
+                                                    <Text size={rem(10)} color="dimmed" tt="uppercase" fw={700} mb={4}>Mission Feedback</Text>
+                                                    {ride.reviews.map(r => (
+                                                        <Paper key={r.id} p="xs" radius="xs" withBorder shadow="none" mb={4}>
+                                                            <Rating value={r.rating} readOnly size="xs" />
+                                                            <Text size="xs" fs="italic" mt={4}>"{r.comment || 'Exemplary service'}"</Text>
+                                                        </Paper>
+                                                    ))}
+                                                </Box>
+                                            ) : null}
+
+                                            {/* Operations Notes */}
+                                            <Box>
+                                                <Text size={rem(10)} color="dimmed" tt="uppercase" fw={700} mb={4}>Operational Notes</Text>
+                                                <Textarea 
+                                                    placeholder="Add secure notes for this journey..."
+                                                    size="xs"
+                                                    radius="sm"
+                                                    value={notesDraft[ride.id] ?? ride.driver_notes ?? ''}
+                                                    onChange={(e) => setNotesDraft(prev => ({ ...prev, [ride.id]: e.target.value }))}
+                                                />
+                                                <Button 
+                                                    size="xs" 
+                                                    mt="xs" 
+                                                    variant="light" 
+                                                    fullWidth 
+                                                    onClick={() => handleSaveNote(ride)}
+                                                    loading={saving === ride.id}
+                                                >
+                                                    Secure Archive Notes
+                                                </Button>
+                                            </Box>
+                                            
+                                            <Group grow gap="sm">
+                                                <Button size="xs" variant="subtle" fullWidth leftSection={<Map size={14} />} component="a" target="_blank" href={`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(ride.pickup_location)}`}>Pickup</Button>
+                                                <Button size="xs" variant="subtle" fullWidth leftSection={<ArrowUpRight size={14} />} component="a" target="_blank" href={`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(ride.dropoff_location || '')}`}>Dropoff</Button>
+                                            </Group>
+                                        </Stack>
+                                    </Box>
+                                </Collapse>
+                            </Paper>
+                        ))
+                    ) : (
+                        <Paper p="xl" radius="md" withBorder style={{ borderStyle: 'dashed', textAlign: 'center' }}>
+                            <Stack align="center" gap="xs">
+                                <HistoryIcon size={32} color="var(--mantine-color-gray-4)" />
+                                <Text size="sm" color="dimmed">No historical data available for this sector.</Text>
+                            </Stack>
+                        </Paper>
                     )}
+                </Stack>
 
-                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                      <a
-                        href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
-                          ride.pickup_lat && ride.pickup_lng ? `${ride.pickup_lat},${ride.pickup_lng}` : ride.pickup_location
-                        )}`}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="rounded bg-blue-600 px-3 py-2 text-center text-sm font-medium text-white hover:bg-blue-700"
-                      >
-                        Pickup Map
-                      </a>
-                      <a
-                        href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
-                          ride.dropoff_lat && ride.dropoff_lng ? `${ride.dropoff_lat},${ride.dropoff_lng}` : (ride.dropoff_location || '')
-                        )}`}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="rounded bg-indigo-600 px-3 py-2 text-center text-sm font-medium text-white hover:bg-indigo-700"
-                      >
-                        Drop-off Map
-                      </a>
-                    </div>
-
-                    <div>
-                      <h3 className="mb-1 text-sm font-semibold text-gray-900">Customer Reviews</h3>
-                      {ride.reviews?.length ? (
-                        <div className="space-y-2">
-                          {ride.reviews.map((review) => (
-                            <div key={review.id} className="rounded border border-gray-200 bg-white p-2 text-sm">
-                              <p className="font-medium">Rating: {review.rating}/5</p>
-                              <p className="text-gray-700">{review.comment || 'No comment'}</p>
-                            </div>
-                          ))}
-                        </div>
-                      ) : (
-                        <p className="text-sm text-gray-500">No reviews yet.</p>
-                      )}
-                    </div>
-
-                    <div>
-                      <h3 className="mb-1 text-sm font-semibold text-gray-900">Tips</h3>
-                      {ride.tips?.length ? (
-                        <div className="space-y-2">
-                          {ride.tips.map((tip) => (
-                            <div key={tip.id} className="rounded border border-gray-200 bg-white p-2 text-sm">
-                              <p className="font-medium text-green-700">Rs {Number(tip.amount).toFixed(2)}</p>
-                              <p className="text-gray-700">{tip.message || 'No message'}</p>
-                            </div>
-                          ))}
-                        </div>
-                      ) : (
-                        <p className="text-sm text-gray-500">No tips for this ride.</p>
-                      )}
-                    </div>
-
-                    <div>
-                      <h3 className="mb-1 text-sm font-semibold text-gray-900">Driver Notes</h3>
-                      <textarea
-                        rows={3}
-                        value={notesDraft[ride.id] ?? ride.driver_notes ?? ''}
-                        onChange={(e) => setNotesDraft((prev) => ({ ...prev, [ride.id]: e.target.value }))}
-                        className="w-full rounded border border-gray-300 px-3 py-2 text-sm focus:border-orange-500 focus:outline-none"
-                        placeholder="Add additional notes for this ride..."
-                      />
-                      <button
-                        type="button"
-                        onClick={() => saveRideNote(ride)}
-                        disabled={savingNotes === ride.id}
-                        className="mt-2 rounded bg-orange-600 px-3 py-2 text-sm font-medium text-white hover:bg-orange-700 disabled:opacity-60"
-                      >
-                        {savingNotes === ride.id ? 'Saving...' : 'Save Notes'}
-                      </button>
-                    </div>
-                  </div>
+                {rides?.last_page > 1 && (
+                    <Group justify="center" mt="md">
+                        <Pagination 
+                            total={rides.last_page} 
+                            value={rides.current_page} 
+                            onChange={(p) => router.get(window.location.pathname, { page: p }, { preserveScroll: true })}
+                            size="sm"
+                            radius="md"
+                        />
+                    </Group>
                 )}
-              </div>
-            ))
-          ) : (
-            <div className="rounded-lg bg-white p-8 text-center text-gray-500 shadow-sm">
-              No rides available.
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
-  )
+            </Stack>
+        </AppLayout>
+    );
 }

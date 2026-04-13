@@ -48,6 +48,10 @@ return [
             'driver' => 'session',
             'provider' => 'drivers',
         ],
+        'guide' => [
+            'driver' => 'session',
+            'provider' => 'guides',
+        ],
     ],
 
     /*
@@ -79,6 +83,10 @@ return [
         'drivers' => [
             'driver' => 'eloquent',
             'model' => App\Models\Driver::class,
+        ],
+        'guides' => [
+            'driver' => 'eloquent',
+            'model' => App\Models\Guide::class,
         ],
 
         // 'users' => [
@@ -121,6 +129,12 @@ return [
         ],
         'drivers' => [
             'provider' => 'drivers',
+            'table' => env('AUTH_PASSWORD_RESET_TOKEN_TABLE', 'password_reset_tokens'),
+            'expire' => 60,
+            'throttle' => 60,
+        ],
+        'guides' => [
+            'provider' => 'guides',
             'table' => env('AUTH_PASSWORD_RESET_TOKEN_TABLE', 'password_reset_tokens'),
             'expire' => 60,
             'throttle' => 60,

@@ -1,5 +1,45 @@
 import React from 'react';
-import { Head, Link } from '@inertiajs/react';
+import { Head, Link, router } from '@inertiajs/react';
+import {
+    Stack,
+    Group,
+    Text,
+    Title,
+    Paper,
+    Button,
+    ThemeIcon,
+    SimpleGrid,
+    Badge,
+    ActionIcon,
+    Card,
+    Image,
+    ScrollArea,
+    Box,
+    rem,
+    Progress,
+    Divider,
+    Avatar,
+    Anchor,
+    UnstyledButton
+} from '@mantine/core';
+import {
+    Car,
+    MapPin,
+    Calendar,
+    Clock,
+    ArrowRight,
+    Search,
+    History,
+    Star,
+    Navigation,
+    Plus,
+    Compass,
+    Zap,
+    Settings,
+    Briefcase
+} from 'lucide-react';
+import AppLayout from '@/layouts/AppLayout';
+import { useAuth } from '@/context/AuthContext';
 
 interface DashboardProps {
     title: string;
@@ -11,233 +51,251 @@ interface DashboardProps {
 
 const getRideStatusColor = (status: string) => {
     switch (status) {
-        case 'pending':
-            return 'bg-yellow-100 text-yellow-800'
-        case 'confirmed':
-            return 'bg-blue-100 text-blue-800'
-        case 'driver_assigned':
-            return 'bg-indigo-100 text-indigo-800'
-        case 'driver_arriving':
-            return 'bg-purple-100 text-purple-800'
-        case 'pickup':
-            return 'bg-cyan-100 text-cyan-800'
-        case 'in_transit':
-            return 'bg-green-100 text-green-800'
-        case 'completed':
-            return 'bg-emerald-100 text-emerald-800'
-        case 'cancelled':
-            return 'bg-red-100 text-red-800'
-        default:
-            return 'bg-gray-100 text-gray-800'
+        case 'pending': return 'yellow';
+        case 'confirmed': return 'blue';
+        case 'driver_assigned': return 'indigo';
+        case 'driver_arriving': return 'purple';
+        case 'pickup': return 'cyan';
+        case 'in_transit': return 'green';
+        case 'completed': return 'emerald';
+        case 'cancelled': return 'red';
+        default: return 'gray';
     }
 }
 
 export default function Dashboard({ title, user, my_bookings, ride_bookings = [], available_tours }: DashboardProps) {
+    const { user: authUser } = useAuth();
+
     const formatDate = (value?: string) => {
         if (!value) return 'N/A'
         const parsed = new Date(value)
-        return Number.isNaN(parsed.getTime()) ? 'N/A' : parsed.toLocaleDateString()
+        return Number.isNaN(parsed.getTime()) ? 'N/A' : parsed.toLocaleDateString('en-US', {
+            month: 'short',
+            day: 'numeric'
+        });
     }
 
+    const activeRide = ride_bookings.find(r => ['driver_assigned', 'driver_arriving', 'pickup', 'in_transit'].includes(r.status));
+
     return (
-        <>
+        <AppLayout title="Dashboard">
             <Head title={title} />
 
-            <div className="min-h-screen bg-gray-100">
-                {/* Header */}
-                <div className="bg-white shadow">
-                    <div className="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
-                        <div className="flex justify-between items-center">
-                            <h1 className="text-3xl font-bold text-gray-900">{title}</h1>
-                            <div className="flex items-center space-x-4">
-                                <span className="text-gray-700">Welcome, {user.name}</span>
-                                <Link
-                                    href="/logout"
-                                    method="post"
-                                    className="bg-red-600 text-white px-4 py-2 rounded-md hover:bg-red-700"
-                                >
-                                    Logout
-                                </Link>
-                            </div>
-                        </div>
-                    </div>
-                </div>
+            <Stack gap="xl">
+                {/* Greeting & Active Engagement */}
+                <Box>
+                    <Group justify="space-between" align="flex-end">
+                        <Stack gap={2}>
+                            <Text size="sm" color="dimmed" fw={500}>Safe Travels,</Text>
+                            <Title order={3} fw={900}>{user.name.split(' ')[0]} 👋</Title>
+                        </Stack>
+                        <Badge variant="light" color="blue" size="lg" radius="sm">
+                            Explorer Class
+                        </Badge>
+                    </Group>
+                </Box>
 
-                {/* Main Content */}
-                <div className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
-                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                        {/* My Tour Bookings */}
-                        <div className="bg-white overflow-hidden shadow rounded-lg">
-                            <div className="px-4 py-5 sm:p-6">
-                                <h3 className="text-lg leading-6 font-medium text-gray-900 mb-4">
-                                    My Tour Bookings
-                                </h3>
-                                <div className="space-y-3">
-                                    {my_bookings.length > 0 ? (
-                                        my_bookings.map((booking) => (
-                                            <div key={booking.id} className="border rounded-lg p-4">
-                                                <h4 className="font-medium text-gray-900">{booking.tour?.title || 'Tour'}</h4>
-                                                <p className="text-sm text-gray-500">
-                                                    Booked on: {formatDate(booking.created_at)}
-                                                </p>
-                                                <p className="text-sm text-gray-500">
-                                                    Tour Date: {formatDate(booking.tour?.available_from)}
-                                                </p>
-                                                <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                                                    booking.status === 'confirmed'
-                                                        ? 'bg-green-100 text-green-800'
-                                                        : 'bg-yellow-100 text-yellow-800'
-                                                }`}>
-                                                    {booking.status}
-                                                </span>
-                                            </div>
-                                        ))
-                                    ) : (
-                                        <p className="text-gray-500">No tour bookings yet.</p>
-                                    )}
-                                </div>
-                                <div className="mt-4">
-                                    <Link
-                                        href="/book-now"
-                                        className="text-sm text-blue-600 hover:text-blue-500"
-                                    >
-                                        Book a new tour →
-                                    </Link>
-                                </div>
-                            </div>
-                        </div>
+                {/* Live Activity (HUD Style) */}
+                {activeRide && (
+                    <Paper
+                        radius="md"
+                        p="md"
+                        withBorder
+                        style={{
+                            background: 'var(--mantine-color-blue-0)',
+                            borderColor: 'var(--mantine-color-blue-2)',
+                            position: 'relative',
+                            overflow: 'hidden'
+                        }}
+                    >
+                        <Stack gap="xs">
+                            <Group justify="space-between">
+                                <Group gap="xs">
+                                    <ThemeIcon variant="filled" color="blue" radius="xl" size="sm">
+                                        <Zap size={12} strokeWidth={3} />
+                                    </ThemeIcon>
+                                    <Text size="xs" fw={700} tt="uppercase" style={{ color: 'var(--mantine-color-blue-8)' }}>
+                                        Active Journey
+                                    </Text>
+                                </Group>
+                                <Badge color={getRideStatusColor(activeRide.status)} variant="filled" size="xs">
+                                    {activeRide.status.replace('_', ' ')}
+                                </Badge>
+                            </Group>
 
-                        {/* My Ride Bookings */}
-                        <div className="bg-white overflow-hidden shadow rounded-lg">
-                            <div className="px-4 py-5 sm:p-6">
-                                <h3 className="text-lg leading-6 font-medium text-gray-900 mb-4">
-                                    My Ride Bookings
-                                </h3>
-                                <div className="space-y-3">
-                                    {ride_bookings.length > 0 ? (
-                                        ride_bookings.slice(0, 3).map((booking) => (
-                                            <div key={booking.id} className="border rounded-lg p-4">
-                                                <div className="flex items-start justify-between">
-                                                    <div className="flex-1">
-                                                        <h4 className="font-medium text-gray-900">Ride #{booking.booking_number}</h4>
-                                                        <p className="text-sm text-gray-500">
-                                                            {booking.pickup_location}
-                                                        </p>
-                                                        {booking.dropoff_location && (
-                                                            <p className="text-sm text-gray-500">
-                                                                to {booking.dropoff_location}
-                                                            </p>
-                                                        )}
-                                                        <p className="text-sm text-gray-500">
-                                                            {formatDate(booking.scheduled_at)}
-                                                        </p>
-                                                    </div>
-                                                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getRideStatusColor(booking.status)}`}>
-                                                        {booking.status.replace('_', ' ')}
-                                                    </span>
-                                                </div>
-                                                <div className="mt-2">
-                                                    <Link
-                                                        href={`/customer/ride-bookings/${booking.id}`}
-                                                        className="text-sm text-blue-600 hover:text-blue-500"
-                                                    >
-                                                        View Details →
-                                                    </Link>
-                                                </div>
-                                            </div>
-                                        ))
-                                    ) : (
-                                        <p className="text-gray-500">No ride bookings yet.</p>
-                                    )}
-                                </div>
-                                <div className="mt-4">
-                                    <Link
-                                        href="/ride-booking"
-                                        className="text-sm text-blue-600 hover:text-blue-500"
-                                    >
-                                        Book a new ride →
-                                    </Link>
-                                </div>
-                            </div>
-                        </div>
+                            <Box mt={4}>
+                                <Text size="sm" fw={700}>{activeRide.pickup_location}</Text>
+                                <Group gap={4} mt={2}>
+                                    <Text size="xs" color="dimmed">Heading to</Text>
+                                    <Text size="xs" fw={600}>{activeRide.dropoff_location || 'Ongoing Trip'}</Text>
+                                </Group>
+                            </Box>
 
-                        {/* Available Tours */}
-                        <div className="bg-white overflow-hidden shadow rounded-lg">
-                            <div className="px-4 py-5 sm:p-6">
-                                <h3 className="text-lg leading-6 font-medium text-gray-900 mb-4">
-                                    Available Tours
-                                </h3>
-                                <div className="space-y-3">
-                                    {available_tours.length > 0 ? (
-                                        available_tours.map((tour) => (
-                                            <div key={tour.id} className="border rounded-lg p-4">
-                                                <h4 className="font-medium text-gray-900">{tour.title}</h4>
-                                                <p className="text-sm text-gray-500">
-                                                    {formatDate(tour.available_from)} - {formatDate(tour.available_to)}
-                                                </p>
-                                                <p className="text-sm text-gray-500">{tour.description}</p>
-                                                <div className="mt-2">
-                                                    <Link
-                                                        href={`/book-now?tour=${tour.id}`}
-                                                        className="text-sm bg-blue-600 text-white px-3 py-1 rounded hover:bg-blue-700"
-                                                    >
-                                                        Book Now
-                                                    </Link>
-                                                </div>
-                                            </div>
-                                        ))
-                                    ) : (
-                                        <p className="text-gray-500">No tours available at the moment.</p>
-                                    )}
-                                </div>
-                                <div className="mt-4">
-                                    <Link
-                                        href="/tours"
-                                        className="text-sm text-blue-600 hover:text-blue-500"
-                                    >
-                                        View all tours →
-                                    </Link>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
+                            <Progress value={75} size="xs" radius="xl" mt="xs" animated />
 
-                    {/* Quick Actions */}
-                    <div className="mt-8 bg-white shadow rounded-lg">
-                        <div className="px-4 py-5 sm:p-6">
-                            <h3 className="text-lg leading-6 font-medium text-gray-900 mb-4">
-                                Quick Actions
-                            </h3>
-                            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                                <Link
-                                    href="/tours"
-                                    className="inline-flex items-center justify-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700"
+                            <Button
+                                variant="white"
+                                color="blue"
+                                size="xs"
+                                fullWidth
+                                mt="sm"
+                                radius="md"
+                                onClick={() => router.visit(`/customer/ride-bookings/${activeRide.id}`)}
+                                rightSection={<Navigation size={14} />}
+                            >
+                                Track Live Location
+                            </Button>
+                        </Stack>
+                    </Paper>
+                )}
+
+                {/* Quick Service Grid */}
+                <SimpleGrid cols={2} spacing="md">
+                    <Card
+                        withBorder
+                        radius="md"
+                        p="md"
+                        component={Link}
+                        href="/ride-booking"
+                        style={{ cursor: 'pointer', transition: 'transform 0.2s ease' }}
+                        className="hover-scale"
+                    >
+                        <ThemeIcon size={40} radius="md" color="blue" variant="light">
+                            <Car size={24} />
+                        </ThemeIcon>
+                        <Text fw={700} size="sm" mt="sm">Book a Ride</Text>
+                        <Text size="xs" color="dimmed">Instant or Scheduled</Text>
+                    </Card>
+
+                    <Card
+                        withBorder
+                        radius="md"
+                        p="md"
+                        component={Link}
+                        href="/book-now"
+                        style={{ cursor: 'pointer', transition: 'transform 0.2s ease' }}
+                        className="hover-scale"
+                    >
+                        <ThemeIcon size={40} radius="md" color="indigo" variant="light">
+                            <Compass size={24} />
+                        </ThemeIcon>
+                        <Text fw={700} size="sm" mt="sm">Explore Tours</Text>
+                        <Text size="xs" color="dimmed">Curated experiences</Text>
+                    </Card>
+                </SimpleGrid>
+
+                {/* My Journeys Ledger */}
+                <Box>
+                    <Group justify="space-between" mb="xs">
+                        <Title order={5} fw={900}>Recent Activity</Title>
+                        <Anchor component={Link} href="/customer/rides" size="xs" fw={700}>View Ledger</Anchor>
+                    </Group>
+
+                    <Stack gap="xs">
+                        {ride_bookings.length > 0 ? (
+                            ride_bookings.slice(0, 3).map((booking) => (
+                                <Paper
+                                    key={booking.id}
+                                    p="sm"
+                                    radius="md"
+                                    withBorder
+                                    onClick={() => router.visit(`/customer/ride-bookings/${booking.id}`)}
+                                    style={{ cursor: 'pointer' }}
                                 >
-                                    Browse Tours
-                                </Link>
-                                <Link
-                                    href="/ride-booking"
-                                    className="inline-flex items-center justify-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-green-600 hover:bg-green-700"
+                                    <Group justify="space-between" wrap="nowrap">
+                                        <Group gap="sm" wrap="nowrap">
+                                            <ThemeIcon variant="light" color={getRideStatusColor(booking.status)} radius="sm" size="lg">
+                                                <History size={18} />
+                                            </ThemeIcon>
+                                            <Stack gap={0} style={{ overflow: 'hidden' }}>
+                                                <Text size="sm" fw={700} truncate>{booking.pickup_location}</Text>
+                                                <Text size="xs" color="dimmed">{formatDate(booking.scheduled_at)}</Text>
+                                            </Stack>
+                                        </Group>
+                                        <Box ta="right">
+                                            <Badge color={getRideStatusColor(booking.status)} variant="light" size="xs">
+                                                {booking.status}
+                                            </Badge>
+                                            <Text fw={700} size="xs" mt={4}>${booking.total_price || '0.00'}</Text>
+                                        </Box>
+                                    </Group>
+                                </Paper>
+                            ))
+                        ) : (
+                            <Paper p="xl" radius="md" withBorder style={{ borderStyle: 'dashed', textAlign: 'center' }}>
+                                <Text size="sm" color="dimmed">No recent ride activities</Text>
+                            </Paper>
+                        )}
+                    </Stack>
+                </Box>
+
+                {/* Featured Tours Scroll */}
+                <Box>
+                    <Group justify="space-between" mb="xs">
+                        <Title order={5} fw={900}>Featured Experiences</Title>
+                        <Anchor component={Link} href="/tours" size="xs" fw={700}>Explore All</Anchor>
+                    </Group>
+
+                    <ScrollArea offsetScrollbars scrollbarSize={4}>
+                        <Group gap="md" pb="xs" wrap="nowrap">
+                            {available_tours.map((tour) => (
+                                <Card
+                                    key={tour.id}
+                                    padding="xs"
+                                    radius="md"
+                                    withBorder
+                                    w={180}
+                                    style={{ cursor: 'pointer' }}
+                                    onClick={() => router.visit(`/tours/${tour.id}`)}
                                 >
-                                    Book a Ride
-                                </Link>
-                                <Link
-                                    href="/destinations"
-                                    className="inline-flex items-center justify-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50"
-                                >
-                                    View Destinations
-                                </Link>
-                                <Link
-                                    href="/contact"
-                                    className="inline-flex items-center justify-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50"
-                                >
-                                    Contact Support
-                                </Link>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </>
+                                    <Card.Section>
+                                        <Image
+                                            src={tour.image_path || 'https://images.unsplash.com/photo-1469854523086-cc02fe5d8800?q=80&w=2021&auto=format&fit=crop'}
+                                            height={100}
+                                            alt={tour.title}
+                                        />
+                                    </Card.Section>
+                                    <Stack gap={2} mt="xs">
+                                        <Text size="xs" fw={700} truncate>{tour.title}</Text>
+                                        <Text size="xs" color="blue" fw={700}>From ${tour.price}</Text>
+                                    </Stack>
+                                </Card>
+                            ))}
+                        </Group>
+                    </ScrollArea>
+                </Box>
+
+                {/* Secondary Actions */}
+                <SimpleGrid cols={3} spacing="xs">
+                    <UnstyledButton
+                        p="sm"
+                        style={{ textAlign: 'center', borderRadius: 'var(--mantine-radius-md)', background: '#fff', border: '1px solid var(--mantine-color-gray-2)' }}
+                        component={Link}
+                        href="/destinations"
+                    >
+                        <Briefcase size={20} color="var(--mantine-color-gray-6)" />
+                        <Text size={rem(10)} fw={600} mt={4}>Places</Text>
+                    </UnstyledButton>
+                    <UnstyledButton
+                        p="sm"
+                        style={{ textAlign: 'center', borderRadius: 'var(--mantine-radius-md)', background: '#fff', border: '1px solid var(--mantine-color-gray-2)' }}
+                        component={Link}
+                        href="/contact"
+                    >
+                        <Star size={20} color="var(--mantine-color-gray-6)" />
+                        <Text size={rem(10)} fw={600} mt={4}>Support</Text>
+                    </UnstyledButton>
+                    <UnstyledButton
+                        p="sm"
+                        style={{ textAlign: 'center', borderRadius: 'var(--mantine-radius-md)', background: '#fff', border: '1px solid var(--mantine-color-gray-2)' }}
+                        component={Link}
+                        href="/settings"
+                    >
+                        <Settings size={20} color="var(--mantine-color-gray-6)" />
+                        <Text size={rem(10)} fw={600} mt={4}>Safety</Text>
+                    </UnstyledButton>
+                </SimpleGrid>
+            </Stack>
+        </AppLayout>
     );
 }

@@ -30,6 +30,26 @@ class CustomerAuthController extends Controller
         ]);
     }
 
+    public function register(Request $request)
+    {
+        $validated = $request->validate([
+            'name'     => ['required', 'string', 'max:255'],
+            'email'    => ['required', 'email', 'max:255', 'unique:customers,email'],
+            'phone'    => ['required', 'string', 'max:20', 'unique:customers,phone'],
+            'password' => ['required', 'string', 'min:8'],
+        ]);
+
+        $customer = \App\Models\Customer::create($validated);
+
+        Auth::guard('customer')->login($customer);
+        $request->session()->regenerate();
+
+        return response()->json([
+            'success'  => true,
+            'customer' => $customer,
+        ], 201);
+    }
+
     public function logout(Request $request)
     {
         Auth::guard('customer')->logout();

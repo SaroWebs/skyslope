@@ -1,282 +1,285 @@
-import React, { useState, useEffect } from 'react'
-import { Head, usePage, router, Link } from '@inertiajs/react'
-import AdminLayout from '@/layoutes/AdminLayout'
-import { notificationService } from '@/services/notification'
+import React from 'react';
+import { Head, Link, router, usePage } from '@inertiajs/react';
+import AdminLayout from '@/layouts/AdminLayout';
+import { 
+    Table, 
+    Badge, 
+    Text, 
+    Group, 
+    ActionIcon, 
+    Button, 
+    Paper, 
+    Pagination, 
+    Select, 
+    Avatar,
+    Tooltip,
+    Stack,
+    Box,
+    TextInput,
+    Divider,
+    Menu,
+    rem
+} from '@mantine/core';
+import { 
+    Search, 
+    Filter, 
+    Eye, 
+    Car, 
+    MapPin, 
+    Calendar, 
+    Clock, 
+    IndianRupee,
+    User,
+    CheckCircle2,
+    XCircle,
+    MoreVertical,
+    Pencil,
+    Trash,
+    ExternalLink,
+    ArrowRight,
+    Navigation,
+    MoveRight
+} from 'lucide-react';
 
 interface CarRental {
-  id: number
-  booking_number: string
-  customer_name: string
-  customer_email: string
-  customer_phone: string
-  carCategory: {
-    id: number
-    name: string
-    vehicle_type: string
-  }
-  start_date: string
-  end_date: string
-  pickup_location: string
-  dropoff_location: string
-  distance_km: number
-  total_price: number
-  status: string
-  payment_status: string
-  created_at: string
+    id: number;
+    booking_number: string;
+    customer_name: string;
+    customer_email: string;
+    customer_phone: string;
+    carCategory: {
+        id: number;
+        name: string;
+        vehicle_type: string;
+    };
+    start_date: string;
+    end_date: string;
+    pickup_location: string;
+    dropoff_location: string;
+    distance_km: number;
+    total_price: number;
+    status: string;
+    payment_status: string;
+    created_at: string;
 }
 
-interface CarCategory {
-  id: number
-  name: string
-  vehicle_type: string
-  base_price_per_day: number
-  is_active: boolean
+interface CarRentalsProps {
+    title: string;
+    car_rentals: {
+        data: CarRental[];
+        current_page: number;
+        last_page: number;
+        total: number;
+    };
 }
 
-const CarRentals = () => {
-  const { flash } = usePage().props as any
-  const [carRentals, setCarRentals] = useState<CarRental[]>([])
-  const [carCategories, setCarCategories] = useState<CarCategory[]>([])
-  const [loading, setLoading] = useState(true)
-  const [filterStatus, setFilterStatus] = useState('')
+export default function CarRentals({ title, car_rentals }: CarRentalsProps) {
+    const { url } = usePage();
 
-  useEffect(() => {
-    fetchCarRentals()
-    fetchCarCategories()
-  }, [filterStatus])
+    const getStatusProps = (status: string) => {
+        const s = status.toLowerCase();
+        if (s === 'pending') return { color: 'yellow', label: 'Pending' };
+        if (s === 'confirmed') return { color: 'blue', label: 'Confirmed' };
+        if (s === 'in_progress') return { color: 'indigo', label: 'In Progress' };
+        if (s === 'completed') return { color: 'green', label: 'Completed' };
+        if (s === 'cancelled') return { color: 'red', label: 'Cancelled' };
+        return { color: 'gray', label: status };
+    };
 
-  const fetchCarRentals = async () => {
-    try {
-      const params = new URLSearchParams()
-      if (filterStatus) params.append('status', filterStatus)
+    const handleDelete = (id: number) => {
+        if (confirm('Are you sure you want to delete this car rental?')) {
+            router.delete(`/admin/car-rentals/${id}`);
+        }
+    };
 
-      const response = await fetch(`/admin/car-rentals?${params}`)
-      if (!response.ok) throw new Error('Failed to fetch car rentals')
+    const handleFilter = (val: string | null) => {
+        router.get('/admin/car-rentals', { status: val || '' }, { preserveState: true });
+    };
 
-      const data = await response.json()
-      setCarRentals(Array.isArray(data.data) ? data.data : [])
-    } catch (error) {
-      console.error('Error fetching car rentals:', error)
-      setCarRentals([])
-    } finally {
-      setLoading(false)
-    }
-  }
+    return (
+        <AdminLayout title={title}>
+            <Head title="Car Rentals" />
 
-  const fetchCarCategories = async () => {
-    try {
-      const response = await fetch('/api/car-categories')
-      if (!response.ok) throw new Error('Failed to fetch car categories')
+            <Stack gap="lg">
+                <Paper p="xl" radius="md" withBorder>
+                    <Group justify="space-between" mb="xl">
+                        <Group gap="md" style={{ flex: 1 }}>
+                            <TextInput
+                                placeholder="Search by booking # or guest name..."
+                                leftSection={<Search size={16} />}
+                                radius="md"
+                                style={{ flex: 1, maxWidth: 400 }}
+                            />
+                            <Select
+                                placeholder="Status"
+                                data={[
+                                    { value: 'pending', label: 'Pending' },
+                                    { value: 'confirmed', label: 'Confirmed' },
+                                    { value: 'in_progress', label: 'In Progress' },
+                                    { value: 'completed', label: 'Completed' },
+                                    { value: 'cancelled', label: 'Cancelled' },
+                                ]}
+                                value={new URLSearchParams(window.location.search).get('status')}
+                                onChange={handleFilter}
+                                clearable
+                                radius="md"
+                                style={{ width: 200 }}
+                            />
+                        </Group>
+                        <Button 
+                            component={Link} 
+                            href="/admin/car-rentals/create" 
+                            leftSection={<Plus size={16} />}
+                            radius="md"
+                        >
+                            New Rental
+                        </Button>
+                    </Group>
 
-      const data = await response.json()
-      setCarCategories(Array.isArray(data) ? data : [])
-    } catch (error) {
-      console.error('Error fetching car categories:', error)
-      setCarCategories([])
-    }
-  }
+                    <Table.ScrollContainer minWidth={1000}>
+                        <Table verticalSpacing="md" highlightOnHover>
+                            <Table.Thead>
+                                <Table.Tr>
+                                    <Table.Th>Booking & Car</Table.Th>
+                                    <Table.Th>Customer</Table.Th>
+                                    <Table.Th>Trip Logic</Table.Th>
+                                    <Table.Th>Budget & Status</Table.Th>
+                                    <Table.Th />
+                                </Table.Tr>
+                            </Table.Thead>
+                            <Table.Tbody>
+                                {car_rentals.data.map((rental) => {
+                                    const statusProps = getStatusProps(rental.status);
+                                    return (
+                                        <Table.Tr key={rental.id}>
+                                            <Table.Td>
+                                                <Stack gap={2}>
+                                                    <Text size="sm" fw={700}>{rental.booking_number}</Text>
+                                                    <Group gap={6}>
+                                                        <Car size={12} color="var(--mantine-color-blue-6)" />
+                                                        <Text size="xs" fw={600} color="blue">{rental.carCategory?.name}</Text>
+                                                    </Group>
+                                                    <Text size="xs" color="dimmed">{new Date(rental.created_at).toLocaleDateString()}</Text>
+                                                </Stack>
+                                            </Table.Td>
+                                            <Table.Td>
+                                                <Group gap="sm">
+                                                    <Avatar color="blue" radius="xl" size="sm">
+                                                        {rental.customer_name?.charAt(0)}
+                                                    </Avatar>
+                                                    <Stack gap={0}>
+                                                        <Text size="sm" fw={600}>{rental.customer_name}</Text>
+                                                        <Text size="xs" color="dimmed">{rental.customer_phone}</Text>
+                                                    </Stack>
+                                                </Group>
+                                            </Table.Td>
+                                            <Table.Td>
+                                                <Stack gap={4}>
+                                                    <Group gap={6}>
+                                                        <MapPin size={12} color="gray" />
+                                                        <Text size="xs" fw={500} lineClamp={1}>{rental.pickup_location}</Text>
+                                                        <MoveRight size={10} color="gray" />
+                                                        <Text size="xs" fw={500} lineClamp={1}>{rental.dropoff_location || 'Return'}</Text>
+                                                    </Group>
+                                                    <Group gap={12}>
+                                                        <Group gap={4}>
+                                                            <Calendar size={12} color="gray" />
+                                                            <Text size="xs" color="dimmed">
+                                                                {new Date(rental.start_date).toLocaleDateString()} - {new Date(rental.end_date).toLocaleDateString()}
+                                                            </Text>
+                                                        </Group>
+                                                        <Group gap={4}>
+                                                            <Navigation size={12} color="gray" />
+                                                            <Text size="xs" color="dimmed">{rental.distance_km} km</Text>
+                                                        </Group>
+                                                    </Group>
+                                                </Stack>
+                                            </Table.Td>
+                                            <Table.Td>
+                                                <Stack gap={4}>
+                                                    <Group gap={4}>
+                                                        <IndianRupee size={14} />
+                                                        <Text size="sm" fw={700}>{parseFloat(rental.total_price.toString()).toLocaleString()}</Text>
+                                                    </Group>
+                                                    <Group gap={4}>
+                                                        <Badge variant="light" color={statusProps.color} size="xs" radius="sm">
+                                                            {statusProps.label}
+                                                        </Badge>
+                                                        <Badge variant="outline" color={rental.payment_status === 'paid' ? 'green' : 'gray'} size="xs" radius="sm">
+                                                            {rental.payment_status}
+                                                        </Badge>
+                                                    </Group>
+                                                </Stack>
+                                            </Table.Td>
+                                            <Table.Td>
+                                                <Group gap={4} justify="flex-end">
+                                                    <Tooltip label="View Details">
+                                                        <ActionIcon 
+                                                            variant="light" 
+                                                            color="blue" 
+                                                            component={Link} 
+                                                            href={`/admin/car-rentals/${rental.id}`}
+                                                        >
+                                                            <Eye size={16} />
+                                                        </ActionIcon>
+                                                    </Tooltip>
+                                                    <Tooltip label="Edit Rental">
+                                                        <ActionIcon 
+                                                            variant="light" 
+                                                            color="yellow" 
+                                                            component={Link} 
+                                                            href={`/admin/car-rentals/${rental.id}/edit`}
+                                                        >
+                                                            <Pencil size={16} />
+                                                        </ActionIcon>
+                                                    </Tooltip>
+                                                    <Menu shadow="md" width={180} position="bottom-end">
+                                                        <Menu.Target>
+                                                            <ActionIcon variant="subtle" color="gray">
+                                                                <MoreVertical size={16} />
+                                                            </ActionIcon>
+                                                        </Menu.Target>
+                                                        <Menu.Dropdown>
+                                                            <Menu.Label>Danger Zone</Menu.Label>
+                                                            <Menu.Item 
+                                                                color="red" 
+                                                                leftSection={<Trash size={14} />}
+                                                                onClick={() => handleDelete(rental.id)}
+                                                            >
+                                                                Delete Rental
+                                                            </Menu.Item>
+                                                        </Menu.Dropdown>
+                                                    </Menu>
+                                                </Group>
+                                            </Table.Td>
+                                        </Table.Tr>
+                                    );
+                                })}
+                            </Table.Tbody>
+                        </Table>
+                    </Table.ScrollContainer>
 
-  const getStatusBadge = (status: string) => {
-    const badges = {
-      pending: 'bg-yellow-100 text-yellow-800',
-      confirmed: 'bg-blue-100 text-blue-800',
-      in_progress: 'bg-green-100 text-green-800',
-      completed: 'bg-gray-100 text-gray-800',
-      cancelled: 'bg-red-100 text-red-800',
-    }
-    return badges[status as keyof typeof badges] || 'bg-gray-100 text-gray-800'
-  }
-
-  const getPaymentStatusBadge = (status: string) => {
-    const badges = {
-      pending: 'bg-yellow-100 text-yellow-800',
-      paid: 'bg-green-100 text-green-800',
-      failed: 'bg-red-100 text-red-800',
-      refunded: 'bg-gray-100 text-gray-800',
-    }
-    return badges[status as keyof typeof badges] || 'bg-gray-100 text-gray-800'
-  }
-
-  const handleDelete = (id: number) => {
-    if (confirm('Are you sure you want to delete this car rental? This action cannot be undone.')) {
-      router.delete(`/admin/car-rentals/${id}`)
-    }
-  }
-
-  return (
-    <AdminLayout>
-      <Head>
-        <title>Car Rentals Management - Admin</title>
-      </Head>
-
-      <div className="container mx-auto px-4 py-8">
-        <div className="flex justify-between items-center mb-6">
-          <div>
-            <h1 className="text-3xl font-bold text-gray-900">Car Rentals</h1>
-            <p className="text-gray-600 mt-1">Manage car rental bookings and extras</p>
-          </div>
-          <Link
-            href="/admin/car-rentals/create"
-            className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-medium transition-colors inline-block"
-          >
-            Add New Rental
-          </Link>
-        </div>
-
-        {/* Filters */}
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 mb-6">
-          <div className="flex flex-wrap gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Filter by Status</label>
-              <select
-                value={filterStatus}
-                onChange={(e) => setFilterStatus(e.target.value)}
-                className="border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-              >
-                <option value="">All Status</option>
-                <option value="pending">Pending</option>
-                <option value="confirmed">Confirmed</option>
-                <option value="in_progress">In Progress</option>
-                <option value="completed">Completed</option>
-                <option value="cancelled">Cancelled</option>
-              </select>
-            </div>
-          </div>
-        </div>
-
-        {/* Car Rentals Table */}
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
-          {loading ? (
-            <div className="flex items-center justify-center py-12">
-              <div className="w-8 h-8 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin"></div>
-              <span className="ml-3 text-gray-600">Loading car rentals...</span>
-            </div>
-          ) : carRentals.length > 0 ? (
-            <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-gray-200">
-                <thead className="bg-gray-50">
-                  <tr>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Booking Details
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Customer
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Trip Details
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Pricing
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Status
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Actions
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="bg-white divide-y divide-gray-200">
-                  {carRentals.map((rental) => (
-                    <tr key={rental.id} className="hover:bg-gray-50">
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div>
-                          <div className="text-sm font-medium text-gray-900">
-                            {rental.booking_number}
-                          </div>
-                          <div className="text-sm text-gray-500">
-                            {rental.carCategory.name}
-                          </div>
-                          <div className="text-xs text-gray-400">
-                            {new Date(rental.created_at).toLocaleDateString()}
-                          </div>
-                        </div>
-                      </td>
-                      <td className="px-6 py-4">
-                        <div>
-                          <div className="text-sm font-medium text-gray-900">
-                            {rental.customer_name}
-                          </div>
-                          <div className="text-sm text-gray-500">
-                            {rental.customer_email}
-                          </div>
-                          <div className="text-sm text-gray-500">
-                            {rental.customer_phone}
-                          </div>
-                        </div>
-                      </td>
-                      <td className="px-6 py-4">
-                        <div className="text-sm text-gray-900">
-                          <div><strong>From:</strong> {rental.pickup_location}</div>
-                          <div><strong>To:</strong> {rental.dropoff_location || 'Same as pickup'}</div>
-                          <div><strong>Distance:</strong> {rental.distance_km} km</div>
-                          <div><strong>Dates:</strong> {new Date(rental.start_date).toLocaleDateString()} - {new Date(rental.end_date).toLocaleDateString()}</div>
-                        </div>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="text-sm font-medium text-gray-900">
-                          ₹{rental.total_price}
-                        </div>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div>
-                          <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${getStatusBadge(rental.status)}`}>
-                            {rental.status.replace('_', ' ')}
-                          </span>
-                          <div className="mt-1">
-                            <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${getPaymentStatusBadge(rental.payment_status)}`}>
-                              {rental.payment_status}
-                            </span>
-                          </div>
-                        </div>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                        <div className="flex space-x-2">
-                          <Link
-                            href={`/admin/car-rentals/${rental.id}`}
-                            className="text-blue-600 hover:text-blue-900"
-                          >
-                            View
-                          </Link>
-                          <Link
-                            href={`/admin/car-rentals/${rental.id}/edit`}
-                            className="text-yellow-600 hover:text-yellow-900"
-                          >
-                            Edit
-                          </Link>
-                          <button
-                            onClick={() => handleDelete(rental.id)}
-                            className="text-red-600 hover:text-red-900"
-                          >
-                            Delete
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          ) : (
-            <div className="text-center py-12">
-              <svg className="w-12 h-12 text-gray-400 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-              </svg>
-              <h3 className="text-lg font-medium text-gray-900 mb-2">No car rentals found</h3>
-              <p className="text-gray-600">Get started by creating your first car rental booking.</p>
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Success Message */}
-      {flash?.success && (
-        <div className="fixed top-4 right-4 bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded-lg shadow-lg">
-          {flash.success}
-        </div>
-      )}
-    </AdminLayout>
-  )
+                    {car_rentals.data.length === 0 ? (
+                        <Stack align="center" py={60}>
+                            <Car size={48} strokeWidth={1} color="gray" />
+                            <Text color="dimmed" mt="md">No car rentals found. Expand your search or add a new booking.</Text>
+                        </Stack>
+                    ) : (
+                        <Group justify="space-between" mt="xl">
+                            <Text size="sm" color="dimmed">
+                                Showing {car_rentals.data.length} of {car_rentals.total} rentals
+                            </Text>
+                            <Pagination 
+                                total={car_rentals.last_page} 
+                                value={car_rentals.current_page} 
+                                onChange={(page) => router.get(`${url}?page=${page}`)}
+                                radius="md"
+                                color="blue"
+                            />
+                        </Group>
+                    )}
+                </Paper>
+            </Stack>
+        </AdminLayout>
+    );
 }
-
-export default CarRentals

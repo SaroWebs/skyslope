@@ -1,21 +1,51 @@
 import React from 'react';
-import { Link, usePage } from '@inertiajs/react';
-import AdminLayout from '../../layoutes/AdminLayout';
+import { Head, Link, usePage } from '@inertiajs/react';
+import AdminLayout from '../../layouts/AdminLayout';
+import { 
+    Table, 
+    Badge, 
+    Text, 
+    Group, 
+    ActionIcon, 
+    Button, 
+    Paper, 
+    Pagination, 
+    Tooltip,
+    Stack,
+    Box,
+    Avatar,
+    TextInput,
+    Select,
+    Divider
+} from '@mantine/core';
+import { 
+    Search, 
+    Filter, 
+    Eye, 
+    Pencil, 
+    Check, 
+    X, 
+    ExternalLink,
+    IndianRupee,
+    Calendar,
+    Hash
+} from 'lucide-react';
 
 interface Booking {
     id: number;
     booking_number: string;
     status: string;
-    total_amount: number;
+    total_price: number;
     created_at: string;
-    user: {
+    travel_date: string;
+    customer: {
         id: number;
         name: string;
         email: string;
     };
     tour: {
         id: number;
-        name: string;
+        title: string;
     };
 }
 
@@ -35,147 +65,131 @@ export default function Bookings({ title, bookings }: BookingsProps) {
 
     const getStatusColor = (status: string) => {
         switch (status.toLowerCase()) {
-            case 'confirmed':
-                return 'bg-green-100 text-green-800';
-            case 'pending':
-                return 'bg-yellow-100 text-yellow-800';
-            case 'cancelled':
-                return 'bg-red-100 text-red-800';
-            default:
-                return 'bg-gray-100 text-gray-800';
+            case 'confirmed': return 'green';
+            case 'pending': return 'yellow';
+            case 'cancelled': return 'red';
+            case 'completed': return 'blue';
+            default: return 'gray';
         }
     };
 
     return (
         <AdminLayout title={title}>
-            <div className="bg-white shadow rounded-lg">
-                <div className="px-4 py-5 sm:p-6">
-                    <div className="flex justify-between items-center mb-6">
-                        <h2 className="text-lg font-medium text-gray-900">Bookings Management</h2>
-                        <div className="flex space-x-2">
-                            <select className="border border-gray-300 rounded-md px-3 py-2 text-sm">
-                                <option>All Status</option>
-                                <option>Pending</option>
-                                <option>Confirmed</option>
-                                <option>Cancelled</option>
-                            </select>
-                        </div>
-                    </div>
+            <Head title="Tour Bookings" />
 
-                    <div className="overflow-x-auto">
-                        <table className="min-w-full divide-y divide-gray-200">
-                            <thead className="bg-gray-50">
-                                <tr>
-                                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                        Booking #
-                                    </th>
-                                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                        Customer
-                                    </th>
-                                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                        Tour
-                                    </th>
-                                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                        Amount
-                                    </th>
-                                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                        Status
-                                    </th>
-                                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                        Date
-                                    </th>
-                                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                        Actions
-                                    </th>
-                                </tr>
-                            </thead>
-                            <tbody className="bg-white divide-y divide-gray-200">
+            <Stack gap="lg">
+                <Paper p="xl" radius="md" withBorder>
+                    <Group justify="space-between" mb="xl">
+                        <Group gap="md" style={{ flex: 1 }}>
+                            <TextInput
+                                placeholder="Search by booking # or customer..."
+                                leftSection={<Search size={16} />}
+                                radius="md"
+                                style={{ flex: 1, maxWidth: 400 }}
+                            />
+                            <Select
+                                placeholder="Status"
+                                data={['All', 'Pending', 'Confirmed', 'Cancelled']}
+                                radius="md"
+                                defaultValue="All"
+                                style={{ width: 150 }}
+                            />
+                        </Group>
+                        <Button variant="light" leftSection={<Filter size={16} />}>Advanced Filters</Button>
+                    </Group>
+
+                    <Table.ScrollContainer minWidth={800}>
+                        <Table verticalSpacing="md" highlightOnHover>
+                            <Table.Thead>
+                                <Table.Tr>
+                                    <Table.Th>Booking Info</Table.Th>
+                                    <Table.Th>Customer</Table.Th>
+                                    <Table.Th>Tour</Table.Th>
+                                    <Table.Th>Amount</Table.Th>
+                                    <Table.Th>Status</Table.Th>
+                                    <Table.Th>Travel Date</Table.Th>
+                                    <Table.Th />
+                                </Table.Tr>
+                            </Table.Thead>
+                            <Table.Tbody>
                                 {bookings.data.map((booking) => (
-                                    <tr key={booking.id}>
-                                        <td className="px-6 py-4 whitespace-nowrap">
-                                            <div className="text-sm font-medium text-gray-900">{booking.booking_number}</div>
-                                        </td>
-                                        <td className="px-6 py-4 whitespace-nowrap">
-                                            <div className="text-sm font-medium text-gray-900">{booking.user.name}</div>
-                                            <div className="text-sm text-gray-500">{booking.user.email}</div>
-                                        </td>
-                                        <td className="px-6 py-4 whitespace-nowrap">
-                                            <div className="text-sm text-gray-900">{booking.tour.name}</div>
-                                        </td>
-                                        <td className="px-6 py-4 whitespace-nowrap">
-                                            <div className="text-sm font-medium text-gray-900">${booking.total_amount}</div>
-                                        </td>
-                                        <td className="px-6 py-4 whitespace-nowrap">
-                                            <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusColor(booking.status)}`}>
-                                                {booking.status}
-                                            </span>
-                                        </td>
-                                        <td className="px-6 py-4 whitespace-nowrap">
-                                            <div className="text-sm text-gray-500">
-                                                {new Date(booking.created_at).toLocaleDateString()}
-                                            </div>
-                                        </td>
-                                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                                            <div className="flex space-x-2">
-                                                <Link
-                                                    href={`/admin/bookings/${booking.id}`}
-                                                    className="text-indigo-600 hover:text-indigo-900"
-                                                >
-                                                    View
-                                                </Link>
-                                                <Link
-                                                    href={`/admin/bookings/${booking.id}/edit`}
-                                                    className="text-yellow-600 hover:text-yellow-900"
-                                                >
-                                                    Edit
-                                                </Link>
+                                    <Table.Tr key={booking.id}>
+                                        <Table.Td>
+                                            <Group gap="xs">
+                                                <Hash size={14} color="gray" />
+                                                <Text size="sm" fw={700}>{booking.booking_number}</Text>
+                                            </Group>
+                                        </Table.Td>
+                                        <Table.Td>
+                                            <Group gap="sm">
+                                                <Avatar color="blue" radius="xl" size="sm">{booking.customer?.name.charAt(0)}</Avatar>
+                                                <Stack gap={0}>
+                                                    <Text size="sm" fw={500}>{booking.customer?.name}</Text>
+                                                    <Text size="xs" color="dimmed">{booking.customer?.email}</Text>
+                                                </Stack>
+                                            </Group>
+                                        </Table.Td>
+                                        <Table.Td>
+                                            <Text size="sm" fw={500} lineClamp={1}>{booking.tour?.title}</Text>
+                                        </Table.Td>
+                                        <Table.Td>
+                                            <Group gap={4}>
+                                                <IndianRupee size={14} />
+                                                <Text size="sm" fw={700}>{parseFloat(booking.total_price.toString()).toLocaleString()}</Text>
+                                            </Group>
+                                        </Table.Td>
+                                        <Table.Td>
+                                            <Badge variant="light" color={getStatusColor(booking.status)} radius="sm">
+                                                {booking.status.toUpperCase()}
+                                            </Badge>
+                                        </Table.Td>
+                                        <Table.Td>
+                                            <Group gap={4}>
+                                                <Calendar size={12} color="gray" />
+                                                <Text size="xs">{new Date(booking.travel_date).toLocaleDateString()}</Text>
+                                            </Group>
+                                        </Table.Td>
+                                        <Table.Td>
+                                            <Group gap={4} justify="flex-end">
+                                                <Tooltip label="View Details">
+                                                    <ActionIcon variant="light" color="blue" component={Link} href={`/admin/bookings/${booking.id}`}>
+                                                        <Eye size={16} />
+                                                    </ActionIcon>
+                                                </Tooltip>
                                                 {booking.status.toLowerCase() === 'pending' && (
-                                                    <button className="text-green-600 hover:text-green-900">
-                                                        Confirm
-                                                    </button>
+                                                    <Tooltip label="Quick Confirm">
+                                                        <ActionIcon variant="light" color="green">
+                                                            <Check size={16} />
+                                                        </ActionIcon>
+                                                    </Tooltip>
                                                 )}
-                                            </div>
-                                        </td>
-                                    </tr>
+                                            </Group>
+                                        </Table.Td>
+                                    </Table.Tr>
                                 ))}
-                            </tbody>
-                        </table>
-                    </div>
+                            </Table.Tbody>
+                        </Table>
+                    </Table.ScrollContainer>
 
-                    {bookings.data.length === 0 && (
-                        <div className="text-center py-12">
-                            <div className="text-gray-500">No bookings found.</div>
-                        </div>
+                    {bookings.data.length === 0 ? (
+                        <Stack align="center" py="xl">
+                            <Text color="dimmed">No bookings found for the selected filters.</Text>
+                        </Stack>
+                    ) : (
+                        <Group justify="space-between" mt="xl">
+                            <Text size="sm" color="dimmed">
+                                Showing {bookings.data.length} of {bookings.total} bookings
+                            </Text>
+                            <Pagination 
+                                total={bookings.last_page} 
+                                value={bookings.current_page} 
+                                onChange={(page) => router.get(`${url}?page=${page}`)}
+                                radius="md"
+                            />
+                        </Group>
                     )}
-
-                    {/* Pagination */}
-                    {bookings.last_page > 1 && (
-                        <div className="mt-6 flex items-center justify-between">
-                            <div className="text-sm text-gray-700">
-                                Showing {((bookings.current_page - 1) * bookings.per_page) + 1} to {Math.min(bookings.current_page * bookings.per_page, bookings.total)} of {bookings.total} results
-                            </div>
-                            <div className="flex space-x-2">
-                                {bookings.current_page > 1 && (
-                                    <Link
-                                        href={`${url}?page=${bookings.current_page - 1}`}
-                                        className="px-3 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50"
-                                    >
-                                        Previous
-                                    </Link>
-                                )}
-                                {bookings.current_page < bookings.last_page && (
-                                    <Link
-                                        href={`${url}?page=${bookings.current_page + 1}`}
-                                        className="px-3 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50"
-                                    >
-                                        Next
-                                    </Link>
-                                )}
-                            </div>
-                        </div>
-                    )}
-                </div>
-            </div>
+                </Paper>
+            </Stack>
         </AdminLayout>
     );
 }

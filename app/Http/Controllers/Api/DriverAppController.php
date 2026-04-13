@@ -32,7 +32,7 @@ class DriverAppController extends Controller
                     ->whereIn('status', ['pending', 'confirmed'])
                     ->count(),
             ],
-            'recent_rides' => RideBooking::with('user:id,name,phone')
+            'recent_rides' => RideBooking::with('customer:id,name,phone')
                 ->where('driver_id', $driver->id)
                 ->latest()
                 ->take(5)
@@ -57,6 +57,19 @@ class DriverAppController extends Controller
         return response()->json([
             'success' => true,
             'data' => $availability,
+        ]);
+    }
+
+    public function history(Request $request)
+    {
+        $rides = RideBooking::with(['customer:id,name,phone'])
+            ->where('driver_id', $request->user()->id)
+            ->latest()
+            ->paginate(20);
+
+        return response()->json([
+            'success' => true,
+            'data' => $rides,
         ]);
     }
 }

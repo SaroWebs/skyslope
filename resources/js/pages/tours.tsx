@@ -1,4 +1,4 @@
-import WebsiteLayout from '@/layoutes/WebsiteLayout'
+import WebsiteLayout from '@/layouts/WebsiteLayout'
 import { Head } from '@inertiajs/react'
 import React from 'react'
 import { Tour } from '@/types'

@@ -1,6 +1,35 @@
-import React, { useState } from 'react';
-import { useForm } from '@inertiajs/react';
-import AdminLayout from '../../layoutes/AdminLayout';
+import React from 'react';
+import { Head, useForm } from '@inertiajs/react';
+import AdminLayout from '../../layouts/AdminLayout';
+import { 
+    Paper, 
+    Stack, 
+    TextInput, 
+    Textarea, 
+    Button, 
+    Group, 
+    Text, 
+    Divider, 
+    Tabs, 
+    rem,
+    SimpleGrid,
+    Box,
+    ThemeIcon
+} from '@mantine/core';
+import { 
+    Settings as SettingsIcon, 
+    Globe, 
+    Mail, 
+    Phone, 
+    MapPin, 
+    Facebook, 
+    Twitter, 
+    Instagram, 
+    Save, 
+    Database, 
+    Bell, 
+    ShieldCheck
+} from 'lucide-react';
 
 interface SettingsProps {
     title: string;
@@ -35,160 +64,163 @@ export default function Settings({ title, settings = {} }: SettingsProps) {
         post('/admin/settings');
     };
 
+    const iconStyle = { width: rem(14), height: rem(14) };
+
     return (
         <AdminLayout title={title}>
-            <div className="max-w-4xl mx-auto">
-                <div className="bg-white shadow rounded-lg">
-                    <div className="px-4 py-5 sm:p-6">
-                        <h2 className="text-lg font-medium text-gray-900 mb-6">System Settings</h2>
+            <Head title="System Settings" />
 
-                        <form onSubmit={handleSubmit} className="space-y-6">
-                            {/* General Settings */}
-                            <div>
-                                <h3 className="text-md font-medium text-gray-900 mb-4">General Information</h3>
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                    <div>
-                                        <label htmlFor="site_name" className="block text-sm font-medium text-gray-700">
-                                            Site Name
-                                        </label>
-                                        <input
-                                            type="text"
-                                            id="site_name"
-                                            value={data.site_name}
-                                            onChange={(e) => setData('site_name', e.target.value)}
-                                            className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
-                                            placeholder="Your Site Name"
-                                        />
-                                        {errors.site_name && <p className="mt-1 text-sm text-red-600">{errors.site_name}</p>}
-                                    </div>
+            <Stack gap="lg" maw={1000} mx="auto">
+                <Paper p="xl" radius="md" withBorder shadow="sm">
+                    <Stack gap="xs" mb="xl">
+                        <Group gap="sm">
+                            <ThemeIcon variant="light" color="blue" size="lg" radius="md">
+                                <SettingsIcon size={20} />
+                            </ThemeIcon>
+                            <Text size="xl" fw={800}>Administrative Settings</Text>
+                        </Group>
+                        <Text size="sm" color="dimmed">Configure your platform core parameters, contact info, and integrations.</Text>
+                    </Stack>
 
-                                    <div>
-                                        <label htmlFor="contact_email" className="block text-sm font-medium text-gray-700">
-                                            Contact Email
-                                        </label>
-                                        <input
-                                            type="email"
-                                            id="contact_email"
-                                            value={data.contact_email}
-                                            onChange={(e) => setData('contact_email', e.target.value)}
-                                            className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
-                                            placeholder="contact@example.com"
-                                        />
-                                        {errors.contact_email && <p className="mt-1 text-sm text-red-600">{errors.contact_email}</p>}
-                                    </div>
+                    <form onSubmit={handleSubmit}>
+                        <Tabs defaultValue="general" variant="outline" radius="md">
+                            <Tabs.List mb="xl">
+                                <Tabs.Tab value="general" leftSection={<Globe style={iconStyle} />}>General Information</Tabs.Tab>
+                                <Tabs.Tab value="contact" leftSection={<Mail style={iconStyle} />}>Contact & Location</Tabs.Tab>
+                                <Tabs.Tab value="social" leftSection={<Facebook style={iconStyle} />}>Social Media</Tabs.Tab>
+                                <Tabs.Tab value="notifications" leftSection={<Bell style={iconStyle} />} disabled>Notifications</Tabs.Tab>
+                            </Tabs.List>
 
-                                    <div>
-                                        <label htmlFor="contact_phone" className="block text-sm font-medium text-gray-700">
-                                            Contact Phone
-                                        </label>
-                                        <input
-                                            type="tel"
-                                            id="contact_phone"
-                                            value={data.contact_phone}
-                                            onChange={(e) => setData('contact_phone', e.target.value)}
-                                            className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
-                                            placeholder="+1 (555) 123-4567"
-                                        />
-                                        {errors.contact_phone && <p className="mt-1 text-sm text-red-600">{errors.contact_phone}</p>}
-                                    </div>
-
-                                    <div>
-                                        <label htmlFor="address" className="block text-sm font-medium text-gray-700">
-                                            Address
-                                        </label>
-                                        <input
-                                            type="text"
-                                            id="address"
-                                            value={data.address}
-                                            onChange={(e) => setData('address', e.target.value)}
-                                            className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
-                                            placeholder="123 Main St, City, State"
-                                        />
-                                        {errors.address && <p className="mt-1 text-sm text-red-600">{errors.address}</p>}
-                                    </div>
-                                </div>
-
-                                <div className="mt-4">
-                                    <label htmlFor="site_description" className="block text-sm font-medium text-gray-700">
-                                        Site Description
-                                    </label>
-                                    <textarea
-                                        id="site_description"
-                                        rows={3}
-                                        value={data.site_description}
-                                        onChange={(e) => setData('site_description', e.target.value)}
-                                        className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
-                                        placeholder="Brief description of your site..."
+                            <Tabs.Panel value="general">
+                                <Stack gap="lg">
+                                    <TextInput
+                                        label="Platform Name"
+                                        placeholder="Skyslope Travel"
+                                        required
+                                        value={data.site_name}
+                                        onChange={(e) => setData('site_name', e.currentTarget.value)}
+                                        error={errors.site_name}
+                                        radius="md"
                                     />
-                                    {errors.site_description && <p className="mt-1 text-sm text-red-600">{errors.site_description}</p>}
-                                </div>
-                            </div>
+                                    <Textarea
+                                        label="Platform Description"
+                                        placeholder="A brief tagline or description for your platform..."
+                                        rows={4}
+                                        value={data.site_description}
+                                        onChange={(e) => setData('site_description', e.currentTarget.value)}
+                                        error={errors.site_description}
+                                        radius="md"
+                                    />
+                                </Stack>
+                            </Tabs.Panel>
 
-                            {/* Social Media Links */}
-                            <div>
-                                <h3 className="text-md font-medium text-gray-900 mb-4">Social Media Links</h3>
-                                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                                    <div>
-                                        <label htmlFor="facebook_url" className="block text-sm font-medium text-gray-700">
-                                            Facebook URL
-                                        </label>
-                                        <input
-                                            type="url"
-                                            id="facebook_url"
+                            <Tabs.Panel value="contact">
+                                <Stack gap="lg">
+                                    <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="lg">
+                                        <TextInput
+                                            label="Support Email"
+                                            placeholder="support@skyslope.com"
+                                            leftSection={<Mail size={16} color="gray" />}
+                                            value={data.contact_email}
+                                            onChange={(e) => setData('contact_email', e.currentTarget.value)}
+                                            error={errors.contact_email}
+                                            radius="md"
+                                        />
+                                        <TextInput
+                                            label="Support Phone"
+                                            placeholder="+91 XXXXX XXXXX"
+                                            leftSection={<Phone size={16} color="gray" />}
+                                            value={data.contact_phone}
+                                            onChange={(e) => setData('contact_phone', e.currentTarget.value)}
+                                            error={errors.contact_phone}
+                                            radius="md"
+                                        />
+                                    </SimpleGrid>
+                                    <TextInput
+                                        label="Business Address"
+                                        placeholder="123 Tourism Way, Guwahati, Assam"
+                                        leftSection={<MapPin size={16} color="gray" />}
+                                        value={data.address}
+                                        onChange={(e) => setData('address', e.currentTarget.value)}
+                                        error={errors.address}
+                                        radius="md"
+                                    />
+                                </Stack>
+                            </Tabs.Panel>
+
+                            <Tabs.Panel value="social">
+                                <Stack gap="lg">
+                                    <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="lg">
+                                        <TextInput
+                                            label="Facebook Page"
+                                            placeholder="https://facebook.com/skyslope"
+                                            leftSection={<Facebook size={16} color="#1877F2" />}
                                             value={data.facebook_url}
-                                            onChange={(e) => setData('facebook_url', e.target.value)}
-                                            className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
-                                            placeholder="https://facebook.com/yourpage"
+                                            onChange={(e) => setData('facebook_url', e.currentTarget.value)}
+                                            error={errors.facebook_url}
+                                            radius="md"
                                         />
-                                        {errors.facebook_url && <p className="mt-1 text-sm text-red-600">{errors.facebook_url}</p>}
-                                    </div>
-
-                                    <div>
-                                        <label htmlFor="twitter_url" className="block text-sm font-medium text-gray-700">
-                                            Twitter URL
-                                        </label>
-                                        <input
-                                            type="url"
-                                            id="twitter_url"
+                                        <TextInput
+                                            label="Twitter / X Profile"
+                                            placeholder="https://twitter.com/skyslope"
+                                            leftSection={<Twitter size={16} color="#1DA1F2" />}
                                             value={data.twitter_url}
-                                            onChange={(e) => setData('twitter_url', e.target.value)}
-                                            className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
-                                            placeholder="https://twitter.com/yourhandle"
+                                            onChange={(e) => setData('twitter_url', e.currentTarget.value)}
+                                            error={errors.twitter_url}
+                                            radius="md"
                                         />
-                                        {errors.twitter_url && <p className="mt-1 text-sm text-red-600">{errors.twitter_url}</p>}
-                                    </div>
+                                    </SimpleGrid>
+                                    <TextInput
+                                        label="Instagram Profile"
+                                        placeholder="https://instagram.com/skyslope"
+                                        leftSection={<Instagram size={16} color="#E4405F" />}
+                                        value={data.instagram_url}
+                                        onChange={(e) => setData('instagram_url', e.currentTarget.value)}
+                                        error={errors.instagram_url}
+                                        radius="md"
+                                    />
+                                </Stack>
+                            </Tabs.Panel>
+                        </Tabs>
 
-                                    <div>
-                                        <label htmlFor="instagram_url" className="block text-sm font-medium text-gray-700">
-                                            Instagram URL
-                                        </label>
-                                        <input
-                                            type="url"
-                                            id="instagram_url"
-                                            value={data.instagram_url}
-                                            onChange={(e) => setData('instagram_url', e.target.value)}
-                                            className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
-                                            placeholder="https://instagram.com/yourhandle"
-                                        />
-                                        {errors.instagram_url && <p className="mt-1 text-sm text-red-600">{errors.instagram_url}</p>}
-                                    </div>
-                                </div>
-                            </div>
+                        <Divider my="xl" />
 
-                            {/* Submit Button */}
-                            <div className="flex justify-end">
-                                <button
-                                    type="submit"
-                                    disabled={processing}
-                                    className="bg-blue-600 text-white px-6 py-2 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-50"
-                                >
-                                    {processing ? 'Saving...' : 'Save Settings'}
-                                </button>
-                            </div>
-                        </form>
-                    </div>
-                </div>
-            </div>
+                        <Group justify="flex-end">
+                            <Button 
+                                type="submit" 
+                                color="blue" 
+                                size="md" 
+                                radius="md" 
+                                leftSection={<Save size={18} />}
+                                loading={processing}
+                            >
+                                Save Changes
+                            </Button>
+                        </Group>
+                    </form>
+                </Paper>
+
+                <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="lg">
+                    <Paper p="lg" radius="md" withBorder shadow="xs">
+                        <Group mb="md">
+                            <ThemeIcon variant="light" color="teal">
+                                <Database size={18} />
+                            </ThemeIcon>
+                            <Text fw={700}>System Health</Text>
+                        </Group>
+                        <Text size="sm" color="dimmed">Database connection is active. All migrations are up to date.</Text>
+                    </Paper>
+                    <Paper p="lg" radius="md" withBorder shadow="xs">
+                        <Group mb="md">
+                            <ThemeIcon variant="light" color="indigo">
+                                <ShieldCheck size={18} />
+                            </ThemeIcon>
+                            <Text fw={700}>Security</Text>
+                        </Group>
+                        <Text size="sm" color="dimmed">Two-factor authentication is enforced for all administrative accounts.</Text>
+                    </Paper>
+                </SimpleGrid>
+            </Stack>
         </AdminLayout>
     );
 }

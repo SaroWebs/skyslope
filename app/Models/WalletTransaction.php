@@ -2,70 +2,36 @@
 
 namespace App\Models;
 
-use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class WalletTransaction extends Model
 {
-    use HasFactory;
+    protected $table = 'wallet_transactions';
 
     protected $fillable = [
         'wallet_id',
-        'transaction_type',
+        'type',
         'amount',
-        'description',
+        'balance_before',
+        'balance_after',
+        'reference_type',
         'reference_id',
+        'description',
         'status',
     ];
 
     protected $casts = [
-        'amount' => 'decimal:2',
-        'reference_id' => 'string',
+        'amount'         => 'decimal:2',
+        'balance_before' => 'decimal:2',
+        'balance_after'  => 'decimal:2',
     ];
 
     public function wallet(): BelongsTo
     {
-        return $this->belongsTo(Wallet::class);
+        return $this->belongsTo(Wallet::class, 'wallet_id');
     }
 
-    /**
-     * Get transaction types
-     */
-    public static function getTransactionTypes(): array
-    {
-        return ['credit', 'debit', 'commission', 'topup', 'withdrawal'];
-    }
-
-    /**
-     * Get transaction statuses
-     */
-    public static function getStatuses(): array
-    {
-        return ['pending', 'completed', 'failed'];
-    }
-
-    /**
-     * Check if transaction is completed
-     */
-    public function isCompleted(): bool
-    {
-        return $this->status === 'completed';
-    }
-
-    /**
-     * Check if transaction is pending
-     */
-    public function isPending(): bool
-    {
-        return $this->status === 'pending';
-    }
-
-    /**
-     * Check if transaction failed
-     */
-    public function isFailed(): bool
-    {
-        return $this->status === 'failed';
-    }
+    public function isCredit(): bool { return $this->type === 'credit'; }
+    public function isDebit(): bool  { return $this->type === 'debit'; }
 }

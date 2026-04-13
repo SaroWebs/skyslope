@@ -1,6 +1,6 @@
 import React from 'react';
 import { Link, useForm } from '@inertiajs/react';
-import AdminLayout from '@/layoutes/AdminLayout';
+import AdminLayout from '@/layouts/AdminLayout';
 
 interface Destination {
     id: number;

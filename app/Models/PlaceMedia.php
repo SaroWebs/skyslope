@@ -7,18 +7,25 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class PlaceMedia extends Model
 {
+    protected $table = 'place_media';
+
     protected $fillable = [
         'place_id',
-        'file_path',
-        'file_type',
-        'description',
+        'path',
+        'type',
+        'caption',
+        'sort_order',
     ];
 
-    /**
-     * Get the place that owns the media.
-     */
+    protected $casts = [
+        'sort_order' => 'integer',
+    ];
+
     public function place(): BelongsTo
     {
-        return $this->belongsTo(Place::class);
+        return $this->belongsTo(Place::class, 'place_id');
     }
+
+    public function isImage(): bool { return $this->type === 'image'; }
+    public function isVideo(): bool { return $this->type === 'video'; }
 }

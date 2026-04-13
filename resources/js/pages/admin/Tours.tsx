@@ -1,6 +1,37 @@
 import React from 'react';
-import { Link, usePage } from '@inertiajs/react';
-import AdminLayout from '../../layoutes/AdminLayout';
+import { Head, Link, usePage } from '@inertiajs/react';
+import AdminLayout from '../../layouts/AdminLayout';
+import { 
+    Table, 
+    Badge, 
+    Text, 
+    Group, 
+    ActionIcon, 
+    Button, 
+    Paper, 
+    Pagination, 
+    Tooltip,
+    Stack,
+    Box,
+    SimpleGrid,
+    Card,
+    Image,
+    Divider,
+    Avatar
+} from '@mantine/core';
+import { 
+    Plus, 
+    Eye, 
+    Pencil, 
+    Calendar, 
+    Users, 
+    MapPin, 
+    Clock, 
+    IndianRupee,
+    ChevronRight,
+    Search,
+    Filter
+} from 'lucide-react';
 
 interface Tour {
     id: number;
@@ -19,7 +50,7 @@ interface Tour {
     }>;
     drivers: Array<{
         id: number;
-        user: {
+        driver: {
             id: number;
             name: string;
         };
@@ -39,143 +70,146 @@ interface ToursProps {
 
 export default function Tours({ title, tours }: ToursProps) {
     const { url } = usePage();
-    console.log(tours);
 
     return (
         <AdminLayout title={title}>
-            <div className="bg-white shadow rounded-lg">
-                <div className="px-4 py-5 sm:p-6">
-                    <div className="flex justify-between items-center mb-6">
-                        <h2 className="text-lg font-medium text-gray-900">Tours Management</h2>
-                        <Link
-                            href="/admin/tours/create"
-                            className="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 text-sm font-medium"
+            <Head title="Tour Management" />
+
+            <Stack gap="lg">
+                <Paper p="md" radius="md" withBorder>
+                    <Group justify="space-between">
+                        <Group>
+                             <Text fw={700}>Filter & Search</Text>
+                             <Divider orientation="vertical" />
+                             <Group gap="xs">
+                                <Button variant="light" size="compact-sm" leftSection={<Filter size={14} />}>Status</Button>
+                                <Button variant="light" size="compact-sm" leftSection={<Calendar size={14} />}>Date Range</Button>
+                             </Group>
+                        </Group>
+                        <Button 
+                            component={Link} 
+                            href="/admin/tours/create" 
+                            leftSection={<Plus size={16} />}
+                            radius="md"
                         >
                             Add New Tour
-                        </Link>
-                    </div>
+                        </Button>
+                    </Group>
+                </Paper>
 
-                    <div className="bg-white shadow rounded-lg overflow-hidden">
-                        <div className="overflow-x-auto">
-                            <table className="min-w-full divide-y divide-gray-200">
-                                <thead className="bg-gray-50">
-                                    <tr>
-                                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                            Tour Name
-                                        </th>
-                                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                            Description
-                                        </th>
-                                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                            Price
-                                        </th>
-                                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                            Duration
-                                        </th>
-                                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                            Available Dates
-                                        </th>
-                                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                            Staff
-                                        </th>
-                                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                            Actions
-                                        </th>
-                                    </tr>
-                                </thead>
-                                <tbody className="bg-white divide-y divide-gray-200">
-                                    {tours.data.map((tour) => (
-                                        <tr key={tour.id} className="hover:bg-gray-50">
-                                            <td className="px-6 py-4 whitespace-nowrap">
-                                                <div className="text-sm font-medium text-gray-900">{tour.title}</div>
-                                            </td>
-                                            <td className="px-6 py-4">
-                                                <div className="text-sm text-gray-600 max-w-xs truncate" title={tour.description}>
-                                                    {tour.description}
-                                                </div>
-                                            </td>
-                                            <td className="px-6 py-4 whitespace-nowrap">
-                                                <div className="text-sm font-medium text-gray-900">${tour.price}</div>
-                                            </td>
-                                            <td className="px-6 py-4 whitespace-nowrap">
-                                                <div className="text-sm text-gray-900">
-                                                    {tour.itineraries_count ? `${tour.itineraries_count} days` : 'N/A'}
-                                                </div>
-                                            </td>
-                                            <td className="px-6 py-4 whitespace-nowrap">
-                                                <div className="text-sm text-gray-900">
+                <Paper p="xl" radius="md" withBorder>
+                    <Table.ScrollContainer minWidth={800}>
+                        <Table verticalSpacing="md" highlightOnHover>
+                            <Table.Thead>
+                                <Table.Tr>
+                                    <Table.Th>Tour Details</Table.Th>
+                                    <Table.Th>Pricing</Table.Th>
+                                    <Table.Th>Schedule</Table.Th>
+                                    <Table.Th>Inventory/Staff</Table.Th>
+                                    <Table.Th>Status</Table.Th>
+                                    <Table.Th />
+                                </Table.Tr>
+                            </Table.Thead>
+                            <Table.Tbody>
+                                {tours.data.map((tour) => (
+                                    <Table.Tr key={tour.id}>
+                                        <Table.Td>
+                                            <Group gap="sm">
+                                                <Box 
+                                                    w={50} h={50} 
+                                                    bg="gray.1" 
+                                                    style={{ borderRadius: '8px', display: 'flex', alignItems: 'center', justify: 'center' }}
+                                                >
+                                                    <Map size={24} color="var(--mantine-color-blue-4)" />
+                                                </Box>
+                                                <Stack gap={0}>
+                                                    <Text size="sm" fw={700}>{tour.title}</Text>
+                                                    <Text size="xs" color="dimmed" lineClamp={1} maxW={200}>
+                                                        {tour.description}
+                                                    </Text>
+                                                </Stack>
+                                            </Group>
+                                        </Table.Td>
+                                        <Table.Td>
+                                            <Group gap={4}>
+                                                <IndianRupee size={14} />
+                                                <Text size="sm" fw={700}>{parseFloat(tour.price.toString()).toLocaleString()}</Text>
+                                            </Group>
+                                        </Table.Td>
+                                        <Table.Td>
+                                            <Stack gap={4}>
+                                                <Group gap={6}>
+                                                    <Clock size={12} color="gray" />
+                                                    <Text size="xs" fw={500}>{tour.itineraries_count || 0} Day(s)</Text>
+                                                </Group>
+                                                <Text size="xs" color="dimmed">
                                                     {new Date(tour.available_from).toLocaleDateString()} - {new Date(tour.available_to).toLocaleDateString()}
-                                                </div>
-                                            </td>
-                                            <td className="px-6 py-4 whitespace-nowrap">
-                                                <div className="text-sm text-gray-600">
-                                                    <div>Guides: {tour.guides.length}</div>
-                                                    <div>Drivers: {tour.drivers.length}</div>
-                                                </div>
-                                            </td>
-                                            <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                                                <div className="flex space-x-2">
-                                                    <Link
+                                                </Text>
+                                            </Stack>
+                                        </Table.Td>
+                                        <Table.Td>
+                                            <Group gap="xs">
+                                                <Tooltip label="Assigned Guides">
+                                                    <Badge variant="light" leftSection={<Users size={12} />}>{tour.guides.length}</Badge>
+                                                </Tooltip>
+                                                <Tooltip label="Assigned Drivers">
+                                                    <Badge variant="light" color="teal" leftSection={<Car size={12} />}>{tour.drivers.length}</Badge>
+                                                </Tooltip>
+                                            </Group>
+                                        </Table.Td>
+                                        <Table.Td>
+                                            <Badge color="green" variant="dot">Active</Badge>
+                                        </Table.Td>
+                                        <Table.Td>
+                                            <Group gap={4} justify="flex-end">
+                                                <Tooltip label="View Details">
+                                                    <ActionIcon 
+                                                        variant="light" 
+                                                        color="blue" 
+                                                        component={Link} 
                                                         href={`/admin/tours/${tour.id}`}
-                                                        className="bg-gray-100 text-gray-700 px-3 py-1 rounded-md hover:bg-gray-200 text-xs font-medium"
                                                     >
-                                                        View
-                                                    </Link>
-                                                    <Link
+                                                        <Eye size={16} />
+                                                    </ActionIcon>
+                                                </Tooltip>
+                                                <Tooltip label="Edit Tour">
+                                                    <ActionIcon 
+                                                        variant="light" 
+                                                        color="yellow" 
+                                                        component={Link} 
                                                         href={`/admin/tours/${tour.id}/edit`}
-                                                        className="bg-yellow-100 text-yellow-700 px-3 py-1 rounded-md hover:bg-yellow-200 text-xs font-medium"
                                                     >
-                                                        Edit
-                                                    </Link>
-                                                </div>
-                                            </td>
-                                        </tr>
-                                    ))}
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
+                                                        <Pencil size={16} />
+                                                    </ActionIcon>
+                                                </Tooltip>
+                                            </Group>
+                                        </Table.Td>
+                                    </Table.Tr>
+                                ))}
+                            </Table.Tbody>
+                        </Table>
+                    </Table.ScrollContainer>
 
-                    {tours.data.length === 0 && (
-                        <div className="text-center py-12">
-                            <div className="text-gray-500">No tours found.</div>
-                            <Link
-                                href="/admin/tours/create"
-                                className="mt-2 inline-flex items-center text-blue-600 hover:text-blue-800"
-                            >
-                                Create your first tour →
-                            </Link>
-                        </div>
+                    {tours.data.length === 0 ? (
+                        <Stack align="center" py="xl">
+                            <Text color="dimmed">No tours available. Create your first tour package.</Text>
+                            <Button variant="outline" component={Link} href="/admin/tours/create">Establish First Tour</Button>
+                        </Stack>
+                    ) : (
+                        <Group justify="space-between" mt="xl">
+                            <Text size="sm" color="dimmed">
+                                Showing {tours.data.length} of {tours.total} tours
+                            </Text>
+                            <Pagination 
+                                total={tours.last_page} 
+                                value={tours.current_page} 
+                                onChange={(page) => router.get(`${url}?page=${page}`)}
+                                radius="md"
+                            />
+                        </Group>
                     )}
-
-                    {/* Pagination */}
-                    {tours.last_page > 1 && (
-                        <div className="mt-6 flex items-center justify-between">
-                            <div className="text-sm text-gray-700">
-                                Showing {((tours.current_page - 1) * tours.per_page) + 1} to {Math.min(tours.current_page * tours.per_page, tours.total)} of {tours.total} results
-                            </div>
-                            <div className="flex space-x-2">
-                                {tours.current_page > 1 && (
-                                    <Link
-                                        href={`${url}?page=${tours.current_page - 1}`}
-                                        className="px-3 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50"
-                                    >
-                                        Previous
-                                    </Link>
-                                )}
-                                {tours.current_page < tours.last_page && (
-                                    <Link
-                                        href={`${url}?page=${tours.current_page + 1}`}
-                                        className="px-3 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50"
-                                    >
-                                        Next
-                                    </Link>
-                                )}
-                            </div>
-                        </div>
-                    )}
-                </div>
-            </div>
+                </Paper>
+            </Stack>
         </AdminLayout>
     );
 }

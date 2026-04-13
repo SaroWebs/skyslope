@@ -1,6 +1,46 @@
 import React from 'react';
-import { Link, usePage } from '@inertiajs/react';
-import AdminLayout from '../../layoutes/AdminLayout';
+import { Head, Link, router, usePage } from '@inertiajs/react';
+import AdminLayout from '../../layouts/AdminLayout';
+import { 
+    SimpleGrid, 
+    Card, 
+    Image, 
+    Text, 
+    Badge, 
+    Button, 
+    Group, 
+    Stack, 
+    Paper, 
+    Pagination, 
+    ActionIcon, 
+    Tooltip,
+    Box,
+    Select,
+    Divider,
+    TextInput,
+    rem
+} from '@mantine/core';
+import { 
+    Plus, 
+    Search, 
+    MapPin, 
+    Navigation, 
+    Clock, 
+    Compass, 
+    Pencil, 
+    Trash, 
+    Eye,
+    Filter,
+    Mountain,
+    Palmtree,
+    Building2,
+    History,
+    Trees,
+    Flame,
+    Temple,
+    Info,
+    ArrowRight
+} from 'lucide-react';
 
 interface Destination {
     id: number;
@@ -20,8 +60,6 @@ interface Destination {
     images: string[] | null;
     is_active: boolean;
     sort_order: number | null;
-    created_at: string;
-    updated_at: string;
 }
 
 interface DestinationsProps {
@@ -38,319 +76,235 @@ interface DestinationsProps {
 export default function Destinations({ title, destinations }: DestinationsProps) {
     const { url } = usePage();
 
-    const getTypeIcon = (type: string) => {
-        const icons = {
-            city: '🏙️',
-            hill_station: '⛰️',
-            beach: '🏖️',
-            historical: '🏛️',
-            cultural: '🎭',
-            nature: '🌿',
-            adventure: '🏔️',
-            religious: '🕌'
+    const getTypeConfig = (type: string) => {
+        const configs: Record<string, { color: string; icon: React.ReactNode }> = {
+            city: { color: 'blue', icon: <Building2 size={12} /> },
+            hill_station: { color: 'green', icon: <Mountain size={12} /> },
+            beach: { color: 'cyan', icon: <Palmtree size={12} /> },
+            historical: { color: 'orange', icon: <History size={12} /> },
+            cultural: { color: 'purple', icon: <History size={12} /> },
+            nature: { color: 'teal', icon: <Trees size={12} /> },
+            adventure: { color: 'red', icon: <Flame size={12} /> },
+            religious: { color: 'indigo', icon: <Temple size={12} /> }
         };
-        return icons[type as keyof typeof icons] || '📍';
+        return configs[type.toLowerCase()] || { color: 'gray', icon: <MapPin size={12} /> };
     };
 
-    const getTypeColor = (type: string) => {
-        const colors = {
-            city: 'bg-blue-100 text-blue-800',
-            hill_station: 'bg-green-100 text-green-800',
-            beach: 'bg-cyan-100 text-cyan-800',
-            historical: 'bg-yellow-100 text-yellow-800',
-            cultural: 'bg-purple-100 text-purple-800',
-            nature: 'bg-emerald-100 text-emerald-800',
-            adventure: 'bg-orange-100 text-orange-800',
-            religious: 'bg-indigo-100 text-indigo-800'
-        };
-        return colors[type as keyof typeof colors] || 'bg-gray-100 text-gray-800';
+    const handleFilter = (key: string, value: string | null) => {
+        const params = new URLSearchParams(window.location.search);
+        if (value) params.set(key, value);
+        else params.delete(key);
+        router.get(`/admin/destinations?${params.toString()}`);
     };
 
-    const formatDistance = (distance: number | null) => {
-        if (!distance) return 'N/A';
-        return `${distance} km`;
-    };
-
-    const formatTravelTime = (time: number | null) => {
-        if (!time) return 'N/A';
-        return `${time} hours`;
+    const handleDelete = (id: number) => {
+        if (confirm('Are you sure you want to delete this destination?')) {
+            router.delete(`/admin/destinations/${id}`);
+        }
     };
 
     return (
         <AdminLayout title={title}>
-            <div className="bg-white shadow rounded-lg">
-                <div className="px-4 py-5 sm:p-6">
-                    <div className="flex justify-between items-center mb-6">
-                        <h2 className="text-lg font-medium text-gray-900">Destinations Management</h2>
-                        <Link
-                            href="/admin/destinations/create"
-                            className="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 text-sm font-medium"
+            <Head title="Destinations Management" />
+
+            <Stack gap="lg">
+                <Paper p="xl" radius="md" withBorder shadow="xs">
+                    <Group justify="space-between" mb="xl">
+                        <Group gap="md" style={{ flex: 1 }}>
+                            <TextInput
+                                placeholder="Search destinations..."
+                                leftSection={<Search size={16} />}
+                                radius="md"
+                                style={{ flex: 1, maxWidth: 300 }}
+                            />
+                            <Select
+                                placeholder="Type"
+                                data={[
+                                    { value: 'city', label: 'City' },
+                                    { value: 'hill_station', label: 'Hill Station' },
+                                    { value: 'beach', label: 'Beach' },
+                                    { value: 'historical', label: 'Historical' },
+                                    { value: 'nature', label: 'Nature' },
+                                    { value: 'adventure', label: 'Adventure' },
+                                ]}
+                                value={new URLSearchParams(window.location.search).get('type')}
+                                onChange={(val) => handleFilter('type', val)}
+                                clearable
+                                radius="md"
+                                style={{ width: 140 }}
+                            />
+                            <Select
+                                placeholder="State"
+                                data={[
+                                    { value: 'assam', label: 'Assam' },
+                                    { value: 'meghalaya', label: 'Meghalaya' },
+                                    { value: 'arunachal_pradesh', label: 'Arunachal' },
+                                    { value: 'sikkim', label: 'Sikkim' },
+                                ]}
+                                value={new URLSearchParams(window.location.search).get('state')}
+                                onChange={(val) => handleFilter('state', val)}
+                                clearable
+                                radius="md"
+                                style={{ width: 140 }}
+                            />
+                        </Group>
+                        <Button 
+                            component={Link} 
+                            href="/admin/destinations/create" 
+                            leftSection={<Plus size={16} />}
+                            radius="md"
                         >
-                            Add New Destination
-                        </Link>
-                    </div>
+                            Add Destination
+                        </Button>
+                    </Group>
 
-                    {/* Filters */}
-                    <div className="mb-6 grid grid-cols-1 md:grid-cols-4 gap-4">
-                        <div>
-                            <label htmlFor="state-filter" className="block text-sm font-medium text-gray-700 mb-1">
-                                State
-                            </label>
-                            <select
-                                id="state-filter"
-                                className="w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
-                                onChange={(e) => {
-                                    const url = new URL(window.location.href);
-                                    if (e.target.value) {
-                                        url.searchParams.set('state', e.target.value);
-                                    } else {
-                                        url.searchParams.delete('state');
-                                    }
-                                    window.location.href = url.toString();
-                                }}
-                                value={new URLSearchParams(window.location.search).get('state') || ''}
-                            >
-                                <option value="">All States</option>
-                                <option value="assam">Assam</option>
-                                <option value="meghalaya">Meghalaya</option>
-                                <option value="manipur">Manipur</option>
-                                <option value="mizoram">Mizoram</option>
-                                <option value="nagaland">Nagaland</option>
-                                <option value="sikkim">Sikkim</option>
-                                <option value="tripura">Tripura</option>
-                                <option value="arunachal_pradesh">Arunachal Pradesh</option>
-                            </select>
-                        </div>
-
-                        <div>
-                            <label htmlFor="type-filter" className="block text-sm font-medium text-gray-700 mb-1">
-                                Type
-                            </label>
-                            <select
-                                id="type-filter"
-                                className="w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
-                                onChange={(e) => {
-                                    const url = new URL(window.location.href);
-                                    if (e.target.value) {
-                                        url.searchParams.set('type', e.target.value);
-                                    } else {
-                                        url.searchParams.delete('type');
-                                    }
-                                    window.location.href = url.toString();
-                                }}
-                                value={new URLSearchParams(window.location.search).get('type') || ''}
-                            >
-                                <option value="">All Types</option>
-                                <option value="city">City</option>
-                                <option value="hill_station">Hill Station</option>
-                                <option value="beach">Beach</option>
-                                <option value="historical">Historical</option>
-                                <option value="cultural">Cultural</option>
-                                <option value="nature">Nature</option>
-                                <option value="adventure">Adventure</option>
-                                <option value="religious">Religious</option>
-                            </select>
-                        </div>
-
-                        <div>
-                            <label htmlFor="region-filter" className="block text-sm font-medium text-gray-700 mb-1">
-                                Region
-                            </label>
-                            <select
-                                id="region-filter"
-                                className="w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
-                                onChange={(e) => {
-                                    const url = new URL(window.location.href);
-                                    if (e.target.value) {
-                                        url.searchParams.set('region', e.target.value);
-                                    } else {
-                                        url.searchParams.delete('region');
-                                    }
-                                    window.location.href = url.toString();
-                                }}
-                                value={new URLSearchParams(window.location.search).get('region') || ''}
-                            >
-                                <option value="">All Regions</option>
-                                <option value="northeast_india">Northeast India</option>
-                                <option value="north_india">North India</option>
-                                <option value="east_india">East India</option>
-                                <option value="central_india">Central India</option>
-                            </select>
-                        </div>
-
-                        <div>
-                            <label htmlFor="active-filter" className="block text-sm font-medium text-gray-700 mb-1">
-                                Status
-                            </label>
-                            <select
-                                id="active-filter"
-                                className="w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
-                                onChange={(e) => {
-                                    const url = new URL(window.location.href);
-                                    if (e.target.value !== '') {
-                                        url.searchParams.set('active', e.target.value);
-                                    } else {
-                                        url.searchParams.delete('active');
-                                    }
-                                    window.location.href = url.toString();
-                                }}
-                                value={new URLSearchParams(window.location.search).get('active') || ''}
-                            >
-                                <option value="">All Status</option>
-                                <option value="true">Active</option>
-                                <option value="false">Inactive</option>
-                            </select>
-                        </div>
-                    </div>
-
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                        {destinations.data.map((destination) => (
-                            <div key={destination.id} className="bg-white border border-gray-200 rounded-lg shadow-sm hover:shadow-md transition-shadow">
-                                <div className="aspect-w-16 aspect-h-9">
-                                    {destination.images && destination.images.length > 0 ? (
-                                        <img
-                                            src={destination.images[0]}
-                                            alt={destination.name}
-                                            className="w-full h-48 object-cover rounded-t-lg"
-                                        />
-                                    ) : (
-                                        <div className="w-full h-48 bg-gray-200 rounded-t-lg flex items-center justify-center">
-                                            <span className="text-4xl">{getTypeIcon(destination.type)}</span>
-                                        </div>
-                                    )}
-                                </div>
-                                <div className="p-6">
-                                    <div className="flex items-center justify-between mb-2">
-                                        <h3 className="text-lg font-medium text-gray-900">{destination.name}</h3>
-                                        <span className={`px-2 py-1 rounded-full text-xs font-medium ${getTypeColor(destination.type)}`}>
-                                            {destination.type.replace('_', ' ')}
-                                        </span>
-                                    </div>
-                                    
-                                    <div className="flex items-center justify-between mb-2">
-                                        <span className="text-sm text-gray-600">{destination.state}</span>
-                                        <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                                            destination.is_active 
-                                                ? 'bg-green-100 text-green-800' 
-                                                : 'bg-red-100 text-red-800'
-                                        }`}>
-                                            {destination.is_active ? 'Active' : 'Inactive'}
-                                        </span>
-                                    </div>
-                                    
-                                    <p className="text-sm text-gray-600 mb-3 line-clamp-2">{destination.description}</p>
-
-                                    <div className="space-y-1 mb-4 text-sm">
-                                        <div className="flex justify-between">
-                                            <span className="text-gray-500">Distance:</span>
-                                            <span className="font-medium">{formatDistance(destination.distance_from_guwahati)}</span>
-                                        </div>
-                                        <div className="flex justify-between">
-                                            <span className="text-gray-500">Travel Time:</span>
-                                            <span className="font-medium">{formatTravelTime(destination.estimated_travel_time)}</span>
-                                        </div>
-                                        {destination.region && (
-                                            <div className="flex justify-between">
-                                                <span className="text-gray-500">Region:</span>
-                                                <span className="font-medium capitalize">{destination.region.replace('_', ' ')}</span>
-                                            </div>
+                    <SimpleGrid cols={{ base: 1, sm: 2, lg: 3 }} spacing="xl">
+                        {destinations.data.map((dest) => {
+                            const typeConfig = getTypeConfig(dest.type);
+                            return (
+                                <Card key={dest.id} shadow="sm" padding="xl" radius="md" withBorder>
+                                    <Card.Section>
+                                        {dest.images && dest.images.length > 0 ? (
+                                            <Image
+                                                src={dest.images[0]}
+                                                height={180}
+                                                alt={dest.name}
+                                                fallbackSrc="https://placehold.co/600x400?text=No+Image"
+                                            />
+                                        ) : (
+                                            <Box h={180} bg="gray.1" style={{ display: 'flex', alignItems: 'center', justify: 'center' }}>
+                                                <Compass size={40} color="var(--mantine-color-gray-3)" strokeWidth={1} />
+                                            </Box>
                                         )}
-                                    </div>
+                                    </Card.Section>
 
-                                    {destination.attractions && destination.attractions.length > 0 && (
-                                        <div className="mb-4">
-                                            <span className="text-xs font-medium text-gray-500">Top Attractions:</span>
-                                            <div className="flex flex-wrap gap-1 mt-1">
-                                                {destination.attractions.slice(0, 3).map((attraction, index) => (
-                                                    <span
-                                                        key={index}
-                                                        className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800"
-                                                    >
-                                                        {attraction}
-                                                    </span>
-                                                ))}
-                                                {destination.attractions.length > 3 && (
-                                                    <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-800">
-                                                        +{destination.attractions.length - 3} more
-                                                    </span>
-                                                )}
-                                            </div>
-                                        </div>
-                                    )}
+                                    <Stack mt="md" gap="xs">
+                                        <Group justify="space-between" align="flex-start">
+                                            <Stack gap={2}>
+                                                <Text fw={800} size="lg" lineClamp={1}>{dest.name}</Text>
+                                                <Group gap={4}>
+                                                    <MapPin size={12} color="gray" />
+                                                    <Text size="xs" color="dimmed" tt="uppercase" fw={700}>{dest.state}</Text>
+                                                </Group>
+                                            </Stack>
+                                            <Badge color={dest.is_active ? 'green' : 'red'}>
+                                                {dest.is_active ? 'Active' : 'Inactive'}
+                                            </Badge>
+                                        </Group>
 
-                                    <div className="flex space-x-2">
-                                        <Link
-                                            href={`/admin/destinations/${destination.id}`}
-                                            className="flex-1 bg-gray-100 text-gray-700 px-3 py-2 rounded-md hover:bg-gray-200 text-sm font-medium text-center"
-                                        >
-                                            View
-                                        </Link>
-                                        <Link
-                                            href={`/admin/destinations/${destination.id}/edit`}
-                                            className="flex-1 bg-yellow-100 text-yellow-700 px-3 py-2 rounded-md hover:bg-yellow-200 text-sm font-medium text-center"
-                                        >
-                                            Edit
-                                        </Link>
-                                        <form method="POST" action={`/admin/destinations/${destination.id}`} className="flex-1">
-                                            <input type="hidden" name="_method" value="DELETE" />
-                                            <button
-                                                type="submit"
-                                                className="w-full bg-red-100 text-red-700 px-3 py-2 rounded-md hover:bg-red-200 text-sm font-medium"
-                                                onClick={(e) => {
-                                                    if (!confirm('Are you sure you want to delete this destination?')) {
-                                                        e.preventDefault();
-                                                    }
-                                                }}
+                                        <Group gap={6} mt={4}>
+                                            <Badge 
+                                                variant="light" 
+                                                color={typeConfig.color} 
+                                                leftSection={typeConfig.icon}
+                                                size="sm"
                                             >
-                                                Delete
-                                            </button>
-                                        </form>
-                                    </div>
-                                </div>
-                            </div>
-                        ))}
-                    </div>
+                                                {dest.type.replace('_', ' ')}
+                                            </Badge>
+                                            {dest.region && (
+                                                <Badge variant="outline" color="gray" size="sm">
+                                                    {dest.region.replace('_', ' ')}
+                                                </Badge>
+                                            )}
+                                        </Group>
 
-                    {destinations.data.length === 0 && (
-                        <div className="text-center py-12">
-                            <div className="text-gray-500">No destinations found.</div>
-                            <Link
-                                href="/admin/destinations/create"
-                                className="mt-2 inline-flex items-center text-blue-600 hover:text-blue-800"
-                            >
-                                Create your first destination →
-                            </Link>
-                        </div>
-                    )}
+                                        <Text size="sm" color="dimmed" lineClamp={2} mt="xs" style={{ height: '40px' }}>
+                                            {dest.description || 'Discover the beauty and culture of this destination.'}
+                                        </Text>
 
-                    {/* Pagination */}
-                    {destinations.last_page > 1 && (
-                        <div className="mt-6 flex items-center justify-between">
-                            <div className="text-sm text-gray-700">
-                                Showing {((destinations.current_page - 1) * destinations.per_page) + 1} to {Math.min(destinations.current_page * destinations.per_page, destinations.total)} of {destinations.total} results
-                            </div>
-                            <div className="flex space-x-2">
-                                {destinations.current_page > 1 && (
-                                    <Link
-                                        href={`${url}?page=${destinations.current_page - 1}`}
-                                        className="px-3 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50"
-                                    >
-                                        Previous
-                                    </Link>
-                                )}
-                                {destinations.current_page < destinations.last_page && (
-                                    <Link
-                                        href={`${url}?page=${destinations.current_page + 1}`}
-                                        className="px-3 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50"
-                                    >
-                                        Next
-                                    </Link>
-                                )}
-                            </div>
-                        </div>
+                                        <Divider my="sm" />
+
+                                        <SimpleGrid cols={2} spacing="xs">
+                                            <Box>
+                                                <Text size="xs" color="dimmed" fw={700}>DISTANCE</Text>
+                                                <Group gap={4}>
+                                                    <Navigation size={12} color="var(--mantine-color-blue-6)" />
+                                                    <Text size="sm" fw={600}>{dest.distance_from_guwahati || 'N/A'} km</Text>
+                                                </Group>
+                                            </Box>
+                                            <Box>
+                                                <Text size="xs" color="dimmed" fw={700}>TRAVEL TIME</Text>
+                                                <Group gap={4}>
+                                                    <Clock size={12} color="var(--mantine-color-blue-6)" />
+                                                    <Text size="sm" fw={600}>{dest.estimated_travel_time || 'N/A'} hrs</Text>
+                                                </Group>
+                                            </Box>
+                                        </SimpleGrid>
+
+                                        {dest.attractions && dest.attractions.length > 0 && (
+                                            <Box mt="sm">
+                                                <Text size="xs" color="dimmed" fw={700} mb={4}>TOP ATTRACTIONS</Text>
+                                                <Group gap={4}>
+                                                    {dest.attractions.slice(0, 2).map((attr, i) => (
+                                                        <Badge key={i} variant="dot" color="blue" size="xs">{attr}</Badge>
+                                                    ))}
+                                                    {dest.attractions.length > 2 && (
+                                                        <Text size="xs" color="dimmed">+{dest.attractions.length - 2}</Text>
+                                                    )}
+                                                </Group>
+                                            </Box>
+                                        )}
+                                    </Stack>
+
+                                    <Group mt="xl" gap="sm">
+                                        <Button 
+                                            component={Link} 
+                                            href={`/admin/destinations/${dest.id}`} 
+                                            variant="filled" 
+                                            color="blue"
+                                            style={{ flex: 1 }}
+                                            rightSection={<ArrowRight size={14} />}
+                                        >
+                                            Manage
+                                        </Button>
+                                        <Tooltip label="Edit Destination">
+                                            <ActionIcon 
+                                                component={Link} 
+                                                href={`/admin/destinations/${dest.id}/edit`} 
+                                                variant="light" 
+                                                color="yellow" 
+                                                size="lg"
+                                            >
+                                                <Pencil size={18} />
+                                            </ActionIcon>
+                                        </Tooltip>
+                                        <Tooltip label="Remove Destination">
+                                            <ActionIcon 
+                                                onClick={() => handleDelete(dest.id)} 
+                                                variant="light" 
+                                                color="red" 
+                                                size="lg"
+                                            >
+                                                <Trash size={18} />
+                                            </ActionIcon>
+                                        </Tooltip>
+                                    </Group>
+                                </Card>
+                            );
+                        })}
+                    </SimpleGrid>
+
+                    {destinations.data.length === 0 ? (
+                        <Stack align="center" py={60}>
+                            <Compass size={60} strokeWidth={1} color="gray" />
+                            <Text color="dimmed" mt="md" fw={500}>No destinations found. Expand your search or add a new one.</Text>
+                        </Stack>
+                    ) : (
+                        <Group justify="space-between" mt="xl">
+                            <Text size="sm" color="dimmed">
+                                Showing {destinations.data.length} of {destinations.total} destinations
+                            </Text>
+                            <Pagination 
+                                total={destinations.last_page} 
+                                value={destinations.current_page} 
+                                onChange={(page) => router.get(`${url}?page=${page}`)}
+                                radius="md"
+                                color="blue"
+                            />
+                        </Group>
                     )}
-                </div>
-            </div>
+                </Paper>
+            </Stack>
         </AdminLayout>
     );
 }

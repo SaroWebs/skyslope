@@ -1,337 +1,354 @@
-import React, { useMemo, useState } from 'react'
-import { Head, Link, router } from '@inertiajs/react'
-import AdminLayout from '@/layoutes/AdminLayout'
+import React, { useMemo, useState } from 'react';
+import { Head, Link, router } from '@inertiajs/react';
+import AdminLayout from '@/layouts/AdminLayout';
+import { 
+    Grid, 
+    Paper, 
+    Text, 
+    Group, 
+    Stack, 
+    Avatar, 
+    Badge, 
+    Button, 
+    ActionIcon, 
+    Divider,
+    SimpleGrid,
+    Box,
+    Card,
+    Tooltip,
+    Select,
+    Timeline,
+    ThemeIcon,
+    Alert
+} from '@mantine/core';
+import { 
+    ArrowLeft, 
+    Navigation, 
+    MapPin, 
+    Car, 
+    User, 
+    Phone, 
+    Mail, 
+    Calendar, 
+    Clock, 
+    IndianRupee,
+    Truck,
+    ShieldCheck,
+    AlertCircle,
+    RotateCcw,
+    Map,
+    ExternalLink,
+    CheckCircle2
+} from 'lucide-react';
 
 interface DriverOption {
-  id: number
-  name: string
-  email: string
-  phone?: string
-  is_online: boolean
-  is_available: boolean
-  rating?: number | null
-  vehicle_number?: string | null
+    id: number;
+    name: string;
+    email: string;
+    phone?: string;
+    is_online: boolean;
+    is_available: boolean;
+    rating?: number | null;
+    vehicle_number?: string | null;
 }
 
 interface RideBooking {
-  id: number
-  booking_number: string
-  customer_name: string
-  customer_email: string
-  customer_phone: string
-  pickup_location: string
-  dropoff_location?: string
-  scheduled_at: string
-  total_fare: number
-  status: string
-  payment_status: string
-  service_type: string
-  special_requests?: string
-  pickup_lat?: number
-  pickup_lng?: number
-  dropoff_lat?: number
-  dropoff_lng?: number
-  current_lat?: number
-  current_lng?: number
-  last_admin_changed_at?: string | null
-  driver_id?: number | null
-  user?: {
-    id: number
-    name: string
-    email: string
-    phone?: string
-  }
-  driver?: {
-    id: number
-    name: string
-    email: string
-    phone?: string
-  }
+    id: number;
+    booking_number: string;
+    customer_name: string;
+    customer_email: string;
+    customer_phone: string;
+    pickup_location: string;
+    dropoff_location?: string;
+    scheduled_at: string;
+    total_fare: number;
+    status: string;
+    payment_status: string;
+    service_type: string;
+    special_requests?: string;
+    driver_id?: number | null;
+    customer?: {
+        id: number;
+        name: string;
+        phone?: string;
+        email: string;
+    };
+    driver?: {
+        id: number;
+        name: string;
+        phone?: string;
+        email: string;
+    };
 }
 
 interface Props {
-  title?: string
-  booking: RideBooking
-  drivers: DriverOption[]
-  can_undo_last_change?: boolean
+    title?: string;
+    booking: RideBooking;
+    drivers: DriverOption[];
+    can_undo_last_change?: boolean;
 }
 
-const RideBookingDetails: React.FC<Props> = ({ title = 'Ride Booking Details', booking, drivers, can_undo_last_change = false }) => {
-  const [selectedDriverId, setSelectedDriverId] = useState<string>(booking.driver_id ? String(booking.driver_id) : '')
-  const [assigningDriver, setAssigningDriver] = useState(false)
-  const [undoing, setUndoing] = useState(false)
-  const [tracking, setTracking] = useState<any>(null)
-  const [trackingLoading, setTrackingLoading] = useState(false)
+export default function RideBookingDetails({ title = 'Ride Booking Details', booking, drivers, can_undo_last_change = false }: Props) {
+    const [selectedDriverId, setSelectedDriverId] = useState<string>(booking.driver_id ? String(booking.driver_id) : '');
+    const [assigningDriver, setAssigningDriver] = useState(false);
+    const [undoing, setUndoing] = useState(false);
 
-  const canAssignDriver = !['completed', 'cancelled'].includes(booking.status)
+    const canAssignDriver = !['completed', 'cancelled'].includes(booking.status);
+    const selectedDriver = useMemo(
+        () => drivers.find((driver) => String(driver.id) === selectedDriverId),
+        [drivers, selectedDriverId]
+    );
 
-  const selectedDriver = useMemo(
-    () => drivers.find((driver) => String(driver.id) === selectedDriverId),
-    [drivers, selectedDriverId],
-  )
+    const handleAssignDriver = () => {
+        if (!selectedDriverId) return;
+        setAssigningDriver(true);
+        router.post(`/admin/ride-bookings/${booking.id}/assign-driver`, {
+            driver_id: Number(selectedDriverId)
+        }, {
+            onFinish: () => setAssigningDriver(false),
+            preserveScroll: true
+        });
+    };
 
-  const handleAssignDriver = async () => {
-    if (!selectedDriverId) {
-      alert('Please select a driver.')
-      return
-    }
+    const handleUndoLastChange = () => {
+        setUndoing(true);
+        router.post(`/admin/ride-bookings/${booking.id}/undo-last-change`, {}, {
+            onFinish: () => setUndoing(false),
+            preserveScroll: true
+        });
+    };
 
-    setAssigningDriver(true)
-    try {
-      const response = await fetch(`/admin/ride-bookings/${booking.id}/assign-driver`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Accept: 'application/json',
-          'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '',
-        },
-        body: JSON.stringify({ driver_id: Number(selectedDriverId) }),
-      })
+    const getStatusVariant = (status: string) => {
+        const s = status.toLowerCase();
+        if (s === 'pending') return { color: 'yellow', icon: <Clock size={16} /> };
+        if (s === 'confirmed') return { color: 'blue', icon: <CheckCircle2 size={16} /> };
+        if (s === 'completed') return { color: 'green', icon: <ShieldCheck size={16} /> };
+        if (s === 'cancelled') return { color: 'red', icon: <XCircle size={16} /> };
+        return { color: 'indigo', icon: <Car size={16} /> };
+    };
 
-      const data = await response.json().catch(() => ({}))
-      if (!response.ok) {
-        alert(data?.message || 'Failed to assign driver.')
-        return
-      }
+    const statusInfo = getStatusVariant(booking.status);
 
-      alert('Driver assigned successfully.')
-      router.reload()
-    } catch (error) {
-      console.error('Driver assignment failed:', error)
-      alert('Failed to assign driver.')
-    } finally {
-      setAssigningDriver(false)
-    }
-  }
+    return (
+        <AdminLayout title={title}>
+            <Head title={`Ride #${booking.booking_number}`} />
 
-  const handleUndoLastChange = async () => {
-    setUndoing(true)
-    try {
-      const response = await fetch(`/admin/ride-bookings/${booking.id}/undo-last-change`, {
-        method: 'POST',
-        headers: {
-          Accept: 'application/json',
-          'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '',
-        },
-      })
+            <Stack gap="lg">
+                <Group justify="space-between">
+                    <Button 
+                        variant="subtle" 
+                        color="gray" 
+                        leftSection={<ArrowLeft size={16} />}
+                        component={Link}
+                        href="/admin/ride-bookings"
+                    >
+                        Back to Ride Bookings
+                    </Button>
+                    <Group gap="sm">
+                        {can_undo_last_change && (
+                            <Button 
+                                variant="outline" 
+                                color="orange" 
+                                leftSection={<RotateCcw size={16} />}
+                                onClick={handleUndoLastChange}
+                                loading={undoing}
+                            >
+                                Undo Last Change
+                            </Button>
+                        )}
+                        <Button variant="light" color="blue" leftSection={<Navigation size={16} />}>
+                            Live Track
+                        </Button>
+                    </Group>
+                </Group>
 
-      const data = await response.json().catch(() => ({}))
-      if (!response.ok) {
-        alert(data?.message || 'Failed to undo last change.')
-        return
-      }
+                <Grid gutter="lg">
+                    {/* Main Content */}
+                    <Grid.Col span={{ base: 12, md: 8 }}>
+                        <Stack gap="lg">
+                            <Paper p="xl" radius="md" withBorder>
+                                <Group justify="space-between" mb="xl">
+                                    <Stack gap={0}>
+                                        <Text size="xs" color="dimmed" fw={700} tt="uppercase">Booking Number</Text>
+                                        <Text size="h3" fw={800}>{booking.booking_number}</Text>
+                                    </Stack>
+                                    <Badge 
+                                        size="xl" 
+                                        radius="sm" 
+                                        color={statusInfo.color} 
+                                        leftSection={statusInfo.icon}
+                                        variant="filled"
+                                    >
+                                        {booking.status.replace('_', ' ').toUpperCase()}
+                                    </Badge>
+                                </Group>
 
-      alert('Last change undone successfully.')
-      router.reload()
-    } catch (error) {
-      alert('Failed to undo last change.')
-    } finally {
-      setUndoing(false)
-    }
-  }
+                                <SimpleGrid cols={{ base: 1, sm: 3 }} spacing="xl">
+                                    <Box>
+                                        <Text size="xs" color="dimmed" fw={700} tt="uppercase" mb={4}>Service Type</Text>
+                                        <Group gap="xs">
+                                            <Car size={14} color="var(--mantine-color-blue-6)" />
+                                            <Text size="sm" fw={600}>{booking.service_type || 'Standard Ride'}</Text>
+                                        </Group>
+                                    </Box>
+                                    <Box>
+                                        <Text size="xs" color="dimmed" fw={700} tt="uppercase" mb={4}>Scheduled At</Text>
+                                        <Group gap="xs">
+                                            <Calendar size={14} color="var(--mantine-color-blue-6)" />
+                                            <Text size="sm" fw={600}>{new Date(booking.scheduled_at).toLocaleString()}</Text>
+                                        </Group>
+                                    </Box>
+                                    <Box>
+                                        <Text size="xs" color="dimmed" fw={700} tt="uppercase" mb={4}>Total Fare</Text>
+                                        <Group gap="xs">
+                                            <IndianRupee size={16} color="var(--mantine-color-green-7)" />
+                                            <Text size="lg" fw={800}>₹{booking.total_fare}</Text>
+                                        </Group>
+                                    </Box>
+                                </SimpleGrid>
 
-  const handleTrackBooking = async () => {
-    setTrackingLoading(true)
-    try {
-      const response = await fetch(`/api/tracking/ride/${booking.id}`, {
-        headers: {
-          Accept: 'application/json',
-        },
-      })
-      const data = await response.json().catch(() => ({}))
-      if (!response.ok) {
-        alert(data?.message || 'Failed to fetch tracking info.')
-        return
-      }
-      setTracking(data?.data || null)
-    } catch (error) {
-      alert('Failed to fetch tracking info.')
-    } finally {
-      setTrackingLoading(false)
-    }
-  }
+                                <Divider my="xl" label="Route Information" labelPosition="center" />
 
-  const formatDateTime = (dateString: string) =>
-    new Date(dateString).toLocaleString('en-IN', {
-      year: 'numeric',
-      month: 'short',
-      day: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit',
-    })
+                                <Timeline active={1} bulletSize={30} lineWidth={2}>
+                                    <Timeline.Item 
+                                        bullet={<ThemeIcon size={22} radius="xl" color="blue"><MapPin size={12} /></ThemeIcon>} 
+                                        title={<Text size="sm" fw={700} color="dimmed" tt="uppercase">Pickup Location</Text>}
+                                    >
+                                        <Text size="sm" fw={500} mt={4}>{booking.pickup_location}</Text>
+                                    </Timeline.Item>
 
-  return (
-    <AdminLayout title={title}>
-      <Head title={`${title} - ${booking.booking_number}`} />
+                                    <Timeline.Item 
+                                        bullet={<ThemeIcon size={22} radius="xl" color="red"><Navigation size={12} /></ThemeIcon>} 
+                                        title={<Text size="sm" fw={700} color="dimmed" tt="uppercase">Dropoff Location</Text>}
+                                    >
+                                        <Text size="sm" fw={500} mt={4}>{booking.dropoff_location || 'Point to Point Ride'}</Text>
+                                    </Timeline.Item>
+                                </Timeline>
+                            </Paper>
 
-      <div className="space-y-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-bold text-gray-900">Ride Booking #{booking.booking_number}</h1>
-            <p className="text-sm text-gray-600">Admin dashboard ride-booking details</p>
-          </div>
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={handleTrackBooking}
-              className="rounded-lg border border-indigo-300 px-4 py-2 text-sm font-medium text-indigo-700 hover:bg-indigo-50"
-            >
-              {trackingLoading ? 'Tracking...' : 'Track Booking'}
-            </button>
-            {can_undo_last_change && (
-              <button
-                type="button"
-                onClick={handleUndoLastChange}
-                disabled={undoing}
-                className="rounded-lg border border-amber-300 px-4 py-2 text-sm font-medium text-amber-700 hover:bg-amber-50 disabled:opacity-60"
-              >
-                {undoing ? 'Undoing...' : 'Undo Last Change (10m)'}
-              </button>
-            )}
-            <Link
-              href="/admin/ride-bookings"
-              className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
-            >
-              Back to Ride Bookings
-            </Link>
-          </div>
-        </div>
+                            <Paper p="xl" radius="md" withBorder>
+                                <Text fw={700} size="lg" mb="lg">Customer Details</Text>
+                                <Group gap="xl">
+                                    <Avatar size={60} radius="xl" color="blue">
+                                        {booking.customer_name?.charAt(0)}
+                                    </Avatar>
+                                    <Box style={{ flex: 1 }}>
+                                        <Text size="lg" fw={700}>{booking.customer_name}</Text>
+                                        <Group gap="lg" mt="xs">
+                                            <Group gap={6}>
+                                                <Phone size={14} color="gray" />
+                                                <Text size="sm" color="dimmed">{booking.customer_phone}</Text>
+                                            </Group>
+                                            <Group gap={6}>
+                                                <Mail size={14} color="gray" />
+                                                <Text size="sm" color="dimmed">{booking.customer_email}</Text>
+                                            </Group>
+                                        </Group>
+                                    </Box>
+                                    <Button variant="outline" size="sm">View User History</Button>
+                                </Group>
 
-        <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-          <div className="space-y-6 lg:col-span-2">
-            <div className="rounded-lg border border-gray-200 bg-white p-6 shadow-sm">
-              <h2 className="mb-4 text-lg font-semibold text-gray-900">Trip Details</h2>
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                <div>
-                  <p className="text-xs uppercase tracking-wide text-gray-500">Status</p>
-                  <p className="text-sm font-medium text-gray-900">{booking.status.replace('_', ' ')}</p>
-                </div>
-                <div>
-                  <p className="text-xs uppercase tracking-wide text-gray-500">Scheduled</p>
-                  <p className="text-sm font-medium text-gray-900">{formatDateTime(booking.scheduled_at)}</p>
-                </div>
-                <div>
-                  <p className="text-xs uppercase tracking-wide text-gray-500">Pickup</p>
-                  <p className="text-sm font-medium text-gray-900">{booking.pickup_location}</p>
-                </div>
-                <div>
-                  <p className="text-xs uppercase tracking-wide text-gray-500">Dropoff</p>
-                  <p className="text-sm font-medium text-gray-900">{booking.dropoff_location || 'Not provided'}</p>
-                </div>
-                <div>
-                  <p className="text-xs uppercase tracking-wide text-gray-500">Fare</p>
-                  <p className="text-sm font-medium text-gray-900">INR {Number(booking.total_fare || 0).toFixed(2)}</p>
-                </div>
-                <div>
-                  <p className="text-xs uppercase tracking-wide text-gray-500">Payment</p>
-                  <p className="text-sm font-medium text-gray-900">{booking.payment_status}</p>
-                </div>
-              </div>
-            </div>
+                                {booking.special_requests && (
+                                    <>
+                                        <Divider my="lg" dashed />
+                                        <Alert variant="light" color="indigo" title="Special Requests" icon={<AlertCircle size={16} />}>
+                                            <Text size="sm">{booking.special_requests}</Text>
+                                        </Alert>
+                                    </>
+                                )}
+                            </Paper>
+                        </Stack>
+                    </Grid.Col>
 
-            {tracking && (
-              <div className="rounded-lg border border-indigo-200 bg-indigo-50 p-6 shadow-sm">
-                <h2 className="mb-4 text-lg font-semibold text-indigo-900">Live Tracking</h2>
-                <div className="space-y-2 text-sm text-indigo-900">
-                  <p>
-                    Current Location:{' '}
-                    {tracking.current_location
-                      ? `${tracking.current_location.latitude}, ${tracking.current_location.longitude}`
-                      : 'No live location yet'}
-                  </p>
-                  <p>Pickup: {tracking.pickup?.address || booking.pickup_location}</p>
-                  <p>Dropoff: {tracking.dropoff?.address || booking.dropoff_location || '-'}</p>
-                </div>
-                {tracking.current_location && (
-                  <a
-                    href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
-                      `${tracking.current_location.latitude},${tracking.current_location.longitude}`
-                    )}`}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="mt-3 inline-flex rounded-md bg-indigo-600 px-3 py-2 text-sm font-medium text-white hover:bg-indigo-700"
-                  >
-                    Open Current Location in Maps
-                  </a>
-                )}
-              </div>
-            )}
+                    {/* Sidebar: Driver Assignment */}
+                    <Grid.Col span={{ base: 12, md: 4 }}>
+                        <Stack gap="lg">
+                            <Paper p="xl" radius="md" withBorder>
+                                <Text fw={700} size="lg" mb="md">Driver Assignment</Text>
+                                
+                                {booking.driver ? (
+                                    <Card withBorder padding="md" radius="md" mb="xl" bg="gray.0">
+                                        <Group justify="space-between" mb="xs">
+                                             <Text size="xs" color="dimmed" fw={700} tt="uppercase">Currently Assigned</Text>
+                                             <Badge size="xs" color="green">Verified</Badge>
+                                        </Group>
+                                        <Group gap="sm">
+                                            <Avatar color="teal" radius="md">{booking.driver.name.charAt(0)}</Avatar>
+                                            <Stack gap={0}>
+                                                <Text size="sm" fw={700}>{booking.driver.name}</Text>
+                                                <Text size="xs" color="dimmed">{booking.driver.phone}</Text>
+                                            </Stack>
+                                        </Group>
+                                    </Card>
+                                ) : (
+                                    <Alert variant="light" color="orange" mb="xl" icon={<AlertCircle size={16} />}>
+                                        No driver has been assigned to this booking yet.
+                                    </Alert>
+                                )}
 
-            <div className="rounded-lg border border-gray-200 bg-white p-6 shadow-sm">
-              <h2 className="mb-4 text-lg font-semibold text-gray-900">Customer</h2>
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                <div>
-                  <p className="text-xs uppercase tracking-wide text-gray-500">Name</p>
-                  <p className="text-sm font-medium text-gray-900">{booking.customer_name}</p>
-                </div>
-                <div>
-                  <p className="text-xs uppercase tracking-wide text-gray-500">Phone</p>
-                  <p className="text-sm font-medium text-gray-900">{booking.customer_phone || '-'}</p>
-                </div>
-                <div className="md:col-span-2">
-                  <p className="text-xs uppercase tracking-wide text-gray-500">Email</p>
-                  <p className="text-sm font-medium text-gray-900">{booking.customer_email}</p>
-                </div>
-              </div>
-            </div>
-          </div>
+                                <Stack gap="xs">
+                                    <Select 
+                                        label="Select Available Driver"
+                                        placeholder="Pick a driver from the fleet"
+                                        data={drivers.map(d => ({
+                                            value: String(d.id),
+                                            label: `${d.name} (${d.is_online ? 'Online' : 'Offline'})${d.vehicle_number ? ` - ${d.vehicle_number}` : ''}`,
+                                            disabled: !d.is_available && d.id !== booking.driver_id
+                                        }))}
+                                        value={selectedDriverId}
+                                        onChange={(val) => setSelectedDriverId(val || '')}
+                                        disabled={!canAssignDriver || assigningDriver}
+                                        searchable
+                                        radius="md"
+                                    />
+                                    
+                                    {selectedDriver && selectedDriverId !== String(booking.driver_id) && (
+                                        <Paper p="sm" withBorder bg="blue.0" radius="md" mt="xs">
+                                            <Text size="xs" fw={700} color="blue.9">Selected Driver Info:</Text>
+                                            <Text size="xs">Rating: {selectedDriver.rating ? `${selectedDriver.rating}/5` : 'New'}</Text>
+                                            <Text size="xs">Vehicle: {selectedDriver.vehicle_number || 'N/A'}</Text>
+                                        </Paper>
+                                    )}
 
-          <div className="space-y-6">
-            <div className="rounded-lg border border-gray-200 bg-white p-6 shadow-sm">
-              <h2 className="mb-4 text-lg font-semibold text-gray-900">Assign Driver</h2>
+                                    <Button 
+                                        fullWidth 
+                                        mt="md" 
+                                        color="blue" 
+                                        radius="md"
+                                        onClick={handleAssignDriver}
+                                        loading={assigningDriver}
+                                        disabled={!canAssignDriver || !selectedDriverId || selectedDriverId === String(booking.driver_id)}
+                                        leftSection={<Truck size={16} />}
+                                    >
+                                        {booking.driver ? 'Reassign Driver' : 'Assign Driver'}
+                                    </Button>
+                                </Stack>
+                            </Paper>
 
-              {booking.driver ? (
-                <p className="mb-4 text-sm text-gray-600">
-                  Current: <span className="font-medium text-gray-900">{booking.driver.name}</span>
-                </p>
-              ) : (
-                <p className="mb-4 text-sm text-gray-600">No driver assigned yet.</p>
-              )}
-
-              <label className="mb-1 block text-sm font-medium text-gray-700">Driver</label>
-              <select
-                value={selectedDriverId}
-                onChange={(event) => setSelectedDriverId(event.target.value)}
-                className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
-                disabled={!canAssignDriver || assigningDriver}
-              >
-                <option value="">Select driver</option>
-                {drivers.map((driver) => (
-                  <option key={driver.id} value={driver.id}>
-                    {driver.name} ({driver.is_online ? 'online' : 'offline'}, {driver.is_available ? 'available' : 'busy'})
-                  </option>
-                ))}
-              </select>
-
-              {selectedDriver && (
-                <div className="mt-3 rounded-md border border-gray-200 bg-gray-50 p-3 text-xs text-gray-700">
-                  <p>{selectedDriver.email}</p>
-                  <p>{selectedDriver.phone || '-'}</p>
-                  <p>Rating: {selectedDriver.rating ?? 'N/A'}</p>
-                  <p>Vehicle: {selectedDriver.vehicle_number || 'N/A'}</p>
-                </div>
-              )}
-
-              <button
-                type="button"
-                onClick={handleAssignDriver}
-                disabled={!canAssignDriver || assigningDriver}
-                className="mt-4 w-full rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300"
-              >
-                {assigningDriver ? 'Assigning...' : booking.driver ? 'Reassign Driver' : 'Assign Driver'}
-              </button>
-
-              {!canAssignDriver && (
-                <p className="mt-3 text-xs text-red-600">
-                  Driver assignment is locked for {booking.status} rides.
-                </p>
-              )}
-            </div>
-          </div>
-        </div>
-      </div>
-    </AdminLayout>
-  )
+                            <Paper p="xl" radius="md" withBorder>
+                                <Text fw={700} size="sm" mb="md">Actions</Text>
+                                <Stack gap="sm">
+                                    <Button fullWidth variant="light" color="gray" leftSection={<Mail size={14} />}>Resend Email</Button>
+                                    <Button fullWidth variant="light" color="teal" leftSection={<Map size={14} />}>View On Maps</Button>
+                                </Stack>
+                            </Paper>
+                        </Stack>
+                    </Grid.Col>
+                </Grid>
+            </Stack>
+        </AdminLayout>
+    );
 }
 
-export default RideBookingDetails
+const XCircle = ({ size, color }: any) => (
+    <Box style={{ color }}>
+         {/* Simple X icon */}
+         <svg 
+            width={size} height={size} 
+            viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" 
+            strokeLinecap="round" strokeLinejoin="round"
+         >
+            <circle cx="12" cy="12" r="10"/><path d="m15 9-6 6"/><path d="m9 9 6 6"/>
+         </svg>
+    </Box>
+);

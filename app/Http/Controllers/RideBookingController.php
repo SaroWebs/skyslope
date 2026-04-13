@@ -4,14 +4,15 @@ namespace App\Http\Controllers;
 
 use App\Models\RideBooking;
 use App\Models\DriverAvailability;
-use App\Models\Destination;
 use App\Models\RideBookingReview;
 use App\Models\RideBookingTip;
 use App\Models\Wallet;
+use App\Services\RideEstimateService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\DB;
+
 
 class RideBookingController extends Controller
 {
@@ -47,10 +48,10 @@ class RideBookingController extends Controller
     public function estimate(Request $request)
     {
         $validator = Validator::make($request->all(), [
-            'pickup_lat' => 'required|numeric|between:-90,90',
-            'pickup_lng' => 'required|numeric|between:-180,180',
-            'dropoff_lat' => 'nullable|numeric|between:-90,90',
-            'dropoff_lng' => 'nullable|numeric|between:-180,180',
+            'pickup_lat'   => 'required|numeric|between:-90,90',
+            'pickup_lng'   => 'required|numeric|between:-180,180',
+            'dropoff_lat'  => 'nullable|numeric|between:-90,90',
+            'dropoff_lng'  => 'nullable|numeric|between:-180,180',
             'service_type' => 'required|in:point_to_point,hourly_rental,round_trip',
             'scheduled_at' => 'required|date|after:now',
         ]);
@@ -59,52 +60,14 @@ class RideBookingController extends Controller
             return response()->json(['errors' => $validator->errors()], 422);
         }
 
-        // Calculate distance if dropoff provided
-        $distance = 0;
-        if ($request->dropoff_lat && $request->dropoff_lng) {
-            $earthRadius = 6371;
-            $latDelta = deg2rad($request->dropoff_lat - $request->pickup_lat);
-            $lngDelta = deg2rad($request->dropoff_lng - $request->pickup_lng);
+        $result = app(RideEstimateService::class)->estimate(
+            (float) $request->pickup_lat,
+            (float) $request->pickup_lng,
+            $request->dropoff_lat ? (float) $request->dropoff_lat : null,
+            $request->dropoff_lng ? (float) $request->dropoff_lng : null
+        );
 
-            $a = sin($latDelta / 2) * sin($latDelta / 2) +
-                 cos(deg2rad($request->pickup_lat)) * cos(deg2rad($request->dropoff_lat)) *
-                 sin($lngDelta / 2) * sin($lngDelta / 2);
-
-            $c = 2 * atan2(sqrt($a), sqrt(1 - $a));
-            $distance = $earthRadius * $c;
-        }
-
-        // Base pricing (you can make this configurable)
-        $baseFare = 50; // Base fare
-        $perKmRate = 15; // Rate per kilometer
-        $distanceFare = $distance * $perKmRate;
-
-        // Surge pricing (simplified - you can implement time-based surge)
-        $surgeMultiplier = 1.0;
-
-        // Check for nearby drivers
-        $nearbyDrivers = DriverAvailability::active()
-            ->nearLocation($request->pickup_lat, $request->pickup_lng, 5)
-            ->count();
-
-        if ($nearbyDrivers < 3) {
-            $surgeMultiplier = 1.2; // 20% surge if fewer than 3 drivers
-        }
-
-        $subtotal = ($baseFare + $distanceFare) * $surgeMultiplier;
-        $estimatedDuration = $distance > 0 ? ceil($distance / 30 * 60) : 30; // Rough estimate: 30 km/h
-
-        return response()->json([
-            'distance_km' => round($distance, 2),
-            'estimated_duration' => $estimatedDuration,
-            'pricing' => [
-                'base_fare' => $baseFare,
-                'distance_fare' => round($distanceFare, 2),
-                'surge_multiplier' => $surgeMultiplier,
-                'subtotal' => round($subtotal, 2),
-            ],
-            'nearby_drivers' => $nearbyDrivers,
-        ]);
+        return response()->json($result);
     }
 
     /**

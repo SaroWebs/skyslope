@@ -2,79 +2,52 @@
 
 namespace App\Models;
 
-use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\MorphTo;
 
 class InsurancePolicy extends Model
 {
-    use HasFactory;
+    protected $table = 'insurance_policies';
 
     protected $fillable = [
-        'user_id',
         'policy_number',
-        'insurance_type',
+        'customer_id',
+        'coverable_type',
+        'coverable_id',
+        'policy_type',
+        'premium',
         'coverage_amount',
-        'premium_amount',
         'start_date',
         'end_date',
         'status',
-        'payment_status',
-        'policy_document_url',
-        'terms_accepted',
+        'terms',
     ];
 
     protected $casts = [
-        'start_date' => 'date',
-        'end_date' => 'date',
-        'terms_accepted' => 'boolean',
+        'premium'         => 'decimal:2',
+        'coverage_amount' => 'decimal:2',
+        'start_date'      => 'date',
+        'end_date'        => 'date',
     ];
 
-    public function user(): BelongsTo
+    public function customer(): BelongsTo
     {
-        return $this->belongsTo(Customer::class, 'user_id');
+        return $this->belongsTo(Customer::class, 'customer_id');
+    }
+
+    /** The insured entity: RideBooking or CarRental */
+    public function coverable(): MorphTo
+    {
+        return $this->morphTo();
     }
 
     public function claims(): HasMany
     {
-        return $this->hasMany(Claim::class, 'insurance_id');
+        return $this->hasMany(InsuranceClaim::class, 'insurance_policy_id');
     }
 
-    public function extendedCare(): HasMany
-    {
-        return $this->hasMany(ExtendedCare::class, 'insurance_id');
-    }
-
-    /**
-     * Generate a unique policy number
-     */
-    public static function generatePolicyNumber(): string
-    {
-        $prefix = 'POL-' . date('Y');
-        $lastPolicy = self::where('policy_number', 'like', $prefix . '%')
-            ->orderBy('id', 'desc')
-            ->first();
-
-        $sequence = $lastPolicy ? (int) substr($lastPolicy->policy_number, -6) + 1 : 1;
-        return $prefix . str_pad($sequence, 6, '0', STR_PAD_LEFT);
-    }
-
-    /**
-     * Check if policy is active
-     */
-    public function isActive(): bool
-    {
-        return $this->status === 'active' && 
-               $this->start_date <= now() && 
-               $this->end_date >= now();
-    }
-
-    /**
-     * Check if policy is expired
-     */
-    public function isExpired(): bool
-    {
-        return $this->end_date < now() || $this->status === 'expired';
-    }
+    public function isActive(): bool  { return $this->status === 'active'; }
+    public function isExpired(): bool { return $this->status === 'expired' || $this->end_date->isPast(); }
 }

@@ -8,11 +8,14 @@ use App\Models\CarCategory;
 use App\Models\CarRental;
 use App\Models\Place;
 use App\Models\Tour;
-use App\Models\DriverAvailability;
+use App\Models\TourSchedule;
+use App\Models\TourBooking;
 use App\Models\RideBooking;
 use App\Models\RideBookingReview;
 use App\Models\RideBookingTip;
 use App\Models\Wallet;
+use App\Services\RideEstimateService;
+use App\Events\NewRideRequest;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
@@ -52,11 +55,26 @@ class CustomerAppController extends Controller
 
     public function publicTour(Tour $tour)
     {
-        $tour->load(['itineraries.place.media', 'guides', 'drivers']);
+        $tour->load(['itineraries.place.media', 'schedules' => function ($q) {
+            $q->where('status', 'open')->where('departure_date', '>=', now());
+        }]);
 
         return response()->json([
             'success' => true,
             'data' => $tour,
+        ]);
+    }
+
+    public function tourSchedules(Tour $tour)
+    {
+        $schedules = $tour->schedules()
+            ->where('status', 'open')
+            ->where('departure_date', '>=', now())
+            ->get();
+
+        return response()->json([
+            'success' => true,
+            'data' => $schedules,
         ]);
     }
 
@@ -97,18 +115,18 @@ class CustomerAppController extends Controller
             'success' => true,
             'customer' => $customer,
             'stats' => [
-                'tour_bookings' => Booking::where('user_id', $customer->id)->count(),
-                'car_rentals' => CarRental::where('user_id', $customer->id)->count(),
-                'ride_bookings' => RideBooking::where('user_id', $customer->id)->count(),
+                'tour_bookings' => TourBooking::where('customer_id', $customer->id)->count(),
+                'car_rentals' => CarRental::where('customer_id', $customer->id)->count(),
+                'ride_bookings' => RideBooking::where('customer_id', $customer->id)->count(),
                 'wallet_balance' => (float) optional(Wallet::forOwner($customer)->first())->balance,
             ],
             'recent_ride_bookings' => RideBooking::with('driver:id,name,phone')
-                ->where('user_id', $customer->id)
+                ->where('customer_id', $customer->id)
                 ->latest()
                 ->take(5)
                 ->get(),
-            'recent_bookings' => Booking::with('tour:id,title')
-                ->where('user_id', $customer->id)
+            'recent_bookings' => TourBooking::with('tour:id,title')
+                ->where('customer_id', $customer->id)
                 ->latest()
                 ->take(5)
                 ->get(),
@@ -128,44 +146,79 @@ class CustomerAppController extends Controller
         ]);
     }
 
+    public function tourBookings(Request $request)
+    {
+        $bookings = TourBooking::with('tour:id,title')
+            ->where('customer_id', $request->user()->id)
+            ->latest()
+            ->paginate(15);
+
+        return response()->json([
+            'success' => true,
+            'data' => $bookings,
+        ]);
+    }
+
     public function bookTour(Request $request)
     {
         $customer = $request->user();
 
         $validator = Validator::make($request->all(), [
             'tour_id' => 'required|exists:tours,id',
-            'travel_date' => 'required|date',
-            'number_of_people' => 'required|integer|min:1|max:20',
-            'special_requests' => 'nullable|string',
-            'payment_method' => 'nullable|in:cash,card,wallet,upi',
+            'tour_schedule_id' => 'required|exists:tour_schedules,id',
+            'number_of_adults' => 'required|integer|min:1|max:10',
+            'number_of_children' => 'nullable|integer|min:0|max:10',
+            'payment_method' => 'required|in:cash,card,wallet,upi',
+            'special_requests' => 'nullable|string|max:1000',
         ]);
 
         if ($validator->fails()) {
             return response()->json(['errors' => $validator->errors()], 422);
         }
 
-        $tour = Tour::findOrFail($request->tour_id);
-        $peopleCount = (int) $request->number_of_people;
-        $price = (float) $tour->price * $peopleCount;
+        $schedule = TourSchedule::with('tour')->findOrFail($request->tour_schedule_id);
 
-        $booking = Booking::create([
-            'user_id' => $customer->id,
-            'tour_id' => $tour->id,
-            'customer_name' => $customer->name,
-            'customer_email' => $customer->email,
-            'customer_phone' => $customer->phone,
-            'travel_date' => $request->travel_date,
-            'number_of_people' => $peopleCount,
-            'special_requests' => $request->special_requests,
-            'status' => 'pending',
-            'total_price' => $price,
-            'discount_amount' => 0,
-            'payment_method' => $request->input('payment_method', 'cash'),
-            'payment_status' => 'pending',
-            'whatsapp_notification' => true,
-            'email_notification' => true,
-            'sms_notification' => false,
-        ]);
+        if (!$schedule->isAvailable()) {
+            return response()->json(['success' => false, 'message' => 'This schedule is no longer available or is sold out.'], 400);
+        }
+
+        $totalPax = (int)$request->number_of_adults + (int)($request->number_of_children ?? 0);
+        
+        if ($schedule->getAvailableSeats() < $totalPax) {
+            return response()->json(['success' => false, 'message' => 'Only ' . $schedule->getAvailableSeats() . ' seats remaining.'], 400);
+        }
+
+        $priceAdult = $schedule->getEffectivePrice();
+        $priceChild = $schedule->getEffectiveChildPrice();
+        $subtotal = ($request->number_of_adults * $priceAdult) + ($request->number_of_children * $priceChild);
+
+        $booking = DB::transaction(function () use ($request, $customer, $schedule, $subtotal, $totalPax) {
+            $booking = TourBooking::create([
+                'customer_id' => $customer->id,
+                'tour_id' => $schedule->tour_id,
+                'tour_schedule_id' => $schedule->id,
+                'number_of_adults' => $request->number_of_adults,
+                'number_of_children' => $request->number_of_children ?? 0,
+                'travel_date' => $schedule->departure_date,
+                'customer_name' => $customer->name,
+                'customer_email' => $customer->email,
+                'customer_phone' => $customer->phone,
+                'price_per_adult' => $schedule->getEffectivePrice(),
+                'price_per_child' => $schedule->getEffectiveChildPrice(),
+                'subtotal' => $subtotal,
+                'total_price' => $subtotal,
+                'payment_method' => $request->payment_method,
+                'status' => 'pending',
+                'payment_status' => 'pending',
+                'special_requests' => $request->special_requests,
+                'whatsapp_notification' => true,
+            ]);
+
+            // Update inventory
+            $schedule->increment('booked_seats', $totalPax);
+
+            return $booking;
+        });
 
         return response()->json([
             'success' => true,
@@ -185,7 +238,7 @@ class CustomerAppController extends Controller
     public function carRentals(Request $request)
     {
         $rentals = CarRental::with(['carCategory', 'driver:id,name,phone'])
-            ->where('user_id', $request->user()->id)
+            ->where('customer_id', $request->user()->id)
             ->latest()
             ->paginate(15);
 
@@ -222,7 +275,7 @@ class CustomerAppController extends Controller
         $pricing = $category->calculatePrice($numberOfDays, $distanceKm);
 
         $rental = CarRental::create([
-            'user_id' => $customer->id,
+            'customer_id' => $customer->id,
             'car_category_id' => $category->id,
             'customer_name' => $customer->name,
             'customer_email' => $customer->email,
@@ -260,7 +313,7 @@ class CustomerAppController extends Controller
     public function rides(Request $request)
     {
         $rides = RideBooking::with('driver:id,name,phone')
-            ->where('user_id', $request->user()->id)
+            ->where('customer_id', $request->user()->id)
             ->latest()
             ->paginate(15);
 
@@ -291,10 +344,10 @@ class CustomerAppController extends Controller
     public function estimateRide(Request $request)
     {
         $validator = Validator::make($request->all(), [
-            'pickup_lat' => 'required|numeric|between:-90,90',
-            'pickup_lng' => 'required|numeric|between:-180,180',
-            'dropoff_lat' => 'nullable|numeric|between:-90,90',
-            'dropoff_lng' => 'nullable|numeric|between:-180,180',
+            'pickup_lat'   => 'required|numeric|between:-90,90',
+            'pickup_lng'   => 'required|numeric|between:-180,180',
+            'dropoff_lat'  => 'nullable|numeric|between:-90,90',
+            'dropoff_lng'  => 'nullable|numeric|between:-180,180',
             'service_type' => 'required|in:point_to_point,hourly_rental,round_trip',
             'scheduled_at' => 'required|date|after:now',
         ]);
@@ -303,38 +356,14 @@ class CustomerAppController extends Controller
             return response()->json(['errors' => $validator->errors()], 422);
         }
 
-        $distance = 0;
-        if ($request->dropoff_lat && $request->dropoff_lng) {
-            $earthRadius = 6371;
-            $latDelta = deg2rad($request->dropoff_lat - $request->pickup_lat);
-            $lngDelta = deg2rad($request->dropoff_lng - $request->pickup_lng);
+        $result = app(RideEstimateService::class)->estimate(
+            (float) $request->pickup_lat,
+            (float) $request->pickup_lng,
+            $request->dropoff_lat  ? (float) $request->dropoff_lat  : null,
+            $request->dropoff_lng ? (float) $request->dropoff_lng : null
+        );
 
-            $a = sin($latDelta / 2) * sin($latDelta / 2) +
-                cos(deg2rad($request->pickup_lat)) * cos(deg2rad($request->dropoff_lat)) *
-                sin($lngDelta / 2) * sin($lngDelta / 2);
-
-            $distance = $earthRadius * 2 * atan2(sqrt($a), sqrt(1 - $a));
-        }
-
-        $baseFare = 50;
-        $distanceFare = $distance * 15;
-        $nearbyDrivers = DriverAvailability::active()
-            ->nearLocation((float) $request->pickup_lat, (float) $request->pickup_lng, 5)
-            ->count();
-        $surgeMultiplier = $nearbyDrivers < 3 ? 1.2 : 1.0;
-        $subtotal = ($baseFare + $distanceFare) * $surgeMultiplier;
-
-        return response()->json([
-            'distance_km' => round($distance, 2),
-            'estimated_duration' => $distance > 0 ? ceil($distance / 30 * 60) : 30,
-            'pricing' => [
-                'base_fare' => $baseFare,
-                'distance_fare' => round($distanceFare, 2),
-                'surge_multiplier' => $surgeMultiplier,
-                'subtotal' => round($subtotal, 2),
-            ],
-            'nearby_drivers' => $nearbyDrivers,
-        ]);
+        return response()->json($result);
     }
 
     public function storeRide(Request $request)
@@ -342,54 +371,62 @@ class CustomerAppController extends Controller
         $customer = $request->user();
 
         $validator = Validator::make($request->all(), [
-            'service_type' => 'required|in:point_to_point,hourly_rental,round_trip',
-            'pickup_location' => 'required|string|max:255',
-            'pickup_lat' => 'required|numeric|between:-90,90',
-            'pickup_lng' => 'required|numeric|between:-180,180',
+            'service_type'     => 'required|in:point_to_point,hourly_rental,round_trip',
+            'pickup_location'  => 'required|string|max:255',
+            'pickup_lat'       => 'required|numeric|between:-90,90',
+            'pickup_lng'       => 'required|numeric|between:-180,180',
             'dropoff_location' => 'nullable|string|max:255',
-            'dropoff_lat' => 'nullable|numeric|between:-90,90',
-            'dropoff_lng' => 'nullable|numeric|between:-180,180',
-            'scheduled_at' => 'required|date|after:now',
+            'dropoff_lat'      => 'nullable|numeric|between:-90,90',
+            'dropoff_lng'      => 'nullable|numeric|between:-180,180',
+            'scheduled_at'     => 'required|date|after:now',
             'special_requests' => 'nullable|string',
-            'payment_method' => 'required|in:cash,card,wallet,upi',
+            'payment_method'   => 'required|in:cash,card,wallet,upi',
         ]);
 
         if ($validator->fails()) {
             return response()->json(['errors' => $validator->errors()], 422);
         }
 
-        $estimate = $this->estimateRide(new Request($request->all()))->getData();
+        $estimate = app(RideEstimateService::class)->estimate(
+            (float) $request->pickup_lat,
+            (float) $request->pickup_lng,
+            $request->dropoff_lat ? (float) $request->dropoff_lat : null,
+            $request->dropoff_lng ? (float) $request->dropoff_lng : null
+        );
 
         $ride = DB::transaction(function () use ($request, $customer, $estimate) {
             return RideBooking::create([
-                'user_id' => $customer->id,
-                'service_type' => $request->service_type,
-                'customer_name' => $customer->name,
-                'customer_email' => $customer->email,
-                'customer_phone' => $customer->phone,
-                'pickup_location' => $request->pickup_location,
-                'pickup_lat' => $request->pickup_lat,
-                'pickup_lng' => $request->pickup_lng,
+                'customer_id'      => $customer->id,
+                'service_type'     => $request->service_type,
+                'customer_name'    => $customer->name,
+                'customer_email'   => $customer->email,
+                'customer_phone'   => $customer->phone,
+                'pickup_location'  => $request->pickup_location,
+                'pickup_lat'       => $request->pickup_lat,
+                'pickup_lng'       => $request->pickup_lng,
                 'dropoff_location' => $request->dropoff_location,
-                'dropoff_lat' => $request->dropoff_lat,
-                'dropoff_lng' => $request->dropoff_lng,
-                'scheduled_at' => $request->scheduled_at,
-                'distance_km' => $estimate->distance_km ?? 0,
-                'estimated_duration' => $estimate->estimated_duration ?? 30,
-                'base_fare' => $estimate->pricing->base_fare ?? 50,
-                'distance_fare' => $estimate->pricing->distance_fare ?? 0,
-                'surge_multiplier' => $estimate->pricing->surge_multiplier ?? 1,
-                'total_fare' => $estimate->pricing->subtotal ?? 50,
-                'payment_method' => $request->payment_method,
+                'dropoff_lat'      => $request->dropoff_lat,
+                'dropoff_lng'      => $request->dropoff_lng,
+                'scheduled_at'     => $request->scheduled_at,
+                'distance_km'      => $estimate['distance_km'],
+                'estimated_duration' => $estimate['estimated_duration'],
+                'base_fare'        => $estimate['pricing']['base_fare'],
+                'distance_fare'    => $estimate['pricing']['distance_fare'],
+                'surge_multiplier' => $estimate['pricing']['surge_multiplier'],
+                'total_fare'       => $estimate['pricing']['subtotal'],
+                'payment_method'   => $request->payment_method,
                 'special_requests' => $request->special_requests,
-                'status' => 'pending',
-                'payment_status' => 'pending',
+                'status'           => 'pending',
+                'payment_status'   => 'pending',
             ]);
+            broadcast(new NewRideRequest($ride));
+
+            return $ride;
         });
 
         return response()->json([
             'success' => true,
-            'data' => $ride->load('driver:id,name,phone'),
+            'data'    => $ride->load('driver:id,name,phone'),
         ], 201);
     }
 

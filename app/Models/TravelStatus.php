@@ -7,17 +7,22 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class TravelStatus extends Model
 {
+    protected $table = 'travel_statuses';
+
     protected $fillable = [
-        'booking_id',
-        'description',
+        'tour_booking_id',
         'status',
+        'location',
+        'notes',
+        'occurred_at',
     ];
 
-    /**
-     * Get the booking that the travel status belongs to.
-     */
-    public function booking(): BelongsTo
+    protected $casts = [
+        'occurred_at' => 'datetime',
+    ];
+
+    public function tourBooking(): BelongsTo
     {
-        return $this->belongsTo(Booking::class);
+        return $this->belongsTo(TourBooking::class, 'tour_booking_id');
     }
 }

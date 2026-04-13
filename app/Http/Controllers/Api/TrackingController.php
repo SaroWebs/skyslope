@@ -129,7 +129,7 @@ class TrackingController extends Controller
         // Verify authorization
         $user = $request->user();
         $isDriver = $booking->driver_id === $user->id;
-        $isCustomer = $booking->user_id === $user->id;
+        $isCustomer = $booking->customer_id === $user->id;
         $isAdmin = $user->isAdmin();
 
         if (!$isDriver && !$isCustomer && !$isAdmin) {
@@ -139,6 +139,7 @@ class TrackingController extends Controller
             ], 403);
         }
 
+        $previousStatus = $booking->status;
         $requestedStatus = $this->normalizeStatus($request->status);
         if (!$requestedStatus) {
             return response()->json([
@@ -209,7 +210,8 @@ class TrackingController extends Controller
         broadcast(new RideStatusUpdated(
             $booking,
             $requestedStatus,
-            $request->message
+            $request->message,
+            $previousStatus
         ));
 
         return response()->json([
@@ -227,7 +229,7 @@ class TrackingController extends Controller
         // Verify authorization
         $user = $request->user();
         $isDriver = $booking->driver_id === $user->id;
-        $isCustomer = $booking->user_id === $user->id;
+        $isCustomer = $booking->customer_id === $user->id;
         $isAdmin = $user->isAdmin();
 
         if (!$isDriver && !$isCustomer && !$isAdmin) {

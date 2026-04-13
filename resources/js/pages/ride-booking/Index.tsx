@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { Head } from '@inertiajs/react'
-import WebsiteLayout from '@/layoutes/WebsiteLayout'
+import WebsiteLayout from '@/layouts/WebsiteLayout'
 import RideBookingForm from '@/components/ride_booking/RideBookingForm'
 import RideTracker from '@/components/ride_booking/RideTracker'
 import RideBookingSearch from '@/components/ride_booking/RideBookingSearch'

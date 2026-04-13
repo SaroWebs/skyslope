@@ -66,6 +66,26 @@ class UserSeeder extends Seeder
                 'created_at' => now(),
                 'updated_at' => now(),
             ],
+            [
+                'name' => 'Robert Wilson',
+                'email' => 'robert@example.com',
+                'phone' => '+1-555-0105',
+                'account_type' => 'driver',
+                'email_verified_at' => now(),
+                'password' => Hash::make('password'),
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
+            [
+                'name' => 'Lisa Brown',
+                'email' => 'lisa@example.com',
+                'phone' => '+1-555-0106',
+                'account_type' => 'driver',
+                'email_verified_at' => now(),
+                'password' => Hash::make('password'),
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
         ];
 
         foreach ($users as $userData) {
@@ -84,6 +104,13 @@ class UserSeeder extends Seeder
 
             if ($accountType === 'driver') {
                 unset($userData['account_type']);
+                
+                // Add driver specific fields
+                $userData['is_approved'] = true;
+                $userData['is_active'] = true;
+                $userData['is_online'] = true;
+                $userData['approved_at'] = now();
+                $userData['status'] = 'active';
 
                 Driver::updateOrCreate(
                     ['email' => $userData['email']],

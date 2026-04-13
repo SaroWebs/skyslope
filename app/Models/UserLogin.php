@@ -3,30 +3,32 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\MorphTo;
 
 class UserLogin extends Model
 {
+    protected $table = 'user_logins';
+
+    public $timestamps = false; // Custom handled below
+
     protected $fillable = [
-        'user_id',
-        'username',
-        'password',
+        'loginable_type',
+        'loginable_id',
+        'ip_address',
+        'user_agent',
+        'device_type',
         'login_method',
-        'token',
-        'token_expires_at',
-        'active',
+        'logged_in_at',
+        'logged_out_at',
     ];
 
     protected $casts = [
-        'token_expires_at' => 'datetime',
-        'active' => 'boolean',
+        'logged_in_at'  => 'datetime',
+        'logged_out_at' => 'datetime',
     ];
 
-    /**
-     * Get the user that owns the login.
-     */
-    public function user(): BelongsTo
+    public function loginable(): MorphTo
     {
-        return $this->belongsTo(User::class);
+        return $this->morphTo();
     }
 }

@@ -1,6 +1,39 @@
 import React from 'react';
-import { Link, usePage } from '@inertiajs/react';
-import AdminLayout from '../../layoutes/AdminLayout';
+import { Head, Link, router, usePage } from '@inertiajs/react';
+import AdminLayout from '../../layouts/AdminLayout';
+import { 
+    SimpleGrid, 
+    Card, 
+    Image, 
+    Text, 
+    Badge, 
+    Button, 
+    Group, 
+    Stack, 
+    Paper, 
+    Pagination, 
+    ActionIcon, 
+    Tooltip,
+    Box,
+    Select,
+    Divider
+} from '@mantine/core';
+import { 
+    Plus, 
+    Car, 
+    Users, 
+    Zap, 
+    Wind, 
+    UserCheck, 
+    Fuel, 
+    Calendar, 
+    IndianRupee, 
+    Pencil, 
+    Trash, 
+    Eye,
+    Filter,
+    ArrowRight
+} from 'lucide-react';
 
 interface CarCategory {
     id: number;
@@ -19,8 +52,6 @@ interface CarCategory {
     year: number | null;
     is_active: boolean;
     sort_order: number | null;
-    created_at: string;
-    updated_at: string;
 }
 
 interface CarCategoriesProps {
@@ -38,235 +69,204 @@ export default function CarCategories({ title, car_categories }: CarCategoriesPr
     const { url } = usePage();
 
     const getVehicleTypeIcon = (type: string) => {
-        const icons = {
-            sedan: '🚗',
-            suv: '🚙',
-            hatchback: '🚗',
-            convertible: '🏎️',
-            van: '🚐',
-            truck: '🚚'
-        };
-        return icons[type as keyof typeof icons] || '🚗';
+        // Fallback for visual representation
+        return <Car size={40} color="var(--mantine-color-gray-4)" strokeWidth={1} />;
     };
 
-    const formatPrice = (price: number) => {
-        return new Intl.NumberFormat('en-IN', {
-            style: 'currency',
-            currency: 'INR',
-            minimumFractionDigits: 0,
-            maximumFractionDigits: 0,
-        }).format(price);
+    const handleDelete = (id: number) => {
+        if (confirm('Are you sure you want to delete this car category?')) {
+            router.delete(`/admin/car-categories/${id}`);
+        }
+    };
+
+    const handleFilter = (key: string, value: string | null) => {
+        const params = new URLSearchParams(window.location.search);
+        if (value) params.set(key, value);
+        else params.delete(key);
+        router.get(`/admin/car-categories?${params.toString()}`);
     };
 
     return (
         <AdminLayout title={title}>
-            <div className="bg-white shadow rounded-lg">
-                <div className="px-4 py-5 sm:p-6">
-                    <div className="flex justify-between items-center mb-6">
-                        <h2 className="text-lg font-medium text-gray-900">Car Categories Management</h2>
-                        <Link
-                            href="/admin/car-categories/create"
-                            className="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 text-sm font-medium"
+            <Head title="Car Categories" />
+
+            <Stack gap="lg">
+                <Paper p="xl" radius="md" withBorder shadow="xs">
+                    <Group justify="space-between" mb="xl">
+                        <Group gap="md">
+                            <Select
+                                placeholder="Vehicle Type"
+                                data={[
+                                    { value: 'sedan', label: 'Sedan' },
+                                    { value: 'suv', label: 'SUV' },
+                                    { value: 'hatchback', label: 'Hatchback' },
+                                    { value: 'convertible', label: 'Convertible' },
+                                    { value: 'van', label: 'Van' },
+                                    { value: 'truck', label: 'Truck' },
+                                ]}
+                                value={new URLSearchParams(window.location.search).get('type')}
+                                onChange={(val) => handleFilter('type', val)}
+                                clearable
+                                radius="md"
+                                leftSection={<Filter size={16} />}
+                            />
+                            <Select
+                                placeholder="Status"
+                                data={[
+                                    { value: 'true', label: 'Active' },
+                                    { value: 'false', label: 'Inactive' },
+                                ]}
+                                value={new URLSearchParams(window.location.search).get('active')}
+                                onChange={(val) => handleFilter('active', val)}
+                                clearable
+                                radius="md"
+                            />
+                        </Group>
+                        <Button 
+                            component={Link} 
+                            href="/admin/car-categories/create" 
+                            leftSection={<Plus size={16} />}
+                            radius="md"
                         >
-                            Add New Category
-                        </Link>
-                    </div>
+                            New Category
+                        </Button>
+                    </Group>
 
-                    {/* Filters */}
-                    <div className="mb-6 grid grid-cols-1 md:grid-cols-4 gap-4">
-                        <div>
-                            <label htmlFor="type-filter" className="block text-sm font-medium text-gray-700 mb-1">
-                                Vehicle Type
-                            </label>
-                            <select
-                                id="type-filter"
-                                className="w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
-                                onChange={(e) => {
-                                    const url = new URL(window.location.href);
-                                    if (e.target.value) {
-                                        url.searchParams.set('type', e.target.value);
-                                    } else {
-                                        url.searchParams.delete('type');
-                                    }
-                                    window.location.href = url.toString();
-                                }}
-                                value={new URLSearchParams(window.location.search).get('type') || ''}
-                            >
-                                <option value="">All Types</option>
-                                <option value="sedan">Sedan</option>
-                                <option value="suv">SUV</option>
-                                <option value="hatchback">Hatchback</option>
-                                <option value="convertible">Convertible</option>
-                                <option value="van">Van</option>
-                                <option value="truck">Truck</option>
-                            </select>
-                        </div>
-
-                        <div>
-                            <label htmlFor="active-filter" className="block text-sm font-medium text-gray-700 mb-1">
-                                Status
-                            </label>
-                            <select
-                                id="active-filter"
-                                className="w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
-                                onChange={(e) => {
-                                    const url = new URL(window.location.href);
-                                    if (e.target.value !== '') {
-                                        url.searchParams.set('active', e.target.value);
-                                    } else {
-                                        url.searchParams.delete('active');
-                                    }
-                                    window.location.href = url.toString();
-                                }}
-                                value={new URLSearchParams(window.location.search).get('active') || ''}
-                            >
-                                <option value="">All Status</option>
-                                <option value="true">Active</option>
-                                <option value="false">Inactive</option>
-                            </select>
-                        </div>
-                    </div>
-
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    <SimpleGrid cols={{ base: 1, sm: 2, lg: 3 }} spacing="xl">
                         {car_categories.data.map((category) => (
-                            <div key={category.id} className="bg-white border border-gray-200 rounded-lg shadow-sm hover:shadow-md transition-shadow">
-                                <div className="aspect-w-16 aspect-h-9">
+                            <Card key={category.id} shadow="sm" padding="xl" radius="md" withBorder>
+                                <Card.Section>
                                     {category.images && category.images.length > 0 ? (
-                                        <img
+                                        <Image
                                             src={category.images[0]}
+                                            height={180}
                                             alt={category.name}
-                                            className="w-full h-48 object-cover rounded-t-lg"
+                                            fallbackSrc="https://placehold.co/600x400?text=No+Image"
                                         />
                                     ) : (
-                                        <div className="w-full h-48 bg-gray-200 rounded-t-lg flex items-center justify-center">
-                                            <span className="text-4xl">{getVehicleTypeIcon(category.vehicle_type)}</span>
-                                        </div>
+                                        <Box 
+                                            h={180} 
+                                            bg="gray.1" 
+                                            style={{ display: 'flex', alignItems: 'center', justify: 'center' }}
+                                        >
+                                            {getVehicleTypeIcon(category.vehicle_type)}
+                                        </Box>
                                     )}
-                                </div>
-                                <div className="p-6">
-                                    <div className="flex items-center justify-between mb-2">
-                                        <h3 className="text-lg font-medium text-gray-900">{category.name}</h3>
-                                        <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                                            category.is_active 
-                                                ? 'bg-green-100 text-green-800' 
-                                                : 'bg-red-100 text-red-800'
-                                        }`}>
+                                </Card.Section>
+
+                                <Stack mt="md" gap="xs">
+                                    <Group justify="space-between" align="flex-start">
+                                        <Stack gap={0}>
+                                            <Text fw={800} size="lg">{category.name}</Text>
+                                            <Text size="xs" color="dimmed" tt="uppercase" fw={700}>{category.vehicle_type}</Text>
+                                        </Stack>
+                                        <Badge color={category.is_active ? 'green' : 'red'}>
                                             {category.is_active ? 'Active' : 'Inactive'}
-                                        </span>
-                                    </div>
-                                    
-                                    <p className="text-sm text-gray-600 mb-2 line-clamp-2">{category.description}</p>
+                                        </Badge>
+                                    </Group>
 
-                                    <div className="space-y-2 mb-4">
-                                        <div className="flex justify-between text-sm">
-                                            <span className="text-gray-500">Type:</span>
-                                            <span className="font-medium capitalize">{category.vehicle_type}</span>
-                                        </div>
-                                        <div className="flex justify-between text-sm">
-                                            <span className="text-gray-500">Seats:</span>
-                                            <span className="font-medium">{category.seats}</span>
-                                        </div>
-                                        <div className="flex justify-between text-sm">
-                                            <span className="text-gray-500">Daily Rate:</span>
-                                            <span className="font-medium">{formatPrice(category.base_price_per_day)}</span>
-                                        </div>
-                                        <div className="flex justify-between text-sm">
-                                            <span className="text-gray-500">Per KM:</span>
-                                            <span className="font-medium">₹{category.price_per_km}</span>
-                                        </div>
-                                    </div>
+                                    <Text size="sm" color="dimmed" lineClamp={2} style={{ height: '40px' }}>
+                                        {category.description || 'No description provided.'}
+                                    </Text>
 
-                                    <div className="flex flex-wrap gap-1 mb-4">
+                                    <Divider my="sm" />
+
+                                    <SimpleGrid cols={2}>
+                                        <Group gap={8}>
+                                            <Users size={16} color="gray" />
+                                            <Text size="sm" fw={600}>{category.seats} Seats</Text>
+                                        </Group>
                                         {category.has_ac && (
-                                            <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-                                                AC
-                                            </span>
+                                            <Group gap={8}>
+                                                <Wind size={16} color="var(--mantine-color-blue-6)" />
+                                                <Text size="sm" fw={600}>Full AC</Text>
+                                            </Group>
                                         )}
+                                        <Group gap={8}>
+                                            <Fuel size={16} color="var(--mantine-color-teal-6)" />
+                                            <Text size="sm" fw={600} tt="capitalize">{category.fuel_type || 'Petrol'}</Text>
+                                        </Group>
                                         {category.has_driver && (
-                                            <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-purple-100 text-purple-800">
-                                                Driver
-                                            </span>
+                                            <Group gap={8}>
+                                                <UserCheck size={16} color="var(--mantine-color-indigo-6)" />
+                                                <Text size="sm" fw={600}>With Driver</Text>
+                                            </Group>
                                         )}
-                                        {category.fuel_type && (
-                                            <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800 capitalize">
-                                                {category.fuel_type}
-                                            </span>
-                                        )}
-                                    </div>
+                                    </SimpleGrid>
 
-                                    <div className="flex space-x-2">
-                                        <Link
-                                            href={`/admin/car-categories/${category.id}`}
-                                            className="flex-1 bg-gray-100 text-gray-700 px-3 py-2 rounded-md hover:bg-gray-200 text-sm font-medium text-center"
+                                    <Paper bg="blue.0" p="sm" radius="sm" mt="md">
+                                        <Group justify="space-between">
+                                            <Stack gap={0}>
+                                                <Text size="xs" color="blue.9" fw={700}>DAILY RATE</Text>
+                                                <Text fw={800} size="md">₹{parseFloat(category.base_price_per_day.toString()).toLocaleString()}</Text>
+                                            </Stack>
+                                            <Stack gap={0} align="flex-end">
+                                                <Text size="xs" color="blue.9" fw={700}>PER KM</Text>
+                                                <Text fw={800} size="md">₹{category.price_per_km}</Text>
+                                            </Stack>
+                                        </Group>
+                                    </Paper>
+                                </Stack>
+
+                                <Group mt="xl" gap="sm">
+                                    <Button 
+                                        component={Link} 
+                                        href={`/admin/car-categories/${category.id}`} 
+                                        variant="filled" 
+                                        color="blue"
+                                        style={{ flex: 1 }}
+                                        rightSection={<ArrowRight size={14} />}
+                                    >
+                                        Manage
+                                    </Button>
+                                    <Tooltip label="Edit Details">
+                                        <ActionIcon 
+                                            component={Link} 
+                                            href={`/admin/car-categories/${category.id}/edit`} 
+                                            variant="light" 
+                                            color="yellow" 
+                                            size="lg"
                                         >
-                                            View
-                                        </Link>
-                                        <Link
-                                            href={`/admin/car-categories/${category.id}/edit`}
-                                            className="flex-1 bg-yellow-100 text-yellow-700 px-3 py-2 rounded-md hover:bg-yellow-200 text-sm font-medium text-center"
+                                            <Pencil size={18} />
+                                        </ActionIcon>
+                                    </Tooltip>
+                                    <Tooltip label="Remove Category">
+                                        <ActionIcon 
+                                            onClick={() => handleDelete(category.id)} 
+                                            variant="light" 
+                                            color="red" 
+                                            size="lg"
                                         >
-                                            Edit
-                                        </Link>
-                                        <form method="POST" action={`/admin/car-categories/${category.id}`} className="flex-1">
-                                            <input type="hidden" name="_method" value="DELETE" />
-                                            <button
-                                                type="submit"
-                                                className="w-full bg-red-100 text-red-700 px-3 py-2 rounded-md hover:bg-red-200 text-sm font-medium"
-                                                onClick={(e) => {
-                                                    if (!confirm('Are you sure you want to delete this car category?')) {
-                                                        e.preventDefault();
-                                                    }
-                                                }}
-                                            >
-                                                Delete
-                                            </button>
-                                        </form>
-                                    </div>
-                                </div>
-                            </div>
+                                            <Trash size={18} />
+                                        </ActionIcon>
+                                    </Tooltip>
+                                </Group>
+                            </Card>
                         ))}
-                    </div>
+                    </SimpleGrid>
 
-                    {car_categories.data.length === 0 && (
-                        <div className="text-center py-12">
-                            <div className="text-gray-500">No car categories found.</div>
-                            <Link
-                                href="/admin/car-categories/create"
-                                className="mt-2 inline-flex items-center text-blue-600 hover:text-blue-800"
-                            >
-                                Create your first category →
-                            </Link>
-                        </div>
+                    {car_categories.data.length === 0 ? (
+                        <Stack align="center" py={60}>
+                            <Car size={60} strokeWidth={1} color="gray" />
+                            <Text color="dimmed" mt="md" fw={500}>No car categories found matching your criteria.</Text>
+                            <Button variant="outline" mt="sm">Reset All Filters</Button>
+                        </Stack>
+                    ) : (
+                        <Group justify="space-between" mt="xl">
+                            <Text size="sm" color="dimmed">
+                                Showing {car_categories.data.length} of {car_categories.total} categories
+                            </Text>
+                            <Pagination 
+                                total={car_categories.last_page} 
+                                value={car_categories.current_page} 
+                                onChange={(page) => router.get(`${url}?page=${page}`)}
+                                radius="md"
+                                color="blue"
+                            />
+                        </Group>
                     )}
-
-                    {/* Pagination */}
-                    {car_categories.last_page > 1 && (
-                        <div className="mt-6 flex items-center justify-between">
-                            <div className="text-sm text-gray-700">
-                                Showing {((car_categories.current_page - 1) * car_categories.per_page) + 1} to {Math.min(car_categories.current_page * car_categories.per_page, car_categories.total)} of {car_categories.total} results
-                            </div>
-                            <div className="flex space-x-2">
-                                {car_categories.current_page > 1 && (
-                                    <Link
-                                        href={`${url}?page=${car_categories.current_page - 1}`}
-                                        className="px-3 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50"
-                                    >
-                                        Previous
-                                    </Link>
-                                )}
-                                {car_categories.current_page < car_categories.last_page && (
-                                    <Link
-                                        href={`${url}?page=${car_categories.current_page + 1}`}
-                                        className="px-3 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50"
-                                    >
-                                        Next
-                                    </Link>
-                                )}
-                            </div>
-                        </div>
-                    )}
-                </div>
-            </div>
+                </Paper>
+            </Stack>
         </AdminLayout>
     );
 }

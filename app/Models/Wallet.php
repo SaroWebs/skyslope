@@ -2,120 +2,102 @@
 
 namespace App\Models;
 
-use Illuminate\Database\Eloquent\Factories\HasFactory;
-use Illuminate\Database\Eloquent\Relations\MorphTo;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\MorphTo;
 
 class Wallet extends Model
 {
-    use HasFactory;
+    protected $table = 'wallets';
 
     protected $fillable = [
         'owner_type',
         'owner_id',
         'balance',
         'currency',
-        'status',
+        'is_active',
     ];
 
     protected $casts = [
-        'balance' => 'decimal:2',
+        'balance'   => 'decimal:2',
+        'is_active' => 'boolean',
     ];
+
+    // ── Relationships ──────────────────────────────────────────────
 
     public function owner(): MorphTo
     {
         return $this->morphTo();
     }
 
-    public function scopeForOwner($query, Model $owner)
-    {
-        return $query
-            ->where('owner_type', $owner::class)
-            ->where('owner_id', $owner->getKey());
-    }
-
     public function transactions(): HasMany
     {
-        return $this->hasMany(WalletTransaction::class, 'wallet_id');
+        return $this->hasMany(WalletTransaction::class, 'wallet_id')->latest();
     }
 
-    /**
-     * Credit amount to wallet
-     */
-    public function credit(float $amount, string $description, string|int|null $referenceId = null): bool
+    // ── Helpers ────────────────────────────────────────────────────
+
+    public function credit(float $amount, string $description = '', ?string $refType = null, ?string $refId = null): WalletTransaction
     {
-        return $this->applyBalanceChange('credit', $amount, $description, $referenceId);
+        $before = (float) $this->balance;
+        $after  = $before + $amount;
+
+        $this->increment('balance', $amount);
+
+        return $this->transactions()->create([
+            'type'           => 'credit',
+            'amount'         => $amount,
+            'balance_before' => $before,
+            'balance_after'  => $after,
+            'reference_type' => $refType,
+            'reference_id'   => $refId,
+            'description'    => $description,
+        ]);
     }
 
-    /**
-     * Debit amount from wallet
-     */
-    public function debit(float $amount, string $description, string|int|null $referenceId = null): bool
-    {
-        if ((float) $this->balance < $amount) {
-            return false;
-        }
-
-        return $this->applyBalanceChange('debit', $amount, $description, $referenceId);
-    }
-
-    /**
-     * Process commission deduction
-     */
-    public function processCommission(float $amount, string $description, string|int|null $referenceId = null): bool
+    public function debit(float $amount, string $description = '', ?string $refType = null, ?string $refId = null): WalletTransaction
     {
         if ((float) $this->balance < $amount) {
-            return false;
+            throw new \RuntimeException('Insufficient wallet balance.');
         }
 
-        return $this->applyBalanceChange('commission', $amount, $description, $referenceId);
+        $before = (float) $this->balance;
+        $after  = $before - $amount;
+
+        $this->decrement('balance', $amount);
+
+        return $this->transactions()->create([
+            'type'           => 'debit',
+            'amount'         => $amount,
+            'balance_before' => $before,
+            'balance_after'  => $after,
+            'reference_type' => $refType,
+            'reference_id'   => $refId,
+            'description'    => $description,
+        ]);
     }
 
-    /**
-     * Get wallet balance
-     */
+    public function hasSufficientBalance(float $amount): bool
+    {
+        return (float) $this->balance >= $amount;
+    }
+
     public function getBalance(): float
     {
-        return $this->balance;
+        return (float) $this->balance;
+    }
+
+    public function isActive(): bool
+    {
+        return $this->is_active;
     }
 
     /**
-     * Check if wallet is active
+     * Scope to find wallet for a specific owner.
      */
-    public function isActive(): bool
+    public function scopeForOwner($query, $user)
     {
-        return $this->status === 'active';
-    }
-
-    private function applyBalanceChange(
-        string $transactionType,
-        float $amount,
-        string $description,
-        string|int|null $referenceId = null
-    ): bool {
-        if ($amount <= 0) {
-            return false;
-        }
-
-        if (in_array($transactionType, ['debit', 'commission'], true)) {
-            $this->balance = (float) $this->balance - $amount;
-        } else {
-            $this->balance = (float) $this->balance + $amount;
-        }
-
-        $success = $this->save();
-
-        if ($success) {
-            $this->transactions()->create([
-                'transaction_type' => $transactionType,
-                'amount' => $amount,
-                'description' => $description,
-                'reference_id' => $referenceId,
-                'status' => 'completed',
-            ]);
-        }
-
-        return $success;
+        return $query->where('owner_type', get_class($user))
+                     ->where('owner_id', $user->id);
     }
 }

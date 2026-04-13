@@ -7,6 +7,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class RideBookingTip extends Model
 {
+    protected $table = 'ride_booking_tips';
+
     protected $fillable = [
         'ride_booking_id',
         'customer_id',
@@ -14,14 +16,13 @@ class RideBookingTip extends Model
         'amount',
         'payment_method',
         'status',
-        'message',
     ];
 
     protected $casts = [
         'amount' => 'decimal:2',
     ];
 
-    public function booking(): BelongsTo
+    public function rideBooking(): BelongsTo
     {
         return $this->belongsTo(RideBooking::class, 'ride_booking_id');
     }
@@ -35,4 +36,6 @@ class RideBookingTip extends Model
     {
         return $this->belongsTo(Driver::class, 'driver_id');
     }
+
+    public function isPaid(): bool { return $this->status === 'paid'; }
 }

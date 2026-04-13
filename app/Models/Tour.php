@@ -2,65 +2,97 @@
 
 namespace App\Models;
 
-use App\Models\TourGuide;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
-use App\Models\TourDriver;
 
 class Tour extends Model
 {
     protected $fillable = [
+        'tour_category_id',
         'title',
+        'slug',
         'description',
-        'price',
+        'short_description',
+        'highlights',
+        'inclusions',
+        'exclusions',
+        'faqs',
+        'duration_days',
+        'duration_nights',
+        'min_group_size',
+        'max_group_size',
+        'price_per_person',
+        'child_price',
         'discount',
+        'start_location',
+        'end_location',
+        'region',
+        'difficulty',
+        'cover_image',
+        'gallery',
         'available_from',
         'available_to',
-        'image_path',
+        'is_active',
+        'is_featured',
     ];
 
     protected $casts = [
-        'available_from' => 'date',
-        'available_to' => 'date',
+        'available_from'   => 'date',
+        'available_to'     => 'date',
+        'highlights'       => 'array',
+        'inclusions'       => 'array',
+        'exclusions'       => 'array',
+        'faqs'             => 'array',
+        'gallery'          => 'array',
+        'is_active'        => 'boolean',
+        'is_featured'      => 'boolean',
+        'price_per_person' => 'decimal:2',
+        'child_price'      => 'decimal:2',
+        'discount'         => 'decimal:2',
     ];
 
-    /**
-     * Get the bookings for the tour.
-     */
-    public function bookings(): HasMany
+    // ── Relationships ──────────────────────────────────────────────
+
+    public function category(): BelongsTo
     {
-        return $this->hasMany(Booking::class);
+        return $this->belongsTo(TourCategory::class, 'tour_category_id');
     }
 
-    /**
-     * Get the itineraries for the tour.
-     */
     public function itineraries(): HasMany
     {
-        return $this->hasMany(Itinerary::class);
+        return $this->hasMany(TourItinerary::class, 'tour_id')->orderBy('day_number');
     }
 
-    /**
-     * Get the drivers for the tour.
-     */
-    public function drivers(): HasMany
+    public function schedules(): HasMany
     {
-        return $this->hasMany(TourDriver::class)->with('user');
+        return $this->hasMany(TourSchedule::class, 'tour_id')->orderBy('departure_date');
     }
 
-    /**
-     * Get the guides for the tour.
-     */
-    public function guides(): HasMany
+    public function bookings(): HasMany
     {
-        return $this->hasMany(TourGuide::class)->with('user');
+        return $this->hasMany(TourBooking::class, 'tour_id');
     }
 
-    /**
-     * Get the duration based on itineraries count.
-     */
-    public function getDurationAttribute()
+    // ── Helpers ────────────────────────────────────────────────────
+
+    public function getDiscountedPrice(): float
     {
-        return $this->itineraries_count ?? $this->itineraries()->count();
+        return $this->price_per_person * (1 - $this->discount / 100);
+    }
+
+    public function getDurationLabelAttribute(): string
+    {
+        $d = $this->duration_days . 'D';
+        $n = $this->duration_nights . 'N';
+        return "{$d}/{$n}";
+    }
+
+    public function getNextAvailableSchedule(): ?TourSchedule
+    {
+        return $this->schedules()
+            ->where('status', 'open')
+            ->where('departure_date', '>=', now()->toDateString())
+            ->first();
     }
 }
