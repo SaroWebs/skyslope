@@ -1,5 +1,4 @@
 import React from 'react';
-import { Link } from '@inertiajs/react';
 
 const AboutSection = () => {
   const stats = [
@@ -49,7 +48,7 @@ const AboutSection = () => {
   ];
 
   return (
-    <section className="py-20 bg-gray-50">
+    <section id="services" className="py-20 bg-gray-50">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-16 items-center">
           {/* Content */}
@@ -75,15 +74,15 @@ const AboutSection = () => {
               ))}
             </div>
 
-            <Link
-              href="/about"
+            <a
+              href="#contact"
               className="inline-flex items-center text-[var(--color-primary)] hover:text-blue-700 font-semibold"
             >
-              Learn More About Us
+              Talk to Our Team
               <svg className="w-4 h-4 ml-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
               </svg>
-            </Link>
+            </a>
           </div>
 
           {/* Image */}

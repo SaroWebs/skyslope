@@ -1,5 +1,5 @@
 import React from 'react';
-import { Head, Link, usePage } from '@inertiajs/react';
+import { Head, Link, usePage, router } from '@inertiajs/react';
 import AdminLayout from '../../layouts/AdminLayout';
 import { 
     Table, 
@@ -30,7 +30,9 @@ import {
     IndianRupee,
     ChevronRight,
     Search,
-    Filter
+    Filter,
+    MapIcon,
+    CarIcon
 } from 'lucide-react';
 
 interface Tour {
@@ -70,7 +72,6 @@ interface ToursProps {
 
 export default function Tours({ title, tours }: ToursProps) {
     const { url } = usePage();
-
     return (
         <AdminLayout title={title}>
             <Head title="Tour Management" />
@@ -120,11 +121,11 @@ export default function Tours({ title, tours }: ToursProps) {
                                                     bg="gray.1" 
                                                     style={{ borderRadius: '8px', display: 'flex', alignItems: 'center', justify: 'center' }}
                                                 >
-                                                    <Map size={24} color="var(--mantine-color-blue-4)" />
+                                                    <MapIcon size={24} color="var(--mantine-color-blue-4)" />
                                                 </Box>
                                                 <Stack gap={0}>
                                                     <Text size="sm" fw={700}>{tour.title}</Text>
-                                                    <Text size="xs" color="dimmed" lineClamp={1} maxW={200}>
+                                                    <Text size="xs" color="dimmed" lineClamp={1}>
                                                         {tour.description}
                                                     </Text>
                                                 </Stack>
@@ -133,7 +134,7 @@ export default function Tours({ title, tours }: ToursProps) {
                                         <Table.Td>
                                             <Group gap={4}>
                                                 <IndianRupee size={14} />
-                                                <Text size="sm" fw={700}>{parseFloat(tour.price.toString()).toLocaleString()}</Text>
+                                                <Text size="sm" fw={700}>{Number(tour.price).toLocaleString()}</Text>
                                             </Group>
                                         </Table.Td>
                                         <Table.Td>
@@ -153,7 +154,7 @@ export default function Tours({ title, tours }: ToursProps) {
                                                     <Badge variant="light" leftSection={<Users size={12} />}>{tour.guides.length}</Badge>
                                                 </Tooltip>
                                                 <Tooltip label="Assigned Drivers">
-                                                    <Badge variant="light" color="teal" leftSection={<Car size={12} />}>{tour.drivers.length}</Badge>
+                                                    <Badge variant="light" color="teal" leftSection={<CarIcon size={12} />}>{tour.drivers.length}</Badge>
                                                 </Tooltip>
                                             </Group>
                                         </Table.Td>

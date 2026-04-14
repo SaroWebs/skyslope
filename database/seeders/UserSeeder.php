@@ -128,10 +128,8 @@ class UserSeeder extends Seeder
                 $userData
             );
 
-            // Only assign role if user was just created (not if it already existed)
-            if ($user->wasRecentlyCreated) {
-                $user->assignRole($role);
-            }
+            // Ensure role is present even for existing users
+            $user->assignRole($role);
         }
     }
 }

@@ -5,10 +5,9 @@ import { Affix, Button, Transition, Box } from '@mantine/core';
 
 type Props = {
   children?: ReactNode;
-  page?: string;
 };
 
-const WebsiteLayout = ({ children, page = 'home' }: Props) => {
+const WebsiteLayout = ({ children }: Props) => {
   const [scrollVisible, setScrollVisible] = useState(false);
 
   useEffect(() => {
@@ -33,7 +32,7 @@ const WebsiteLayout = ({ children, page = 'home' }: Props) => {
       <div className="fixed inset-0 bg-grid-pattern opacity-[0.02] pointer-events-none" />
 
       {/* Navigation */}
-      <Navigation currentPage={page} />
+      <Navigation />
 
       {/* Main Content */}
       <main className="relative">

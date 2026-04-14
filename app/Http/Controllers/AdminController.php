@@ -1239,27 +1239,23 @@ class AdminController extends Controller
 
         $drivers = Driver::query()
             ->select('id', 'name', 'email', 'phone')
+            ->with('driverAvailability')
             ->orderBy('name')
-            ->get();
-
-        $driverAvailability = DriverAvailability::whereIn('driver_id', $drivers->pluck('id'))
             ->get()
-            ->keyBy('driver_id');
+            ->map(function ($driver) {
+                $availability = $driver->driverAvailability;
 
-        $drivers = $drivers->map(function ($driver) use ($driverAvailability) {
-            $availability = $driverAvailability->get($driver->id);
-
-            return [
-                'id' => $driver->id,
-                'name' => $driver->name,
-                'email' => $driver->email,
-                'phone' => $driver->phone,
-                'is_online' => (bool) ($availability?->is_online ?? false),
-                'is_available' => (bool) ($availability?->is_available ?? false),
-                'rating' => $availability?->rating,
-                'vehicle_number' => $availability?->vehicle_number,
-            ];
-        })->values();
+                return [
+                    'id' => $driver->id,
+                    'name' => $driver->name,
+                    'email' => $driver->email,
+                    'phone' => $driver->phone,
+                    'is_online' => (bool) ($availability?->is_online ?? false),
+                    'is_available' => (bool) ($availability?->is_available ?? false),
+                    'rating' => $availability?->rating,
+                    'vehicle_number' => $availability?->vehicle_number,
+                ];
+            })->values();
 
         return inertia('admin/RideBookingDetails', [
             'title' => 'Ride Booking Details',

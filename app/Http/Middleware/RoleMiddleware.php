@@ -18,21 +18,39 @@ class RoleMiddleware
      */
     public function handle(Request $request, Closure $next, string $role, ?string $permission = null): Response
     {
+        $expectsJson = $request->expectsJson() || $request->is('api/*');
+
         // Check if user is authenticated
         if (!Auth::check()) {
-            return response()->json(['error' => 'Unauthorized'], 401);
+            if ($expectsJson) {
+                return response()->json(['error' => 'Unauthorized'], 401);
+            }
+
+            return redirect()->route('login');
         }
 
         $user = Auth::user();
 
         // Check if user has the required role
         if (!$user->hasRole($role)) {
-            return response()->json(['error' => 'Forbidden: Insufficient role permissions'], 403);
+            if ($expectsJson) {
+                return response()->json(['error' => 'Forbidden: Insufficient role permissions'], 403);
+            }
+
+            Auth::logout();
+            $request->session()->invalidate();
+            $request->session()->regenerateToken();
+
+            return redirect()->route('login')->with('error', 'Forbidden: Insufficient role permissions');
         }
 
         // If a specific permission is required, check for it
         if ($permission && !$user->hasPermission($permission)) {
-            return response()->json(['error' => 'Forbidden: Insufficient permissions'], 403);
+            if ($expectsJson) {
+                return response()->json(['error' => 'Forbidden: Insufficient permissions'], 403);
+            }
+
+            return redirect()->route('admin.dashboard')->with('error', 'Forbidden: Insufficient permissions');
         }
 
         return $next($request);

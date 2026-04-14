@@ -23,7 +23,7 @@ const ContactSection = () => {
   };
 
   return (
-    <section className="py-20 bg-white">
+    <section id="contact" className="py-20 bg-white">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-16">
           {/* Contact Info */}
@@ -165,9 +165,9 @@ const ContactSection = () => {
 
             <p className="text-sm text-gray-500 mt-4 text-center">
               By submitting this form, you agree to our{' '}
-              <a href="/privacy" className="text-[#00695C] hover:underline">Privacy Policy</a>
+              <a href="#" className="text-[#00695C] hover:underline">Privacy Policy</a>
               {' '}and{' '}
-              <a href="/terms" className="text-[#00695C] hover:underline">Terms of Service</a>.
+              <a href="#" className="text-[#00695C] hover:underline">Terms of Service</a>.
             </p>
           </div>
         </div>

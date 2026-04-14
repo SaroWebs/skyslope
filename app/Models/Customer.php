@@ -53,6 +53,11 @@ class Customer extends Authenticatable
         return $this->hasMany(TourBooking::class, 'customer_id');
     }
 
+    public function bookings(): HasMany
+    {
+        return $this->hasMany(TourBooking::class, 'customer_id');
+    }
+
     public function carRentals(): HasMany
     {
         return $this->hasMany(CarRental::class, 'customer_id');

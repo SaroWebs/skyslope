@@ -44,10 +44,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             localStorage.removeItem('auth_user');
             setToken(null);
             setUser(null);
-            // Redirect to login if on a protected route
-            if (window.location.pathname.startsWith('/admin') || 
-                window.location.pathname.startsWith('/customer') || 
-                window.location.pathname.startsWith('/driver')) {
+            // Redirect to login if on admin routes
+            if (window.location.pathname.startsWith('/admin')) {
                 router.visit('/login');
             }
         }
@@ -59,10 +57,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         localStorage.setItem('auth_token', newToken);
         localStorage.setItem('auth_user', JSON.stringify(newUser));
         
-        // Redirect based on role
-        if (newUser.role === 'admin') router.visit('/admin/dashboard');
-        else if (newUser.role === 'driver') router.visit('/driver/dashboard');
-        else router.visit('/customer/dashboard');
+        // Server app is admin panel only
+        if (newUser.role === 'admin') {
+            router.visit('/admin/dashboard');
+            return;
+        }
+
+        router.visit('/login');
     }, []);
 
     const updateUser = useCallback((newUser: User) => {

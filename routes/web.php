@@ -3,18 +3,12 @@
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Artisan;
 use App\Http\Controllers\AuthController;
-use App\Http\Controllers\TourController;
 use App\Http\Controllers\AdminController;
 use App\Http\Controllers\AdminCustomerController;
 use App\Http\Controllers\AdminDriverController;
 use App\Http\Controllers\AdminGuideController;
 use App\Http\Controllers\AdminVehicleController;
-use App\Http\Controllers\DriverController;
 use App\Http\Controllers\PagesController;
-use App\Http\Controllers\PlaceController;
-use App\Http\Controllers\CarRentalController;
-use App\Http\Controllers\ItineraryController;
-use App\Http\Controllers\RideBookingController;
 
 /*
 |--------------------------------------------------------------------------
@@ -35,19 +29,12 @@ if (app()->isLocal()) {
 }
 
 Route::get('/', [PagesController::class, 'index'])->name('home');
-Route::get('/about', [PagesController::class, 'about'])->name('about');
-Route::get('/contact', [PagesController::class, 'contact'])->name('contact');
-
-// Public browse routes (Inertia based)
-Route::controller(PagesController::class)->group(function () {
-    Route::get('/tours', 'tours')->name('tours');
-    Route::get('/tours/{id}', 'tourView')->name('tours.show');
-    Route::get('/destinations', 'destinations')->name('destinations');
-    Route::get('/destinations/{id}', 'destinationView')->name('destinations.show');
-    Route::get('/car-rental', 'carRental')->name('car-rental');
-    Route::get('/ride-booking', 'rideBooking')->name('ride-booking');
-    Route::get('/book-now', 'bookNow')->name('book-now');
-});
+Route::redirect('/customer', '/');
+Route::redirect('/driver', '/');
+Route::redirect('/guide', '/');
+Route::get('/customer/{any}', fn () => redirect('/'))->where('any', '.*');
+Route::get('/driver/{any}', fn () => redirect('/'))->where('any', '.*');
+Route::get('/guide/{any}', fn () => redirect('/'))->where('any', '.*');
 
 /*
 |--------------------------------------------------------------------------

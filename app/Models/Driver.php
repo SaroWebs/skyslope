@@ -78,7 +78,7 @@ class Driver extends Authenticatable
         return $this->hasMany(Vehicle::class, 'driver_id');
     }
 
-    public function availability(): HasOne
+    public function driverAvailability(): HasOne
     {
         return $this->hasOne(DriverAvailability::class, 'driver_id');
     }
@@ -89,6 +89,11 @@ class Driver extends Authenticatable
     }
 
     public function rideBookings(): HasMany
+    {
+        return $this->hasMany(RideBooking::class, 'driver_id');
+    }
+
+    public function assignedRideBookings(): HasMany
     {
         return $this->hasMany(RideBooking::class, 'driver_id');
     }

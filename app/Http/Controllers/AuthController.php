@@ -6,8 +6,6 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Validation\ValidationException;
-use App\Models\Customer;
-use App\Models\Driver;
 use App\Models\User;
 
 class AuthController extends Controller
@@ -18,7 +16,7 @@ class AuthController extends Controller
     public function showLogin()
     {
         if (Auth::check()) {
-            return redirect()->route('dashboard');
+            return redirect()->route('admin.dashboard');
         }
 
         return inertia('auth/Login');
@@ -50,12 +48,17 @@ class AuthController extends Controller
                 'email' => ['Your account is deactivated. Please contact administrator.'],
             ]);
         }
+        
+        if (!$user->isAdmin()) {
+            throw ValidationException::withMessages([
+                'email' => ['This login is restricted to admin users.'],
+            ]);
+        }
 
         // Log the user in
         Auth::login($user);
 
-        // Redirect to general dashboard, which handles role-based rendering
-        return redirect()->route('dashboard');
+        return redirect()->route('admin.dashboard');
     }
 
     /**
@@ -70,62 +73,4 @@ class AuthController extends Controller
 
         return redirect()->route('login');
     }
-
-    /**
-     * Show dashboard based on user role
-     */
-    public function dashboard()
-    {
-        if (!Auth::check()) {
-            return redirect()->route('login');
-        }
-
-        $user = Auth::user();
-
-        if ($user->isAdmin()) {
-            return $this->adminDashboard();
-        } elseif ($user->isGuide()) {
-            return $this->guideDashboard();
-        }
-
-        abort(403);
-    }
-
-    /**
-     * Admin dashboard
-     */
-    private function adminDashboard()
-    {
-        return inertia('admin/Dashboard', [
-            'title' => 'Admin Dashboard',
-            'user' => Auth::user(),
-            'stats' => [
-                'total_users' => User::count(),
-                'total_customers' => Customer::count(),
-                'total_drivers' => Driver::count(),
-                'total_tours' => \App\Models\Tour::count(),
-                'total_bookings' => \App\Models\Booking::count(),
-                'total_ride_bookings' => \App\Models\RideBooking::count(),
-                'total_places' => \App\Models\Place::count(),
-            ],
-            'recent_users' => User::with('roles')->latest()->take(5)->get(),
-            'upcoming_tours' => \App\Models\Tour::with(['guides', 'drivers'])->take(5)->get(),
-        ]);
-    }
-
-    /**
-     * Guide dashboard
-     */
-    private function guideDashboard()
-    {
-        return inertia('guide/Dashboard', [
-            'title' => 'Guide Dashboard',
-            'user' => Auth::user(),
-            'my_tours' => Auth::user()->tourGuides()->with('tour')->get(),
-            'upcoming_tours' => \App\Models\Tour::whereHas('guides', function($q) {
-                $q->where('user_id', Auth::id());
-            })->where('available_from', '>=', now())->get(),
-        ]);
-    }
-
 }

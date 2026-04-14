@@ -1,9 +1,8 @@
 import React from 'react';
-import { Link } from '@inertiajs/react';
 
 const HeroSection = () => {
   return (
-    <section className="relative bg-gradient-to-br from-[var(--color-primary)] via-white to-[var(--color-accent)] py-20 lg:py-28">
+    <section id="top" className="relative bg-gradient-to-br from-[var(--color-primary)] via-white to-[var(--color-accent)] py-20 lg:py-28">
       {/* Background Pattern */}
       <div className="absolute inset-0 bg-grid-slate-100 [mask-image:linear-gradient(0deg,white,rgba(255,255,255,0.6))] -z-10"></div>
 
@@ -21,18 +20,18 @@ const HeroSection = () => {
               Embark on extraordinary journeys to breathtaking destinations. From mountain adventures to cultural explorations, we create unforgettable travel experiences tailored just for you.
             </p>
             <div className="flex flex-col sm:flex-row gap-4 justify-center lg:justify-start">
-              <Link
-                href="/tours"
+              <a
+                href="#features"
                 className="bg-[var(--color-secondary)] hover:bg-[var(--color-secondary-dark)] text-white px-8 py-4 rounded-lg text-lg font-semibold transition-all duration-200 transform hover:scale-105 shadow-lg hover:shadow-xl"
               >
-                Explore Tours
-              </Link>
-              <Link
-                href="/contact"
+                Explore Features
+              </a>
+              <a
+                href="#contact"
                 className="border-2 border-[var(--color-accent)] hover:border-[var(--color-primary)] text-gray-700 hover:text-[var(--color-primary)] px-8 py-4 rounded-lg text-lg font-semibold transition-all duration-200"
               >
-                Plan Your Trip
-              </Link>
+                Contact Sales
+              </a>
             </div>
 
             {/* Stats */}

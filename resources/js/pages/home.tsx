@@ -5,13 +5,10 @@ import HeroSection from '@/components/HeroSection'
 import FeaturesSection from '@/components/FeaturesSection'
 import AboutSection from '@/components/AboutSection'
 import ContactSection from '@/components/ContactSection'
-import RideBookingSearch from '@/components/ride_booking/RideBookingSearch'
 
-type Props = {}
-
-const home = (props: Props) => {
+const home = () => {
  return (
-   <WebsiteLayout page='home'>
+   <WebsiteLayout>
        <Head>
          <title>SkySlope - Premium Travel Experiences</title>
          <meta name="description" content="Discover extraordinary journeys with SkySlope. From mountain adventures to cultural explorations, we create unforgettable travel experiences tailored just for you." />
@@ -19,14 +16,6 @@ const home = (props: Props) => {
        </Head>
        <>
          <HeroSection />
-         
-         {/* Ride Booking Section */}
-         <section className="py-12 bg-gray-50">
-           <div className="max-w-4xl mx-auto px-4">
-             <RideBookingSearch compact={true} />
-           </div>
-         </section>
-         
          <FeaturesSection />
          <AboutSection />
          <ContactSection />

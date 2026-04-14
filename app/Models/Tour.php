@@ -4,7 +4,10 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use App\Models\Driver;
+use App\Models\Guide;
 
 class Tour extends Model
 {
@@ -72,6 +75,26 @@ class Tour extends Model
     public function bookings(): HasMany
     {
         return $this->hasMany(TourBooking::class, 'tour_id');
+    }
+
+    public function drivers(): BelongsToMany
+    {
+        return $this->belongsToMany(Driver::class, 'tour_driver_assignments', 'tour_schedule_id', 'driver_id')
+                    ->join('tour_schedules', 'tour_driver_assignments.tour_schedule_id', '=', 'tour_schedules.id')
+                    ->where('tour_schedules.tour_id', $this->getKey())
+                    ->using(TourDriverAssignment::class)
+                    ->withPivot('vehicle_id', 'status', 'fee', 'notes')
+                    ->withTimestamps();
+    }
+
+    public function guides(): BelongsToMany
+    {
+        return $this->belongsToMany(Guide::class, 'tour_guide_assignments', 'tour_schedule_id', 'guide_id')
+                    ->join('tour_schedules', 'tour_guide_assignments.tour_schedule_id', '=', 'tour_schedules.id')
+                    ->where('tour_schedules.tour_id', $this->getKey())
+                    ->using(TourGuideAssignment::class)
+                    ->withPivot('role', 'status', 'fee', 'notes')
+                    ->withTimestamps();
     }
 
     // ── Helpers ────────────────────────────────────────────────────
