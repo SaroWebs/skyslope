@@ -67,11 +67,20 @@ class CustomerOtpController extends Controller
         $customer = Customer::where('phone', $phone)->first();
 
         if (!$customer && $action === 'register') {
-            $customer = Customer::create([
+            $customer = \App\Models\Customer::create([
                 'name' => $request->input('name', 'Customer'),
                 'phone' => $phone,
                 'email' => $request->input('email'),
                 'password' => bcrypt(str()->random(32)), // random password, OTP is primary auth
+            ]);
+
+            // Create wallet for new customer
+            \App\Models\Wallet::create([
+                'owner_type' => get_class($customer),
+                'owner_id' => $customer->id,
+                'balance' => 0,
+                'currency' => 'INR',
+                'is_active' => true,
             ]);
         }
 

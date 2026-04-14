@@ -33,7 +33,7 @@ class CustomerAppController extends Controller
                     ->take(6)
                     ->get(),
                 'featured_destinations' => Place::with('media')
-                    ->where('status', 'available')
+                    ->where('is_active', true)
                     ->orderBy('name')
                     ->take(8)
                     ->get(),
@@ -82,8 +82,8 @@ class CustomerAppController extends Controller
     {
         return response()->json([
             'success' => true,
-            'data' => Place::with(['media', 'itineraries'])
-                ->where('status', 'available')
+            'data' => Place::with('media')
+                ->where('is_active', true)
                 ->orderBy('name')
                 ->get(),
         ]);
@@ -214,6 +214,16 @@ class CustomerAppController extends Controller
                 'whatsapp_notification' => true,
             ]);
 
+            // Handle Wallet Payment
+            if ($request->payment_method === 'wallet') {
+                $wallet = Wallet::forOwner($customer)->first();
+                if (!$wallet || !$wallet->hasSufficientBalance($subtotal)) {
+                    throw new \RuntimeException('Insufficient wallet balance.');
+                }
+                $wallet->debit($subtotal, "Payment for Tour Booking #{$booking->id}", 'tour_booking', $booking->id);
+                $booking->update(['payment_status' => 'paid', 'status' => 'confirmed']);
+            }
+
             // Update inventory
             $schedule->increment('booked_seats', $totalPax);
 
@@ -274,34 +284,49 @@ class CustomerAppController extends Controller
         $distanceKm = (float) ($request->distance_km ?? 0);
         $pricing = $category->calculatePrice($numberOfDays, $distanceKm);
 
-        $rental = CarRental::create([
-            'customer_id' => $customer->id,
-            'car_category_id' => $category->id,
-            'customer_name' => $customer->name,
-            'customer_email' => $customer->email,
-            'customer_phone' => $customer->phone,
-            'start_date' => $request->start_date,
-            'end_date' => $request->end_date,
-            'start_time' => $request->input('start_time', '09:00'),
-            'end_time' => $request->input('end_time', '18:00'),
-            'pickup_location' => $request->pickup_location,
-            'dropoff_location' => $request->dropoff_location,
-            'destination_details' => $request->destination_details,
-            'number_of_days' => $numberOfDays,
-            'base_price' => $pricing['base_price'],
-            'distance_km' => $distanceKm,
-            'distance_price' => $pricing['distance_price'],
-            'extras_price' => 0,
-            'discount_amount' => 0,
-            'total_price' => $pricing['subtotal'],
-            'status' => 'pending',
-            'payment_status' => 'pending',
-            'payment_method' => 'cash',
-            'special_requests' => $request->special_requests,
-            'whatsapp_notification' => true,
-            'email_notification' => true,
-            'sms_notification' => false,
-        ]);
+        $rental = DB::transaction(function () use ($request, $customer, $category, $numberOfDays, $distanceKm, $pricing) {
+            $rental = CarRental::create([
+                'customer_id' => $customer->id,
+                'car_category_id' => $category->id,
+                'customer_name' => $customer->name,
+                'customer_email' => $customer->email,
+                'customer_phone' => $customer->phone,
+                'start_date' => $request->start_date,
+                'end_date' => $request->end_date,
+                'start_time' => $request->input('start_time', '09:00'),
+                'end_time' => $request->input('end_time', '18:00'),
+                'pickup_location' => $request->pickup_location,
+                'dropoff_location' => $request->dropoff_location,
+                'destination_details' => $request->destination_details,
+                'number_of_days' => $numberOfDays,
+                'base_price' => $pricing['base_price'],
+                'distance_km' => $distanceKm,
+                'distance_price' => $pricing['distance_price'],
+                'extras_price' => 0,
+                'discount_amount' => 0,
+                'total_price' => $pricing['subtotal'],
+                'status' => 'pending',
+                'payment_status' => 'pending',
+                'payment_method' => $request->payment_method ?? 'cash',
+                'special_requests' => $request->special_requests,
+                'whatsapp_notification' => true,
+                'email_notification' => true,
+                'sms_notification' => false,
+            ]);
+
+            // Handle Wallet Payment
+            if ($request->payment_method === 'wallet') {
+                $wallet = Wallet::forOwner($customer)->first();
+                $totalPrice = (float) $pricing['subtotal'];
+                if (!$wallet || !$wallet->hasSufficientBalance($totalPrice)) {
+                    throw new \RuntimeException('Insufficient wallet balance.');
+                }
+                $wallet->debit($totalPrice, "Payment for Car Rental #{$rental->id}", 'car_rental', $rental->id);
+                $rental->update(['payment_status' => 'paid', 'status' => 'confirmed']);
+            }
+
+            return $rental;
+        });
 
         return response()->json([
             'success' => true,
@@ -325,7 +350,7 @@ class CustomerAppController extends Controller
 
     public function showRide(Request $request, RideBooking $booking)
     {
-        if ((int) $booking->user_id !== (int) $request->user()->id) {
+        if ((int) $booking->customer_id !== (int) $request->user()->id) {
             abort(403);
         }
 
@@ -395,7 +420,7 @@ class CustomerAppController extends Controller
         );
 
         $ride = DB::transaction(function () use ($request, $customer, $estimate) {
-            return RideBooking::create([
+            $ride = RideBooking::create([
                 'customer_id'      => $customer->id,
                 'service_type'     => $request->service_type,
                 'customer_name'    => $customer->name,
@@ -419,10 +444,22 @@ class CustomerAppController extends Controller
                 'status'           => 'pending',
                 'payment_status'   => 'pending',
             ]);
-            broadcast(new NewRideRequest($ride));
+
+            // Handle Wallet Payment
+            if ($request->payment_method === 'wallet') {
+                $wallet = Wallet::forOwner($customer)->first();
+                $totalFare = (float) $estimate['pricing']['subtotal'];
+                if (!$wallet || !$wallet->hasSufficientBalance($totalFare)) {
+                    throw new \RuntimeException('Insufficient wallet balance.');
+                }
+                $wallet->debit($totalFare, "Payment for Ride Booking #{$ride->id}", 'ride_booking', $ride->id);
+                $ride->update(['payment_status' => 'paid']);
+            }
 
             return $ride;
         });
+
+        broadcast(new NewRideRequest($ride));
 
         return response()->json([
             'success' => true,
@@ -432,7 +469,7 @@ class CustomerAppController extends Controller
 
     public function submitReview(Request $request, RideBooking $booking)
     {
-        if ((int) $booking->user_id !== (int) $request->user()->id) {
+        if ((int) $booking->customer_id !== (int) $request->user()->id) {
             abort(403);
         }
 
@@ -461,7 +498,7 @@ class CustomerAppController extends Controller
 
     public function submitTip(Request $request, RideBooking $booking)
     {
-        if ((int) $booking->user_id !== (int) $request->user()->id) {
+        if ((int) $booking->customer_id !== (int) $request->user()->id) {
             abort(403);
         }
 

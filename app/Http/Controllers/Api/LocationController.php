@@ -32,8 +32,8 @@ class LocationController extends Controller
         $localDestinations = Destination::active()
             ->where(function ($q) use ($query) {
                 $q->where('name', 'like', "%{$query}%")
-                  ->orWhere('state', 'like', "%{$query}%")
-                  ->orWhere('description', 'like', "%{$query}%");
+                    ->orWhere('state', 'like', "%{$query}%")
+                    ->orWhere('description', 'like', "%{$query}%");
             })
             ->limit(5)
             ->get()
@@ -43,47 +43,106 @@ class LocationController extends Controller
                     'name' => $destination->name,
                     'address' => $destination->name . ', ' . $destination->state,
                     'type' => 'destination',
-                    'lat' => $destination->lat ?? null,
-                    'lng' => $destination->lng ?? null,
+                    'lat' => $destination->latitude ?? null,
+                    'lng' => $destination->longitude ?? null,
                 ];
             });
 
         $results = $localDestinations->toArray();
 
-        // If Google Maps API key is available, search Google Places
+        // If Google Maps API key is available, search Google Places Autocomplete
         $googleApiKey = config('services.google_maps.api_key') ?: env('GOOGLE_MAPS_API_KEY');
 
         if ($googleApiKey && count($results) < 5) {
             try {
-                $googleResponse = Http::timeout(5)->get('https://maps.googleapis.com/maps/api/place/textsearch/json', [
-                    'query' => $query,
-                    'key' => $googleApiKey,
-                    'region' => 'in', // India region
+                // Use Autocomplete API — better for partial queries like "Guw", faster and cheaper than Text Search
+                $googleResponse = Http::timeout(5)->withoutVerifying()->get('https://maps.googleapis.com/maps/api/place/autocomplete/json', [
+                    'input'      => $query,
+                    'key'        => $googleApiKey,
+                    'components' => 'country:in', // Restrict to India
+                    'language'   => 'en',
+                    'types'      => 'geocode', // cities, regions, addresses
                 ]);
 
                 if ($googleResponse->successful()) {
                     $googleData = $googleResponse->json();
+                    $status = $googleData['status'] ?? 'UNKNOWN';
 
-                    if (isset($googleData['results'])) {
-                        $googleResults = collect($googleData['results'])
-                            ->take(5 - count($results))
-                            ->map(function ($place) {
+                    if ($status === 'OK' && isset($googleData['predictions'])) {
+                        $needed = 5 - count($results);
+                        $googleResults = collect($googleData['predictions'])
+                            ->take($needed)
+                            ->map(function ($prediction) {
                                 return [
-                                    'id' => $place['place_id'],
-                                    'name' => $place['name'],
-                                    'address' => $place['formatted_address'] ?? '',
-                                    'type' => 'google_place',
-                                    'lat' => $place['geometry']['location']['lat'] ?? null,
-                                    'lng' => $place['geometry']['location']['lng'] ?? null,
+                                    'id'          => $prediction['place_id'],
+                                    'name'        => $prediction['structured_formatting']['main_text'] ?? $prediction['description'],
+                                    'address'     => $prediction['description'] ?? '',
+                                    'type'        => 'google_place',
+                                    'lat'         => null, // Resolve via place-details endpoint if needed
+                                    'lng'         => null,
                                 ];
                             });
 
                         $results = array_merge($results, $googleResults->toArray());
+
+                    } elseif ($status === 'REQUEST_DENIED') {
+                        \Log::warning('Google Places API REQUEST_DENIED — billing may not be enabled. Enable billing at https://console.cloud.google.com/billing');
+
+                    } elseif (!in_array($status, ['ZERO_RESULTS', 'OK'])) {
+                        \Log::warning("Google Places API returned status: {$status}");
                     }
                 }
             } catch (\Exception $e) {
-                // Log error but continue with local results
+                // Log error but continue with local results — never block the response
                 \Log::warning('Google Places API error: ' . $e->getMessage());
+            }
+        }
+
+        // Fallback: If results are still low (< 5), try Photon (OpenStreetMap)
+        if (count($results) < 5) {
+            try {
+                $photonResponse = Http::timeout(5)->withoutVerifying()->get('https://photon.komoot.io/api/', [
+                    'q'     => $query,
+                    'limit' => 5 - count($results),
+                ]);
+
+                if ($photonResponse->successful()) {
+                    $photonData = $photonResponse->json();
+                    if (isset($photonData['features'])) {
+                        $photonResults = collect($photonData['features'])
+                            ->map(function ($feature) {
+                                $props = $feature['properties'];
+                                $coords = $feature['geometry']['coordinates'];
+                                
+                                // Format name: Name + City/State
+                                $nameParts = array_filter([
+                                    $props['name'] ?? null,
+                                    $props['city'] ?? $props['state'] ?? null
+                                ]);
+                                
+                                $addressLine = array_filter([
+                                    $props['name'] ?? null,
+                                    $props['street'] ?? null,
+                                    $props['city'] ?? null,
+                                    $props['state'] ?? null,
+                                    $props['country'] ?? null
+                                ]);
+
+                                return [
+                                    'id'      => 'osm_' . ($props['osm_id'] ?? uniqid()),
+                                    'name'    => implode(', ', $nameParts),
+                                    'address' => implode(', ', $addressLine),
+                                    'type'    => 'osm_place',
+                                    'lat'     => $coords[1] ?? null,
+                                    'lng'     => $coords[0] ?? null,
+                                ];
+                            });
+
+                        $results = array_merge($results, $photonResults->toArray());
+                    }
+                }
+            } catch (\Exception $e) {
+                \Log::warning('Photon API error: ' . $e->getMessage());
             }
         }
 
@@ -106,9 +165,9 @@ class LocationController extends Controller
                     'name' => $destination->name,
                     'address' => $destination->name . ', ' . $destination->state,
                     'type' => 'destination',
-                    'lat' => $destination->lat ?? null,
-                    'lng' => $destination->lng ?? null,
-                    'image' => $destination->image ?? null,
+                    'lat' => $destination->latitude ?? null,
+                    'lng' => $destination->longitude ?? null,
+                    'image' => $destination->cover_image ?? null,
                 ];
             });
 
@@ -138,21 +197,21 @@ class LocationController extends Controller
         ];
 
         $isWithinServiceArea = $request->lat >= $serviceArea['south'] &&
-                              $request->lat <= $serviceArea['north'] &&
-                              $request->lng >= $serviceArea['west'] &&
-                              $request->lng <= $serviceArea['east'];
+            $request->lat <= $serviceArea['north'] &&
+            $request->lng >= $serviceArea['west'] &&
+            $request->lng <= $serviceArea['east'];
 
         // Check if location is near any active destination (within 50km)
         $nearDestination = Destination::active()
-            ->whereNotNull('lat')
-            ->whereNotNull('lng')
+            ->whereNotNull('latitude')
+            ->whereNotNull('longitude')
             ->get()
             ->filter(function ($destination) use ($request) {
                 $distance = $this->calculateDistance(
                     $request->lat,
                     $request->lng,
-                    $destination->lat,
-                    $destination->lng
+                    $destination->latitude,
+                    $destination->longitude
                 );
                 return $distance <= 50; // Within 50km of any destination
             })
@@ -227,8 +286,8 @@ class LocationController extends Controller
         $lngDelta = deg2rad($lng2 - $lng1);
 
         $a = sin($latDelta / 2) * sin($latDelta / 2) +
-             cos(deg2rad($lat1)) * cos(deg2rad($lat2)) *
-             sin($lngDelta / 2) * sin($lngDelta / 2);
+            cos(deg2rad($lat1)) * cos(deg2rad($lat2)) *
+            sin($lngDelta / 2) * sin($lngDelta / 2);
 
         $c = 2 * atan2(sqrt($a), sqrt(1 - $a));
 

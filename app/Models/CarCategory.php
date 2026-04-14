@@ -90,4 +90,12 @@ class CarCategory extends Model
         return ($this->base_price_per_day * $days)
             + ($extraKm * $this->extra_km_charge);
     }
+
+    /**
+     * Scope a query to only include active categories.
+     */
+    public function scopeActive($query)
+    {
+        return $query->where('is_active', true);
+    }
 }

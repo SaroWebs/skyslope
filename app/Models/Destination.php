@@ -37,4 +37,12 @@ class Destination extends Model
         'is_featured' => 'boolean',
         'sort_order'  => 'integer',
     ];
+
+    /**
+     * Scope a query to only include active destinations.
+     */
+    public function scopeActive($query)
+    {
+        return $query->where('is_active', true);
+    }
 }

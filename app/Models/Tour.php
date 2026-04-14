@@ -118,4 +118,12 @@ class Tour extends Model
             ->where('departure_date', '>=', now()->toDateString())
             ->first();
     }
+
+    /**
+     * Scope a query to only include active tours.
+     */
+    public function scopeActive($query)
+    {
+        return $query->where('is_active', true);
+    }
 }

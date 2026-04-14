@@ -34,4 +34,22 @@ class DriverAvailability extends Model
     public function isOnRide(): bool   { return $this->status === 'on_ride'; }
     public function isOnTour(): bool   { return $this->status === 'on_tour'; }
     public function isFree(): bool     { return $this->status === 'online' && $this->is_available; }
+
+    public function scopeActive($query)
+    {
+        return $query->where('is_available', true)
+                     ->where('status', 'online');
+    }
+
+    public function scopeNearLocation($query, $lat, $lng, $radiusKm = 5)
+    {
+        // Haversine formula to find locations within distance
+        // Using whereRaw instead of having to ensure it works with count() queries
+        $haversine = "(6371 * acos(cos(radians(?)) * cos(radians(current_lat)) * cos(radians(current_lng) - radians(?)) + sin(radians(?)) * sin(radians(current_lat))))";
+        
+        return $query->select('*')
+            ->selectRaw("$haversine AS distance", [$lat, $lng, $lat])
+            ->whereRaw("$haversine <= ?", [$lat, $lng, $lat, $radiusKm])
+            ->orderBy('distance');
+    }
 }
