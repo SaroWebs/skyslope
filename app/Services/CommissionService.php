@@ -2,206 +2,217 @@
 
 namespace App\Services;
 
+use App\Models\CarRental;
 use App\Models\Driver;
 use App\Models\RideBooking;
+use App\Models\TourBooking;
 use App\Models\Wallet;
 use App\Models\WalletTransaction;
-use Exception;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Facades\Log;
 
 class CommissionService
 {
-    /**
-     * Calculate commission for a ride booking
-     */
-    public function calculateCommission(RideBooking $booking): float
+    public function calculateCommission(Model $booking): float
     {
-        $baseCommissionRate = 0.20; // 20%
-        $surgeMultiplier = $booking->surge_multiplier ?? 1.0;
-        
-        // Dynamic commission based on booking type
-        $commissionRate = match($booking->service_type) {
-            'point_to_point' => $baseCommissionRate,
-            'hourly_rental' => $baseCommissionRate + 0.05, // 25%
-            'round_trip' => $baseCommissionRate - 0.02,    // 18%
-            default => $baseCommissionRate,
+        return match (true) {
+            $booking instanceof RideBooking => $this->calculateRideCommission($booking),
+            $booking instanceof CarRental => $this->calculateRentalCommission($booking),
+            $booking instanceof TourBooking => $this->calculateTourCommission($booking),
+            default => 0.0,
         };
-        
-        return round($booking->total_fare * $commissionRate * $surgeMultiplier, 2);
     }
-    
-    /**
-     * Process payment and handle commission
-     */
+
+    public function calculateRideCommission(RideBooking $booking): float
+    {
+        $baseRate = match ($booking->service_type) {
+            'hourly' => 0.25,
+            'round_trip' => 0.18,
+            default => 0.20,
+        };
+
+        return round(((float) $booking->total_fare) * $baseRate * (float) ($booking->surge_multiplier ?? 1), 2);
+    }
+
+    public function calculateRentalCommission(CarRental $rental): float
+    {
+        return round(((float) $rental->total_price) * 0.20, 2);
+    }
+
+    public function calculateTourCommission(TourBooking $booking): float
+    {
+        return round(((float) $booking->total_price) * 0.15, 2);
+    }
+
+    public function settleBooking(Model $booking): bool
+    {
+        return match (true) {
+            $booking instanceof RideBooking => $this->settleRide($booking),
+            $booking instanceof CarRental => $this->settleRental($booking),
+            $booking instanceof TourBooking => $this->settleTour($booking),
+            default => false,
+        };
+    }
+
+    public function settleRide(RideBooking $booking): bool
+    {
+        return $this->settleDriverEarnings(
+            $booking,
+            $booking->driver_id,
+            (float) $booking->total_fare,
+            $this->calculateRideCommission($booking),
+            "ride_booking:{$booking->id}"
+        );
+    }
+
+    public function settleRental(CarRental $rental): bool
+    {
+        return $this->settleDriverEarnings(
+            $rental,
+            $rental->driver_id,
+            (float) $rental->total_price,
+            $this->calculateRentalCommission($rental),
+            "car_rental:{$rental->id}"
+        );
+    }
+
+    public function settleTour(TourBooking $booking): bool
+    {
+        return $this->settleDriverEarnings(
+            $booking,
+            $booking->assigned_driver_id,
+            (float) $booking->total_price,
+            $this->calculateTourCommission($booking),
+            "tour_booking:{$booking->id}"
+        );
+    }
+
     public function processPayment(RideBooking $booking): bool
     {
-        try {
-            // Get driver's wallet
-            $driverWallet = $booking->driver->wallet;
-            
-            if (!$driverWallet) {
-                throw new Exception('Driver wallet not found');
-            }
-            
-            if (!$driverWallet->isActive()) {
-                throw new Exception('Driver wallet is not active');
-            }
-            
-            // Calculate commission and driver share
-            $commission = $this->calculateCommission($booking);
-            $driverShare = $booking->total_fare - $commission;
-            
-            // Start transaction
-            \DB::beginTransaction();
-            
-            try {
-                // Handle commission deduction for cash payments
-                if ($booking->payment_method === 'cash') {
-                    // Deduct commission from driver wallet
-                    $commissionSuccess = $driverWallet->processCommission(
-                        $commission,
-                        'Commission for booking ' . $booking->booking_number,
-                        $booking->id
-                    );
-                    
-                    if (!$commissionSuccess) {
-                        throw new Exception('Failed to deduct commission from driver wallet');
-                    }
-                }
-                
-                // Add driver share to wallet
-                $creditSuccess = $driverWallet->credit(
-                    $driverShare,
-                    'Payment for booking ' . $booking->booking_number,
-                    $booking->id
-                );
-                
-                if (!$creditSuccess) {
-                    throw new Exception('Failed to credit driver wallet');
-                }
-                
-                // Update booking status
-                $booking->update([
-                    'payment_status' => 'completed',
-                    'commission_amount' => $commission,
-                    'driver_share' => $driverShare,
-                ]);
-                
-                \DB::commit();
-                return true;
-                
-            } catch (Exception $e) {
-                \DB::rollBack();
-                throw $e;
-            }
-            
-        } catch (Exception $e) {
-            // Log error
-            \Log::error('Commission processing failed: ' . $e->getMessage(), [
-                'booking_id' => $booking->id,
-                'driver_id' => $booking->driver_id,
-            ]);
-            
-            return false;
-        }
+        return $this->settleRide($booking);
     }
-    
-    /**
-     * Get commission statistics for a driver
-     */
-    public function getDriverCommissionStats(int $driverId, ?string $startDate = null, ?string $endDate = null)
+
+    public function getDriverCommissionStats(int $driverId, ?string $startDate = null, ?string $endDate = null): array
     {
-        $query = WalletTransaction::where('transaction_type', 'commission')
+        $query = WalletTransaction::query()
+            ->where('reference_type', 'driver_earning')
             ->whereHas('wallet', function ($query) use ($driverId) {
                 $query->where('owner_type', Driver::class)
                     ->where('owner_id', $driverId);
             });
-        
+
         if ($startDate) {
             $query->whereDate('created_at', '>=', $startDate);
         }
-        
+
         if ($endDate) {
             $query->whereDate('created_at', '<=', $endDate);
         }
-        
-        $totalCommission = $query->sum('amount');
-        $commissionCount = $query->count();
-        
+
+        $totalEarnings = (float) $query->sum('amount');
+        $earningCount = $query->count();
+
         return [
-            'total_commission' => $totalCommission,
-            'commission_count' => $commissionCount,
-            'average_commission' => $commissionCount > 0 ? $totalCommission / $commissionCount : 0,
+            'total_earnings' => $totalEarnings,
+            'earning_count' => $earningCount,
+            'average_earning' => $earningCount > 0 ? round($totalEarnings / $earningCount, 2) : 0,
         ];
     }
-    
-    /**
-     * Get platform commission statistics
-     */
-    public function getPlatformCommissionStats(?string $startDate = null, ?string $endDate = null)
+
+    public function getPlatformCommissionStats(?string $startDate = null, ?string $endDate = null): array
     {
-        $query = WalletTransaction::where('transaction_type', 'commission');
-        
-        if ($startDate) {
-            $query->whereDate('created_at', '>=', $startDate);
+        $rideQuery = RideBooking::where('status', 'completed');
+        $rentalQuery = CarRental::where('status', 'completed');
+        $tourQuery = TourBooking::where('status', 'completed');
+
+        foreach ([$rideQuery, $rentalQuery, $tourQuery] as $query) {
+            if ($startDate) {
+                $query->whereDate('updated_at', '>=', $startDate);
+            }
+            if ($endDate) {
+                $query->whereDate('updated_at', '<=', $endDate);
+            }
         }
-        
-        if ($endDate) {
-            $query->whereDate('created_at', '<=', $endDate);
-        }
-        
-        $totalCommission = $query->sum('amount');
-        $commissionCount = $query->count();
-        $activeDrivers = $query->distinct('wallet_id')->count('wallet_id');
-        
+
         return [
-            'total_commission' => $totalCommission,
-            'commission_count' => $commissionCount,
-            'active_drivers' => $activeDrivers,
-            'average_commission_per_driver' => $activeDrivers > 0 ? $totalCommission / $activeDrivers : 0,
+            'total_commission' => (float) $rideQuery->sum('commission_amount')
+                + (float) $rentalQuery->sum('commission_amount')
+                + (float) $tourQuery->sum('commission_amount'),
+            'completed_rides' => $rideQuery->count(),
+            'completed_rentals' => $rentalQuery->count(),
+            'completed_tours' => $tourQuery->count(),
         ];
     }
-    
-    /**
-     * Process driver withdrawal
-     */
+
     public function processDriverWithdrawal(int $driverId, float $amount, string $description = ''): bool
     {
         try {
             $driver = Driver::find($driverId);
             $driverWallet = $driver ? Wallet::forOwner($driver)->first() : null;
-            
+
             if (!$driverWallet) {
-                throw new Exception('Driver wallet not found');
+                throw new \RuntimeException('Driver wallet not found');
             }
-            
-            if (!$driverWallet->isActive()) {
-                throw new Exception('Driver wallet is not active');
-            }
-            
-            if ($driverWallet->getBalance() < $amount) {
-                throw new Exception('Insufficient wallet balance');
-            }
-            
-            // Debit amount from wallet
-            $success = $driverWallet->debit(
+
+            $driverWallet->debit(
                 $amount,
                 $description ?: 'Driver withdrawal',
-                null
+                'driver_withdrawal',
+                (string) $driverId
             );
-            
-            if (!$success) {
-                throw new Exception('Failed to process withdrawal');
-            }
-            
+
             return true;
-            
-        } catch (Exception $e) {
-            \Log::error('Driver withdrawal failed: ' . $e->getMessage(), [
+        } catch (\Throwable $exception) {
+            Log::error('Driver withdrawal failed: ' . $exception->getMessage(), [
                 'driver_id' => $driverId,
                 'amount' => $amount,
             ]);
-            
+
             return false;
         }
+    }
+
+    private function settleDriverEarnings(
+        Model $booking,
+        ?int $driverId,
+        float $grossAmount,
+        float $commission,
+        string $referenceId
+    ): bool {
+        if (!$driverId || $grossAmount <= 0 || $booking->status !== 'completed' || $booking->payment_status !== 'paid') {
+            return false;
+        }
+
+        $driver = Driver::find($driverId);
+        if (!$driver) {
+            return false;
+        }
+
+        $driverShare = max(0, round($grossAmount - $commission, 2));
+        $wallet = Wallet::firstOrCreate([
+            'owner_type' => Driver::class,
+            'owner_id' => $driver->id,
+        ], [
+            'balance' => 0,
+            'currency' => 'INR',
+            'is_active' => true,
+        ]);
+
+        if (($booking->payment_method ?? null) !== 'cash' && $driverShare > 0) {
+            $wallet->credit(
+                $driverShare,
+                'Driver earning settlement',
+                'driver_earning',
+                $referenceId,
+                "driver_earning:{$referenceId}"
+            );
+        }
+
+        $booking->forceFill([
+            'commission_amount' => $commission,
+            'driver_share' => $driverShare,
+        ])->save();
+
+        return true;
     }
 }

@@ -76,9 +76,15 @@ class AdminCustomerController extends Controller
         $newStatus = $customer->status === 'suspended' ? 'active' : 'suspended';
         $customer->update(['status' => $newStatus]);
 
-        // If suspended, revoke all tokens
         if ($newStatus === 'suspended') {
             $customer->tokens()->delete();
+        }
+
+        if (request()->expectsJson() || request()->is('api/*')) {
+            return response()->json([
+                'message' => "Customer {$customer->name} has been " . ($newStatus === 'suspended' ? 'suspended' : 'activated') . ".",
+                'customer' => $customer->fresh(),
+            ]);
         }
 
         return redirect()->back()->with('success',

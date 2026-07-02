@@ -37,7 +37,7 @@ import {
     History,
     Trees,
     Flame,
-    Temple,
+    Landmark,
     Info,
     ArrowRight
 } from 'lucide-react';
@@ -85,7 +85,7 @@ export default function Destinations({ title, destinations }: DestinationsProps)
             cultural: { color: 'purple', icon: <History size={12} /> },
             nature: { color: 'teal', icon: <Trees size={12} /> },
             adventure: { color: 'red', icon: <Flame size={12} /> },
-            religious: { color: 'indigo', icon: <Temple size={12} /> }
+            religious: { color: 'indigo', icon: <Landmark size={12} /> }
         };
         return configs[type.toLowerCase()] || { color: 'gray', icon: <MapPin size={12} /> };
     };

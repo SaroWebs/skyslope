@@ -15,7 +15,8 @@ import {
     Modal,
     TextInput,
     NumberInput,
-    Select
+    Select,
+    Divider
 } from '@mantine/core';
 import {
     Plus,
@@ -35,8 +36,39 @@ interface TourSchedule {
     booked_seats: number;
     price_override: number | null;
     status: 'open' | 'sold_out' | 'closed' | 'cancelled' | 'completed';
-    guideAssignments: any[];
-    driverAssignments: any[];
+    guideAssignments: { id: number }[];
+    driverAssignments: Array<{
+        id: number;
+        role: 'transport' | 'lead' | 'assistant';
+        status: string;
+        driver?: {
+            id: number;
+            name: string;
+        };
+        vehicle?: {
+            id: number;
+            registration_number: string;
+        };
+    }>;
+}
+
+interface DriverOption {
+    id: number;
+    name: string;
+    phone?: string;
+    rating?: number | null;
+    vehicle_number?: string | null;
+    can_tour_lead: boolean;
+    can_tour_transport: boolean;
+}
+
+interface VehicleOption {
+    id: number;
+    driver_id?: number | null;
+    car_category_id?: number | null;
+    registration_number: string;
+    make?: string | null;
+    model?: string | null;
 }
 
 interface SchedulesProps {
@@ -52,11 +84,15 @@ interface SchedulesProps {
         last_page: number;
         total: number;
     };
+    drivers: DriverOption[];
+    vehicles: VehicleOption[];
 }
 
-export default function Schedules({ title, tour, schedules }: SchedulesProps) {
+export default function Schedules({ title, tour, schedules, drivers, vehicles }: SchedulesProps) {
     const [opened, { open, close }] = useDisclosure(false);
+    const [assignmentOpened, { open: openAssignment, close: closeAssignment }] = useDisclosure(false);
     const [editingSchedule, setEditingSchedule] = useState<TourSchedule | null>(null);
+    const [assignmentSchedule, setAssignmentSchedule] = useState<TourSchedule | null>(null);
 
     const [formData, setFormData] = useState({
         departure_date: '',
@@ -64,6 +100,11 @@ export default function Schedules({ title, tour, schedules }: SchedulesProps) {
         total_seats: 20,
         price_override: '',
         status: 'open'
+    });
+    const [assignmentData, setAssignmentData] = useState({
+        driver_id: '',
+        vehicle_id: '',
+        role: 'transport',
     });
 
     const handlePageChange = (page: number) => {
@@ -100,6 +141,16 @@ export default function Schedules({ title, tour, schedules }: SchedulesProps) {
         open();
     };
 
+    const openAssignmentModal = (schedule: TourSchedule) => {
+        setAssignmentSchedule(schedule);
+        setAssignmentData({
+            driver_id: '',
+            vehicle_id: '',
+            role: 'transport',
+        });
+        openAssignment();
+    };
+
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
         const payload = {
@@ -116,6 +167,20 @@ export default function Schedules({ title, tour, schedules }: SchedulesProps) {
                 onSuccess: () => close()
             });
         }
+    };
+
+    const handleAssignmentSubmit = (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!assignmentSchedule || !assignmentData.driver_id) return;
+
+        router.post(`/admin/tours/${tour.id}/schedules/${assignmentSchedule.id}/assign-driver`, {
+            driver_id: Number(assignmentData.driver_id),
+            vehicle_id: assignmentData.vehicle_id ? Number(assignmentData.vehicle_id) : null,
+            role: assignmentData.role,
+        }, {
+            preserveScroll: true,
+            onSuccess: () => closeAssignment(),
+        });
     };
 
     return (
@@ -179,6 +244,11 @@ export default function Schedules({ title, tour, schedules }: SchedulesProps) {
                                                     </Badge>
                                                 </Tooltip>
                                             </Group>
+                                            {schedule.driverAssignments.length > 0 && (
+                                                <Text size="xs" color="dimmed" mt={4}>
+                                                    {schedule.driverAssignments.map((assignment) => `${assignment.driver?.name || 'Driver'} (${assignment.role})`).join(', ')}
+                                                </Text>
+                                            )}
                                         </Table.Td>
                                         <Table.Td>
                                             <Badge color={schedule.status === 'open' ? 'green' : 'gray'}>
@@ -187,6 +257,11 @@ export default function Schedules({ title, tour, schedules }: SchedulesProps) {
                                         </Table.Td>
                                         <Table.Td>
                                             <Group gap={8} justify="flex-end">
+                                                <Tooltip label="Assign tour driver role">
+                                                    <ActionIcon onClick={() => openAssignmentModal(schedule)} color="orange" variant="light">
+                                                        <Truck size={16} />
+                                                    </ActionIcon>
+                                                </Tooltip>
                                                 <ActionIcon onClick={() => handleEdit(schedule)} color="blue" variant="light">
                                                     <Edit size={16} />
                                                 </ActionIcon>
@@ -257,6 +332,54 @@ export default function Schedules({ title, tour, schedules }: SchedulesProps) {
                         />
                         <Button type="submit" fullWidth mt="md">
                             {editingSchedule ? "Save Changes" : "Create Schedule"}
+                        </Button>
+                    </Stack>
+                </form>
+            </Modal>
+
+            <Modal opened={assignmentOpened} onClose={closeAssignment} title="Assign Tour Driver Role" size="md">
+                <form onSubmit={handleAssignmentSubmit}>
+                    <Stack>
+                        <Text size="sm" color="dimmed">
+                            {assignmentSchedule ? `${tour.title} · ${assignmentSchedule.departure_date}` : 'Select a driver for this schedule.'}
+                        </Text>
+                        <Select
+                            label="Role"
+                            data={[
+                                { value: 'transport', label: 'Transport' },
+                                { value: 'lead', label: 'Lead' },
+                                { value: 'assistant', label: 'Assistant' },
+                            ]}
+                            value={assignmentData.role}
+                            onChange={(val) => setAssignmentData({ ...assignmentData, role: val || 'transport' })}
+                            required
+                        />
+                        <Select
+                            label="Driver"
+                            data={drivers.map((driver) => ({
+                                value: String(driver.id),
+                                label: `${driver.name}${driver.vehicle_number ? ` · ${driver.vehicle_number}` : ''}${driver.can_tour_lead ? ' · lead' : ''}${driver.can_tour_transport ? ' · transport' : ''}`,
+                                disabled: assignmentData.role === 'lead' ? !driver.can_tour_lead : !driver.can_tour_transport && !driver.can_tour_lead,
+                            }))}
+                            value={assignmentData.driver_id}
+                            onChange={(val) => setAssignmentData({ ...assignmentData, driver_id: val || '' })}
+                            searchable
+                            required
+                        />
+                        <Select
+                            label="Vehicle"
+                            data={vehicles.map((vehicle) => ({
+                                value: String(vehicle.id),
+                                label: `${vehicle.registration_number} · ${vehicle.make || ''} ${vehicle.model || ''}`,
+                            }))}
+                            value={assignmentData.vehicle_id}
+                            onChange={(val) => setAssignmentData({ ...assignmentData, vehicle_id: val || '' })}
+                            searchable
+                            clearable
+                        />
+                        <Divider />
+                        <Button type="submit" fullWidth leftSection={<Truck size={16} />} disabled={!assignmentData.driver_id}>
+                            Assign Driver Role
                         </Button>
                     </Stack>
                 </form>

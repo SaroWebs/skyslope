@@ -15,14 +15,20 @@ class NewRideRequest implements ShouldBroadcast
 
     public function __construct(
         public RideBooking $booking,
+        public array $candidateDriverIds = [],
     ) {}
 
     public function broadcastOn(): array
     {
-        // Broadcast to a general channel that all online drivers listen to
-        return [
+        $channels = [
             new PrivateChannel('drivers.available'),
         ];
+
+        foreach ($this->candidateDriverIds as $driverId) {
+            $channels[] = new PrivateChannel("driver.{$driverId}");
+        }
+
+        return $channels;
     }
 
     public function broadcastAs(): string
@@ -41,7 +47,10 @@ class NewRideRequest implements ShouldBroadcast
             'pickup_lng' => $this->booking->pickup_lng,
             'total_fare' => $this->booking->total_fare,
             'service_type' => $this->booking->service_type,
-            'distance_km' => $this->booking->distance_km,
+            'distance_km' => $this->booking->estimated_distance_km,
+            'estimated_distance_km' => $this->booking->estimated_distance_km,
+            'candidate_driver_ids' => $this->candidateDriverIds,
+            'targeted' => $this->candidateDriverIds !== [],
             'timestamp' => now()->toIso8601String(),
         ];
     }

@@ -13,6 +13,7 @@ class TourDriverAssignment extends Model
         'tour_schedule_id',
         'driver_id',
         'vehicle_id',
+        'role',
         'status',
         'fee',
         'notes',

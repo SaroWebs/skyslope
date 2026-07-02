@@ -2,38 +2,34 @@ import React, { useState } from 'react';
 import { Head, Link, router } from '@inertiajs/react';
 import AdminLayout from '@/layouts/AdminLayout';
 import {
+    ActionIcon,
+    Badge,
+    Group,
+    Pagination,
+    Paper,
+    Stack,
     Table,
     Text,
-    Group,
-    Paper,
-    Pagination,
-    ActionIcon,
-    Stack,
-    Badge,
+    TextInput,
     Tooltip,
-    TextInput
 } from '@mantine/core';
-import {
-    Search,
-    Eye
-} from 'lucide-react';
+import { Eye, Search } from 'lucide-react';
 
 interface TourBooking {
     id: number;
-    booking_reference: string;
-    total_amount: string;
-    booking_status: string;
+    booking_number: string;
+    total_price: string;
+    status: string;
     payment_status: string;
-    created_at: string;
-    customer: {
+    customer?: {
         name: string;
         phone: string;
     };
-    tour_schedule: {
+    schedule?: {
         departure_date: string;
-        tour: {
+        tour?: {
             title: string;
-        }
+        };
     };
 }
 
@@ -45,8 +41,8 @@ interface TourBookingsProps {
         last_page: number;
         total: number;
     };
-    filters: {
-        search: string;
+    filters?: {
+        search?: string;
     };
 }
 
@@ -73,7 +69,7 @@ export default function TourBookings({ title, bookings, filters }: TourBookingsP
                             placeholder="Search reference, customer name..."
                             leftSection={<Search size={16} />}
                             value={search}
-                            onChange={(e) => handleSearch(e.currentTarget.value)}
+                            onChange={(event) => handleSearch(event.currentTarget.value)}
                             style={{ flex: 1, maxWidth: 400 }}
                             radius="md"
                         />
@@ -96,18 +92,18 @@ export default function TourBookings({ title, bookings, filters }: TourBookingsP
                                 {bookings.data.map((booking) => (
                                     <Table.Tr key={booking.id}>
                                         <Table.Td>
-                                            <Text fw={600} size="sm">{booking.booking_reference}</Text>
+                                            <Text fw={600} size="sm">{booking.booking_number}</Text>
                                         </Table.Td>
                                         <Table.Td>
                                             <Text size="sm">{booking.customer?.name}</Text>
                                             <Text size="xs" color="dimmed">{booking.customer?.phone}</Text>
                                         </Table.Td>
                                         <Table.Td>
-                                            <Text size="sm">{booking.tour_schedule?.tour?.title}</Text>
-                                            <Text size="xs" color="dimmed">Departure: {booking.tour_schedule?.departure_date}</Text>
+                                            <Text size="sm">{booking.schedule?.tour?.title}</Text>
+                                            <Text size="xs" color="dimmed">Departure: {booking.schedule?.departure_date}</Text>
                                         </Table.Td>
                                         <Table.Td>
-                                            <Text size="sm" fw={500}>₹{booking.total_amount}</Text>
+                                            <Text size="sm" fw={500}>₹{booking.total_price}</Text>
                                         </Table.Td>
                                         <Table.Td>
                                             <Badge color={booking.payment_status === 'paid' ? 'green' : 'orange'}>
@@ -115,17 +111,17 @@ export default function TourBookings({ title, bookings, filters }: TourBookingsP
                                             </Badge>
                                         </Table.Td>
                                         <Table.Td>
-                                            <Badge variant="light" color={
-                                                booking.booking_status === 'confirmed' ? 'green' :
-                                                    booking.booking_status === 'cancelled' ? 'red' : 'blue'
-                                            }>
-                                                {booking.booking_status}
+                                            <Badge
+                                                variant="light"
+                                                color={booking.status === 'confirmed' ? 'green' : booking.status === 'cancelled' ? 'red' : 'blue'}
+                                            >
+                                                {booking.status}
                                             </Badge>
                                         </Table.Td>
                                         <Table.Td>
                                             <Group gap={8} justify="flex-end">
                                                 <Tooltip label="View Details">
-                                                    <ActionIcon color="blue" variant="light">
+                                                    <ActionIcon color="blue" variant="light" component={Link} href={`/admin/tour-bookings/${booking.id}`}>
                                                         <Eye size={16} />
                                                     </ActionIcon>
                                                 </Tooltip>

@@ -17,6 +17,7 @@ class WalletTransaction extends Model
         'balance_after',
         'reference_type',
         'reference_id',
+        'idempotency_key',
         'description',
         'status',
     ];

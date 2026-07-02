@@ -7,6 +7,8 @@ use App\Events\RideAssigned;
 use App\Http\Controllers\Controller;
 use App\Models\DriverAvailability;
 use App\Models\RideBooking;
+use App\Services\BookingLifecycleNotifier;
+use App\Services\DriverDispatchService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
@@ -48,7 +50,22 @@ class DriverController extends Controller
         $availability = DriverAvailability::where('driver_id', $user->id)->first();
 
         $query = RideBooking::query()
-            ->whereNull('driver_id')
+            ->where(function ($query) use ($user) {
+                $query->whereHas('dispatchAttempts', function ($attempts) use ($user) {
+                    $attempts->where('driver_id', $user->id)
+                        ->where('status', 'offered')
+                        ->where(function ($expiry) {
+                            $expiry->whereNull('expires_at')
+                                ->orWhere('expires_at', '>', now());
+                        });
+                })->orWhere(function ($pool) use ($user) {
+                    $pool->whereNull('driver_id')
+                        ->whereDoesntHave('dispatchAttempts', function ($attempts) use ($user) {
+                            $attempts->where('driver_id', $user->id)
+                                ->whereIn('status', ['declined', 'expired', 'superseded']);
+                        });
+                });
+            })
             ->whereIn('status', ['pending', 'confirmed'])
             ->with('customer:id,name,phone')
             ->orderBy('scheduled_at')
@@ -112,24 +129,24 @@ class DriverController extends Controller
                 return;
             }
 
-            $vehicleNumber = DriverAvailability::where('driver_id', $user->id)->value('vehicle_number');
-
             $locked->update([
                 'driver_id' => $user->id,
                 'status' => 'driver_assigned',
-                'vehicle_number' => $locked->vehicle_number ?: $vehicleNumber,
+                'dispatch_status' => 'assigned',
+                'admin_assignable' => false,
                 'start_ride_pin' => $locked->start_ride_pin ?: RideBooking::generateStartRidePin(),
                 'start_pin_verified_at' => null,
             ]);
 
             DriverAvailability::where('driver_id', $user->id)->update([
-                'is_online' => true,
                 'is_available' => false,
-                'last_ping' => now(),
+                'status' => 'on_ride',
+                'last_updated' => now(),
             ]);
 
             broadcast(new RideStatusUpdated($locked, 'driver_assigned', 'Driver assigned', 'pending'));
             broadcast(new RideAssigned($locked, $user->id));
+            app(DriverDispatchService::class)->markAccepted($locked, $user);
 
             $accepted = true;
         });
@@ -142,11 +159,51 @@ class DriverController extends Controller
         }
 
         $booking->refresh()->load('customer:id,name,phone');
+        app(BookingLifecycleNotifier::class)->emit($booking, 'driver.assigned', ['driver_id' => $user->id]);
+        app(BookingLifecycleNotifier::class)->emit($booking, 'booking.accepted', ['driver_id' => $user->id]);
 
         return response()->json([
             'success' => true,
             'message' => 'Ride accepted successfully.',
             'ride' => $this->mapRide($booking),
+        ]);
+    }
+
+    public function declineRide(Request $request, RideBooking $booking)
+    {
+        $user = $request->user();
+        if (!$user || !$user->isDriver()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Unauthorized',
+            ], 403);
+        }
+
+        $validated = $request->validate([
+            'reason' => 'nullable|string|max:1000',
+        ]);
+
+        if ($booking->driver_id && (int) $booking->driver_id !== (int) $user->id) {
+            return response()->json([
+                'success' => false,
+                'message' => 'You cannot decline a ride assigned to another driver.',
+            ], 403);
+        }
+
+        $attempt = app(DriverDispatchService::class)->markDeclined(
+            $booking,
+            $user,
+            $validated['reason'] ?? null
+        );
+        app(BookingLifecycleNotifier::class)->emit($booking->fresh('customer'), 'booking.declined', [
+            'driver_id' => $user->id,
+            'reason' => $validated['reason'] ?? null,
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Ride declined.',
+            'attempt' => $attempt,
         ]);
     }
 
@@ -195,6 +252,13 @@ class DriverController extends Controller
         }
 
         $booking->update($updateData);
+        if (in_array($validated['payment_status'], ['paid', 'failed'], true)) {
+            app(BookingLifecycleNotifier::class)->emit(
+                $booking->fresh('customer'),
+                $validated['payment_status'] === 'paid' ? 'payment.paid' : 'payment.failed',
+                ['driver_id' => $user->id]
+            );
+        }
 
         return response()->json([
             'success' => true,
@@ -249,12 +313,13 @@ class DriverController extends Controller
             'dropoff_lng' => $ride->dropoff_lng ? (float) $ride->dropoff_lng : null,
             'scheduled_at' => $ride->scheduled_at,
             'total_fare' => (float) $ride->total_fare,
-            'distance_km' => $ride->distance_km ? (float) $ride->distance_km : 0.0,
+            'distance_km' => $ride->estimated_distance_km ? (float) $ride->estimated_distance_km : 0.0,
+            'estimated_distance_km' => $ride->estimated_distance_km ? (float) $ride->estimated_distance_km : 0.0,
             'service_type' => $ride->service_type,
             'payment_status' => $ride->payment_status,
             'payment_method' => $ride->payment_method,
             'driver_notes' => $ride->driver_notes,
-            'vehicle_number' => $ride->vehicle_number,
+            'vehicle_number' => $ride->driver?->vehicle_number,
             'customer_name' => $ride->customer_name ?: ($ride->customer?->name ?? 'Customer'),
             'customer_phone' => $ride->customer_phone ?: ($ride->customer?->phone ?? ''),
         ];

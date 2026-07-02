@@ -26,6 +26,12 @@ class Place extends Model
         'review_count',
         'cover_image',
         'tags',
+        'google_place_id',
+        'google_rating',
+        'google_review_count',
+        'google_reviews',
+        'google_photos',
+        'google_synced_at',
         'is_active',
         'is_featured',
     ];
@@ -36,6 +42,11 @@ class Place extends Model
         'rating'       => 'decimal:2',
         'review_count' => 'integer',
         'tags'         => 'array',
+        'google_rating' => 'decimal:2',
+        'google_review_count' => 'integer',
+        'google_reviews' => 'array',
+        'google_photos' => 'array',
+        'google_synced_at' => 'datetime',
         'is_active'    => 'boolean',
         'is_featured'  => 'boolean',
     ];
@@ -48,5 +59,10 @@ class Place extends Model
     public function media(): HasMany
     {
         return $this->hasMany(PlaceMedia::class, 'place_id')->orderBy('sort_order');
+    }
+
+    public function reviews(): HasMany
+    {
+        return $this->hasMany(PlaceReview::class, 'place_id')->latest();
     }
 }

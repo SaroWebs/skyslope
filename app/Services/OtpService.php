@@ -54,13 +54,19 @@ class OtpService
         ]);
 
         // Send via Twilio (or log in dev)
-        $this->dispatch($phone, $code);
+        $isDevDelivery = $this->dispatch($phone, $code);
 
-        return [
+        $response = [
             'success' => true,
             'message' => 'OTP sent successfully.',
             'expires_in' => $this->expiryMinutes * 60,
         ];
+
+        if ($isDevDelivery) {
+            $response['dev_otp'] = $code;
+        }
+
+        return $response;
     }
 
     /**
@@ -96,7 +102,7 @@ class OtpService
     /**
      * Dispatch the OTP via SMS (Twilio) or log in dev.
      */
-    protected function dispatch(string $phone, string $code): void
+    protected function dispatch(string $phone, string $code): bool
     {
         $sid = config('services.twilio.sid', env('TWILIO_SID'));
         $token = config('services.twilio.token', env('TWILIO_TOKEN'));
@@ -105,7 +111,7 @@ class OtpService
         // In local/testing, just log it
         if (app()->environment('local', 'testing') || empty($sid) || $sid === 'your_twilio_account_sid') {
             Log::info("OTP for {$phone}: {$code}");
-            return;
+            return true;
         }
 
         try {
@@ -118,5 +124,6 @@ class OtpService
             Log::error("Failed to send OTP to {$phone}: " . $e->getMessage());
             // Don't throw — OTP is still saved, user can retry
         }
+        return false;
     }
 }

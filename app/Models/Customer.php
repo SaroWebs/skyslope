@@ -38,11 +38,11 @@ class Customer extends Authenticatable
     protected function casts(): array
     {
         return [
-            'email_verified_at'  => 'datetime',
-            'phone_verified_at'  => 'datetime',
-            'date_of_birth'      => 'date',
-            'is_active'          => 'boolean',
-            'password'           => 'hashed',
+            'email_verified_at' => 'datetime',
+            'phone_verified_at' => 'datetime',
+            'date_of_birth' => 'date',
+            'is_active' => 'boolean',
+            'password' => 'hashed',
         ];
     }
 
@@ -88,10 +88,30 @@ class Customer extends Authenticatable
         return $this->morphMany(WithdrawalRequest::class, 'owner');
     }
 
+    public function couponRedemptions(): HasMany
+    {
+        return $this->hasMany(CustomerCouponRedemption::class);
+    }
+
     // ── Helpers ────────────────────────────────────────────────────
 
-    public function isAdmin(): bool    { return false; }
-    public function isDriver(): bool   { return false; }
-    public function isCustomer(): bool { return true; }
-    public function isGuide(): bool    { return false; }
+    public function isAdmin(): bool
+    {
+        return false;
+    }
+
+    public function isDriver(): bool
+    {
+        return false;
+    }
+
+    public function isCustomer(): bool
+    {
+        return true;
+    }
+
+    public function isGuide(): bool
+    {
+        return false;
+    }
 }

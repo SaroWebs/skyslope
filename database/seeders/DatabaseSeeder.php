@@ -2,19 +2,19 @@
 
 namespace Database\Seeders;
 
-use App\Models\User;
-use App\Models\Role;
-use App\Models\Permission;
-use App\Models\TourCategory;
 use App\Models\CarCategory;
-use App\Models\Tour;
-use App\Models\TourSchedule;
-use App\Models\TourItinerary;
+use App\Models\Permission;
 use App\Models\Place;
 use App\Models\PlaceCategory;
+use App\Models\Role;
+use App\Models\Tour;
+use App\Models\TourCategory;
+use App\Models\TourItinerary;
+use App\Models\TourSchedule;
+use App\Models\User;
+use Carbon\Carbon;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\Hash;
-use Carbon\Carbon;
 
 class DatabaseSeeder extends Seeder
 {
@@ -31,7 +31,7 @@ class DatabaseSeeder extends Seeder
             'manage_tours',
             'manage_bookings',
             'manage_drivers',
-            'manage_guides'
+            'manage_guides',
         ];
 
         foreach ($permissions as $permName) {
@@ -46,7 +46,7 @@ class DatabaseSeeder extends Seeder
             [
                 'name' => 'Admin User',
                 'phone' => '1234567890',
-                'password' => Hash::make('password')
+                'password' => Hash::make('password'),
             ]
         );
         $admin->roles()->sync([$superAdminRole->id]);
@@ -112,13 +112,13 @@ class DatabaseSeeder extends Seeder
             'day_number' => 1,
             'title' => 'Fort Aguada Visit',
         ]);
-        
+
         TourSchedule::firstOrCreate([
             'tour_id' => $tour1->id,
             'departure_date' => Carbon::today()->addDays(5)->toDateString(),
             'return_date' => Carbon::today()->addDays(8)->toDateString(),
             'total_seats' => 20,
-            'status' => 'open'
+            'status' => 'open',
         ]);
 
         // Tour 2
@@ -140,14 +140,17 @@ class DatabaseSeeder extends Seeder
             'day_number' => 1,
             'title' => 'Baga Beach Visit',
         ]);
-        
+
         TourSchedule::firstOrCreate([
             'tour_id' => $tour2->id,
             'departure_date' => Carbon::today()->addDays(10)->toDateString(),
             'return_date' => Carbon::today()->addDays(12)->toDateString(),
             'total_seats' => 10,
-            'status' => 'open'
+            'status' => 'open',
         ]);
+
+        $this->call(DemoServerSeeder::class);
+        $this->call(CustomerCouponSeeder::class);
 
         $this->command->info('Database seeder successfully populated fresh data!');
     }

@@ -6,6 +6,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\MorphTo;
+use Illuminate\Support\Str;
 
 class InsurancePolicy extends Model
 {
@@ -46,6 +47,15 @@ class InsurancePolicy extends Model
     public function claims(): HasMany
     {
         return $this->hasMany(InsuranceClaim::class, 'insurance_policy_id');
+    }
+
+    public static function generatePolicyNumber(): string
+    {
+        do {
+            $number = 'POL' . date('Ymd') . strtoupper(Str::random(4));
+        } while (static::where('policy_number', $number)->exists());
+
+        return $number;
     }
 
     public function isActive(): bool  { return $this->status === 'active'; }

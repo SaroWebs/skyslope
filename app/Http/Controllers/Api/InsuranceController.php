@@ -3,8 +3,8 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\InsuranceClaim;
 use App\Models\InsurancePolicy;
-use App\Models\Claim;
 use App\Models\ExtendedCare;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
@@ -20,7 +20,7 @@ class InsuranceController extends Controller
             return response()->json(['success' => false, 'message' => 'Only customer accounts can access insurance.'], 403);
         }
 
-        $policies = InsurancePolicy::where('user_id', $request->user()->id)
+        $policies = InsurancePolicy::where('customer_id', $request->user()->id)
             ->with(['claims'])
             ->latest()
             ->get();
@@ -40,7 +40,7 @@ class InsuranceController extends Controller
             return response()->json(['success' => false, 'message' => 'Only customer accounts can access insurance.'], 403);
         }
 
-        $policy = InsurancePolicy::where('user_id', $request->user()->id)
+        $policy = InsurancePolicy::where('customer_id', $request->user()->id)
             ->where('id', $id)
             ->with(['claims'])
             ->first();
@@ -68,12 +68,15 @@ class InsuranceController extends Controller
         }
 
         $validator = Validator::make($request->all(), [
-            'insurance_type' => 'required|in:comprehensive,third_party,personal_accident',
+            'policy_type' => 'required_without:insurance_type|in:basic,comprehensive,premium,third_party,personal_accident',
+            'insurance_type' => 'required_without:policy_type|in:basic,comprehensive,premium,third_party,personal_accident',
             'coverage_amount' => 'required|numeric|min:1000',
-            'premium_amount' => 'required|numeric|min:100',
+            'premium' => 'required_without:premium_amount|numeric|min:100',
+            'premium_amount' => 'required_without:premium|numeric|min:100',
             'start_date' => 'required|date|after_or_equal:today',
             'end_date' => 'required|date|after:start_date',
-            'terms_accepted' => 'required|boolean',
+            'terms' => 'nullable|string',
+            'terms_accepted' => 'nullable|boolean',
         ]);
 
         if ($validator->fails()) {
@@ -84,16 +87,15 @@ class InsuranceController extends Controller
         }
 
         $policy = InsurancePolicy::create([
-            'user_id' => $request->user()->id,
+            'customer_id' => $request->user()->id,
             'policy_number' => InsurancePolicy::generatePolicyNumber(),
-            'insurance_type' => $request->insurance_type,
+            'policy_type' => $request->policy_type ?? $request->insurance_type,
             'coverage_amount' => $request->coverage_amount,
-            'premium_amount' => $request->premium_amount,
+            'premium' => $request->premium ?? $request->premium_amount,
             'start_date' => $request->start_date,
             'end_date' => $request->end_date,
             'status' => 'active',
-            'payment_status' => 'pending',
-            'terms_accepted' => $request->terms_accepted,
+            'terms' => $request->terms ?? ($request->boolean('terms_accepted') ? 'Accepted by customer.' : null),
         ]);
 
         return response()->json([
@@ -112,7 +114,7 @@ class InsuranceController extends Controller
             return response()->json(['success' => false, 'message' => 'Only customer accounts can access insurance.'], 403);
         }
 
-        $policy = InsurancePolicy::where('user_id', $request->user()->id)
+        $policy = InsurancePolicy::where('customer_id', $request->user()->id)
             ->where('id', $id)
             ->first();
 
@@ -125,9 +127,10 @@ class InsuranceController extends Controller
 
         $validator = Validator::make($request->all(), [
             'coverage_amount' => 'numeric|min:1000',
+            'premium' => 'numeric|min:100',
             'premium_amount' => 'numeric|min:100',
-            'status' => 'in:active,expired,cancelled',
-            'payment_status' => 'in:paid,pending,failed',
+            'status' => 'in:active,expired,cancelled,claimed',
+            'terms' => 'nullable|string',
         ]);
 
         if ($validator->fails()) {
@@ -137,12 +140,12 @@ class InsuranceController extends Controller
             ], 422);
         }
 
-        $policy->update($request->only([
-            'coverage_amount',
-            'premium_amount',
-            'status',
-            'payment_status',
-        ]));
+        $updates = $request->only(['coverage_amount', 'premium', 'status', 'terms']);
+        if ($request->filled('premium_amount')) {
+            $updates['premium'] = $request->premium_amount;
+        }
+
+        $policy->update($updates);
 
         return response()->json([
             'success' => true,
@@ -160,7 +163,7 @@ class InsuranceController extends Controller
             return response()->json(['success' => false, 'message' => 'Only customer accounts can access insurance.'], 403);
         }
 
-        $policy = InsurancePolicy::where('user_id', $request->user()->id)
+        $policy = InsurancePolicy::where('customer_id', $request->user()->id)
             ->where('id', $id)
             ->first();
 
@@ -188,12 +191,10 @@ class InsuranceController extends Controller
             return response()->json(['success' => false, 'message' => 'Only customer accounts can access insurance.'], 403);
         }
 
-        $claims = Claim::whereHas('insurance', function ($query) use ($request) {
-            $query->where('user_id', $request->user()->id);
-        })
-        ->with(['insurance'])
-        ->latest()
-        ->get();
+        $claims = InsuranceClaim::where('customer_id', $request->user()->id)
+            ->with(['policy'])
+            ->latest()
+            ->get();
 
         return response()->json([
             'success' => true,
@@ -211,7 +212,8 @@ class InsuranceController extends Controller
         }
 
         $validator = Validator::make($request->all(), [
-            'insurance_id' => 'required|exists:insurance_policies,id',
+            'insurance_policy_id' => 'required_without:insurance_id|exists:insurance_policies,id',
+            'insurance_id' => 'required_without:insurance_policy_id|exists:insurance_policies,id',
             'incident_date' => 'required|date|before_or_equal:today',
             'incident_description' => 'required|string|max:1000',
             'claim_amount' => 'required|numeric|min:100',
@@ -226,8 +228,10 @@ class InsuranceController extends Controller
         }
 
         // Verify insurance belongs to user
-        $insurance = InsurancePolicy::where('user_id', $request->user()->id)
-            ->where('id', $request->insurance_id)
+        $insurancePolicyId = $request->insurance_policy_id ?? $request->insurance_id;
+
+        $insurance = InsurancePolicy::where('customer_id', $request->user()->id)
+            ->where('id', $insurancePolicyId)
             ->first();
 
         if (!$insurance) {
@@ -244,14 +248,14 @@ class InsuranceController extends Controller
             ], 400);
         }
 
-        $claim = Claim::create([
-            'insurance_id' => $request->insurance_id,
-            'claim_number' => Claim::generateClaimNumber(),
-            'incident_date' => $request->incident_date,
-            'incident_description' => $request->incident_description,
+        $claim = InsuranceClaim::create([
+            'insurance_policy_id' => $insurance->id,
+            'customer_id' => $request->user()->id,
+            'claim_number' => InsuranceClaim::generateClaimNumber(),
+            'description' => $request->incident_description,
             'claim_amount' => $request->claim_amount,
             'status' => 'pending',
-            'documents' => $request->documents,
+            'admin_notes' => $request->documents ? json_encode(['documents' => $request->documents]) : null,
         ]);
 
         return response()->json([
@@ -270,8 +274,8 @@ class InsuranceController extends Controller
             return response()->json(['success' => false, 'message' => 'Only customer accounts can access insurance.'], 403);
         }
 
-        $careRequests = ExtendedCare::where('user_id', $request->user()->id)
-            ->with(['insurance'])
+        $careRequests = ExtendedCare::where('customer_id', $request->user()->id)
+            ->with(['serviceable'])
             ->latest()
             ->get();
 
@@ -302,11 +306,12 @@ class InsuranceController extends Controller
             ], 422);
         }
 
-        $care = ExtendedCare::requestAssistance(
-            $request->user()->id,
-            $request->care_type,
-            $request->notes
-        );
+        $care = ExtendedCare::create([
+            'customer_id' => $request->user()->id,
+            'care_type' => $request->care_type,
+            'description' => $request->notes,
+            'status' => 'pending',
+        ]);
 
         return response()->json([
             'success' => true,
@@ -324,7 +329,7 @@ class InsuranceController extends Controller
             return response()->json(['success' => false, 'message' => 'Only customer accounts can access insurance.'], 403);
         }
 
-        $care = ExtendedCare::where('user_id', $request->user()->id)
+        $care = ExtendedCare::where('customer_id', $request->user()->id)
             ->where('id', $id)
             ->first();
 
@@ -335,14 +340,14 @@ class InsuranceController extends Controller
             ], 404);
         }
 
-        if (!$care->isActive()) {
+        if (in_array($care->status, ['completed', 'cancelled'], true)) {
             return response()->json([
                 'success' => false,
                 'message' => 'Cannot cancel completed or cancelled request',
             ], 400);
         }
 
-        $care->cancel();
+        $care->update(['status' => 'cancelled']);
 
         return response()->json([
             'success' => true,

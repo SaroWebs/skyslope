@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\DriverAvailability;
+use Illuminate\Support\Facades\DB;
 
 class RideEstimateService
 {
@@ -20,6 +21,8 @@ class RideEstimateService
 
     /** Assumed average speed in km/h used for duration estimate */
     public const AVERAGE_SPEED_KMH = 30;
+
+    public const SHORT_RIDE_THRESHOLD_KM = 80;
 
     /**
      * Calculate the Haversine great-circle distance in kilometres between two coordinates.
@@ -42,6 +45,20 @@ class RideEstimateService
      */
     public function nearbyDriverCount(float $lat, float $lng, float $radiusKm = 5): int
     {
+        if (DB::connection()->getDriverName() === 'sqlite') {
+            return DriverAvailability::active()
+                ->whereNotNull('current_lat')
+                ->whereNotNull('current_lng')
+                ->get()
+                ->filter(fn (DriverAvailability $availability) => $this->distanceKm(
+                    $lat,
+                    $lng,
+                    (float) $availability->current_lat,
+                    (float) $availability->current_lng
+                ) <= $radiusKm)
+                ->count();
+        }
+
         return DriverAvailability::active()
             ->nearLocation($lat, $lng, $radiusKm)
             ->count();
@@ -70,8 +87,10 @@ class RideEstimateService
         float $pickupLat,
         float $pickupLng,
         ?float $dropoffLat = null,
-        ?float $dropoffLng = null
+        ?float $dropoffLng = null,
+        string $serviceType = 'point_to_point'
     ): array {
+        $serviceType = $this->normalizeServiceType($serviceType);
         $distance = ($dropoffLat !== null && $dropoffLng !== null)
             ? $this->distanceKm($pickupLat, $pickupLng, (float) $dropoffLat, (float) $dropoffLng)
             : 0.0;
@@ -86,9 +105,12 @@ class RideEstimateService
 
         return [
             'distance_km'        => round($distance, 2),
+            'estimated_distance_km' => round($distance, 2),
             'estimated_duration' => $distance > 0
                 ? (int) ceil($distance / self::AVERAGE_SPEED_KMH * 60)
                 : 30,
+            'service_type'       => $serviceType,
+            'ride_classification' => $this->classify($serviceType, $distance),
             'nearby_drivers'     => $nearbyDrivers,
             'pricing'            => [
                 'base_fare'        => (float) self::BASE_FARE,
@@ -97,5 +119,21 @@ class RideEstimateService
                 'subtotal'         => round($subtotal, 2),
             ],
         ];
+    }
+
+    public function normalizeServiceType(string $serviceType): string
+    {
+        return $serviceType === 'hourly_rental' ? 'hourly' : $serviceType;
+    }
+
+    public function classify(string $serviceType, float $distanceKm): string
+    {
+        $serviceType = $this->normalizeServiceType($serviceType);
+
+        if (in_array($serviceType, ['hourly', 'round_trip'], true)) {
+            return 'long_ride';
+        }
+
+        return $distanceKm < self::SHORT_RIDE_THRESHOLD_KM ? 'short_ride' : 'long_ride';
     }
 }

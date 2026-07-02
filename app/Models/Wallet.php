@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Services\WalletLedgerService;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\MorphTo;
@@ -37,44 +38,26 @@ class Wallet extends Model
 
     // ── Helpers ────────────────────────────────────────────────────
 
-    public function credit(float $amount, string $description = '', ?string $refType = null, ?string $refId = null): WalletTransaction
+    public function credit(
+        float $amount,
+        string $description = '',
+        ?string $refType = null,
+        ?string $refId = null,
+        ?string $idempotencyKey = null
+    ): WalletTransaction
     {
-        $before = (float) $this->balance;
-        $after  = $before + $amount;
-
-        $this->increment('balance', $amount);
-
-        return $this->transactions()->create([
-            'type'           => 'credit',
-            'amount'         => $amount,
-            'balance_before' => $before,
-            'balance_after'  => $after,
-            'reference_type' => $refType,
-            'reference_id'   => $refId,
-            'description'    => $description,
-        ]);
+        return app(WalletLedgerService::class)->credit($this, $amount, $description, $refType, $refId, $idempotencyKey);
     }
 
-    public function debit(float $amount, string $description = '', ?string $refType = null, ?string $refId = null): WalletTransaction
+    public function debit(
+        float $amount,
+        string $description = '',
+        ?string $refType = null,
+        ?string $refId = null,
+        ?string $idempotencyKey = null
+    ): WalletTransaction
     {
-        if ((float) $this->balance < $amount) {
-            throw new \RuntimeException('Insufficient wallet balance.');
-        }
-
-        $before = (float) $this->balance;
-        $after  = $before - $amount;
-
-        $this->decrement('balance', $amount);
-
-        return $this->transactions()->create([
-            'type'           => 'debit',
-            'amount'         => $amount,
-            'balance_before' => $before,
-            'balance_after'  => $after,
-            'reference_type' => $refType,
-            'reference_id'   => $refId,
-            'description'    => $description,
-        ]);
+        return app(WalletLedgerService::class)->debit($this, $amount, $description, $refType, $refId, $idempotencyKey);
     }
 
     public function hasSufficientBalance(float $amount): bool

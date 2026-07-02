@@ -1,5 +1,5 @@
 export interface Auth {
-    user: User;
+    user: User | null;
 }
 
 export interface SharedData {
@@ -7,6 +7,32 @@ export interface SharedData {
     quote: { message: string; author: string };
     auth: Auth;
     [key: string]: unknown;
+}
+
+export interface UsersIndexProps {
+    title: string;
+    users: {
+        data: AdminUser[];
+        current_page: number;
+        last_page: number;
+        per_page: number;
+        total: number;
+    };
+    roles: Array<{
+        id: number;
+        name: string;
+    }>;
+}
+
+export interface AdminUser {
+    id: number;
+    name: string;
+    email: string;
+    phone: string;
+    roles: Array<{
+        id: number;
+        name: string;
+    }>;
 }
 
 export interface User {

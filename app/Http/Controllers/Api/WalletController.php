@@ -137,6 +137,7 @@ class WalletController extends Controller
             'razorpay_order_id' => 'required|string',
             'razorpay_payment_id' => 'required|string',
             'razorpay_signature' => 'required|string',
+            'idempotency_key' => 'nullable|string|max:255',
         ]);
 
         if ($validator->fails()) {
@@ -188,34 +189,10 @@ class WalletController extends Controller
                 ], 400);
             }
 
-            $wallet = DB::transaction(function () use ($request, $amount) {
-                $wallet = Wallet::query()
-                    ->where('owner_type', $request->user()::class)
-                    ->where('owner_id', $request->user()->id)
-                    ->lockForUpdate()
-                    ->first();
-
-                if (!$wallet) {
-                    return null;
-                }
-
-                // Idempotency guard.
-                $existingTransaction = WalletTransaction::where('wallet_id', $wallet->id)
-                    ->where('reference_id', $request->razorpay_payment_id)
-                    ->first();
-
-                if ($existingTransaction) {
-                    return $wallet->fresh();
-                }
-
-                $wallet->credit(
-                    $amount,
-                    'Wallet top-up via Razorpay',
-                    $request->razorpay_payment_id
-                );
-
-                return $wallet->fresh();
-            });
+            $wallet = Wallet::query()
+                ->where('owner_type', $request->user()::class)
+                ->where('owner_id', $request->user()->id)
+                ->first();
 
             if (!$wallet) {
                 return response()->json([
@@ -224,13 +201,26 @@ class WalletController extends Controller
                 ], 404);
             }
 
+            $idempotencyKey = $request->input('idempotency_key')
+                ?: "wallet_topup:{$request->razorpay_order_id}:{$request->razorpay_payment_id}";
+
+            $transaction = $wallet->credit(
+                $amount,
+                'Wallet top-up via Razorpay',
+                'razorpay_payment',
+                $request->razorpay_payment_id,
+                $idempotencyKey
+            );
+
             return response()->json([
                 'success' => true,
                 'message' => 'Wallet topped up successfully',
                 'data' => [
-                    'wallet' => $wallet,
+                    'wallet' => $wallet->fresh(),
                     'amount' => $amount,
                     'payment_id' => $request->razorpay_payment_id,
+                    'transaction_id' => $transaction->id,
+                    'idempotency_key' => $transaction->idempotency_key,
                 ],
             ]);
         } catch (\Exception $e) {
@@ -405,6 +395,25 @@ class WalletController extends Controller
         return response()->json([
             'success' => true,
             'data' => $this->razorpay->getClientConfig(),
+        ]);
+    }
+
+    public function handleRazorpayWebhook(Request $request)
+    {
+        $signature = $request->header('X-Razorpay-Signature');
+        $payload = $request->getContent();
+
+        if (!$signature || !$this->razorpay->verifyWebhook($payload, $signature)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Invalid webhook signature',
+            ], 400);
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Webhook verified.',
+            'event' => $request->input('event'),
         ]);
     }
 

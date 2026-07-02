@@ -59,7 +59,7 @@ class AdminDriverController extends Controller
             'completed_rides' => $driver->assignedRideBookings()->where('status', 'completed')->count(),
             'total_earned' => $driver->assignedRideBookings()->where('status', 'completed')->sum('total_fare'),
             'wallet_balance' => $driver->wallet?->balance ?? 0,
-            'is_online' => $driver->driverAvailability?->is_online ?? false,
+            'is_online' => ($driver->driverAvailability?->status ?? 'offline') !== 'offline',
             'is_available' => $driver->driverAvailability?->is_available ?? false,
         ];
 
@@ -78,6 +78,13 @@ class AdminDriverController extends Controller
     {
         $driver->update(['status' => 'active']);
 
+        if (request()->expectsJson() || request()->is('api/*')) {
+            return response()->json([
+                'message' => "Driver {$driver->name} has been approved.",
+                'driver' => $driver->fresh(),
+            ]);
+        }
+
         return redirect()->back()->with('success', "Driver {$driver->name} has been approved.");
     }
 
@@ -88,14 +95,20 @@ class AdminDriverController extends Controller
     {
         $driver->update(['status' => 'suspended']);
 
-        // Revoke all tokens
         $driver->tokens()->delete();
 
-        // Set offline
         DriverAvailability::where('driver_id', $driver->id)->update([
-            'is_online' => false,
             'is_available' => false,
+            'status' => 'offline',
+            'last_updated' => now(),
         ]);
+
+        if (request()->expectsJson() || request()->is('api/*')) {
+            return response()->json([
+                'message' => "Driver {$driver->name} has been suspended.",
+                'driver' => $driver->fresh('driverAvailability'),
+            ]);
+        }
 
         return redirect()->back()->with('success', "Driver {$driver->name} has been suspended.");
     }
@@ -106,6 +119,13 @@ class AdminDriverController extends Controller
     public function activate(Driver $driver)
     {
         $driver->update(['status' => 'active']);
+
+        if (request()->expectsJson() || request()->is('api/*')) {
+            return response()->json([
+                'message' => "Driver {$driver->name} has been reactivated.",
+                'driver' => $driver->fresh(),
+            ]);
+        }
 
         return redirect()->back()->with('success', "Driver {$driver->name} has been reactivated.");
     }
@@ -120,5 +140,25 @@ class AdminDriverController extends Controller
         \App\Models\Vehicle::where('id', $request->vehicle_id)->update(['driver_id' => $driver->id]);
 
         return redirect()->back()->with('success', 'Vehicle assigned to driver successfully.');
+    }
+
+    public function updateCapabilities(Request $request, Driver $driver)
+    {
+        $validated = $request->validate([
+            'can_short_ride' => 'required|boolean',
+            'can_long_ride' => 'required|boolean',
+            'can_tour_lead' => 'required|boolean',
+            'can_tour_transport' => 'required|boolean',
+            'can_rental_delivery' => 'required|boolean',
+            'languages' => 'nullable|array',
+            'languages.*' => 'string|max:80',
+            'expertise_tags' => 'nullable|array',
+            'expertise_tags.*' => 'string|max:80',
+            'certification_notes' => 'nullable|string|max:2000',
+        ]);
+
+        $driver->update($validated);
+
+        return redirect()->back()->with('success', 'Driver capabilities updated.');
     }
 }

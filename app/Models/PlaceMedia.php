@@ -9,6 +9,12 @@ class PlaceMedia extends Model
 {
     protected $table = 'place_media';
 
+    protected $appends = [
+        'file_path',
+        'file_type',
+        'url',
+    ];
+
     protected $fillable = [
         'place_id',
         'path',
@@ -24,6 +30,21 @@ class PlaceMedia extends Model
     public function place(): BelongsTo
     {
         return $this->belongsTo(Place::class, 'place_id');
+    }
+
+    public function getFilePathAttribute(): string
+    {
+        return $this->path;
+    }
+
+    public function getFileTypeAttribute(): string
+    {
+        return $this->type;
+    }
+
+    public function getUrlAttribute(): string
+    {
+        return asset('storage/' . ltrim($this->path, '/'));
     }
 
     public function isImage(): bool { return $this->type === 'image'; }

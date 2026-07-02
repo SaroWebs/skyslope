@@ -11,9 +11,13 @@ class TourItinerary extends Model
 
     protected $fillable = [
         'tour_id',
+        'place_id',
         'day_number',
+        'day_index',
+        'time',
         'title',
         'description',
+        'details',
         'activities',
         'accommodation',
         'meals_included',
@@ -24,11 +28,27 @@ class TourItinerary extends Model
         'activities'     => 'array',
         'meals_included' => 'array',
         'day_number'     => 'integer',
+        'day_index'      => 'integer',
     ];
 
     public function tour(): BelongsTo
     {
         return $this->belongsTo(Tour::class, 'tour_id');
+    }
+
+    public function place(): BelongsTo
+    {
+        return $this->belongsTo(Place::class, 'place_id');
+    }
+
+    public function getDayIndexAttribute($value): int
+    {
+        return (int) ($value ?? $this->day_number);
+    }
+
+    public function getDetailsAttribute($value): ?string
+    {
+        return $value ?? $this->description;
     }
 
     public function hasMeal(string $meal): bool
@@ -38,6 +58,6 @@ class TourItinerary extends Model
 
     public function getDayLabelAttribute(): string
     {
-        return 'Day ' . $this->day_number;
+        return 'Day ' . ($this->day_index ?? $this->day_number);
     }
 }

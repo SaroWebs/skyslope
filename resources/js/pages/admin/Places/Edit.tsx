@@ -1,20 +1,44 @@
 import React from 'react';
-import { Link, useForm } from '@inertiajs/react';
+import { Head, Link, useForm } from '@inertiajs/react';
 import AdminLayout from '@/layouts/AdminLayout';
 import LocationInput from '@/components/ui/LocationInput';
+import {
+    Button,
+    Divider,
+    Group,
+    Paper,
+    SimpleGrid,
+    Stack,
+    Switch,
+    TagsInput,
+    Text,
+    Textarea,
+    TextInput,
+} from '@mantine/core';
+import { ArrowLeft, Images, MapPin, Save, Star } from 'lucide-react';
 
 interface Place {
     id: number;
     name: string;
-    description: string;
-    lng: number | null;
-    lat: number | null;
-    status: string;
+    description: string | null;
+    short_description: string | null;
+    location: string | null;
+    city: string | null;
+    state: string | null;
+    country: string | null;
+    latitude: number | string | null;
+    longitude: number | string | null;
+    tags: string[] | null;
+    google_place_id: string | null;
+    google_rating: number | string | null;
+    google_review_count: number | null;
+    google_synced_at: string | null;
+    is_active: boolean;
+    is_featured: boolean;
 }
 
 interface EditPlaceProps {
     title: string;
-    user: any;
     place: Place;
 }
 
@@ -27,138 +51,161 @@ interface SearchResult {
     lng?: number;
 }
 
-export default function Edit({ title, user, place }: EditPlaceProps) {
+export default function Edit({ title, place }: EditPlaceProps) {
     const { data, setData, put, processing, errors } = useForm({
         name: place.name,
-        description: place.description,
-        lng: place.lng?.toString() || '',
-        lat: place.lat?.toString() || '',
-        status: place.status,
+        description: place.description ?? '',
+        short_description: place.short_description ?? '',
+        location: place.location ?? '',
+        city: place.city ?? '',
+        state: place.state ?? '',
+        country: place.country ?? 'India',
+        latitude: place.latitude?.toString() ?? '',
+        longitude: place.longitude?.toString() ?? '',
+        tags: place.tags ?? [],
+        google_place_id: place.google_place_id ?? '',
+        google_rating: place.google_rating?.toString() ?? '',
+        google_review_count: place.google_review_count?.toString() ?? '0',
+        is_active: Boolean(place.is_active),
+        is_featured: Boolean(place.is_featured),
     });
 
     const handleLocationSelect = (location: SearchResult) => {
         setData('name', location.name);
-        setData('lat', location.lat?.toString() || '');
-        setData('lng', location.lng?.toString() || '');
+        setData('location', location.address);
+        setData('google_place_id', location.id);
+        setData('latitude', location.lat?.toString() || '');
+        setData('longitude', location.lng?.toString() || '');
     };
 
-    const handleSubmit = (e: React.FormEvent) => {
-        e.preventDefault();
+    const handleSubmit = (event: React.FormEvent) => {
+        event.preventDefault();
         put(`/admin/places/${place.id}`);
     };
 
     return (
         <AdminLayout title={title}>
-            <div className="bg-white shadow rounded-lg">
-                <div className="px-4 py-5 sm:p-6">
-                    <div className="flex justify-between items-center mb-6">
-                        <h2 className="text-lg font-medium text-gray-900">Edit Place</h2>
-                        <Link
-                            href="/admin/places"
-                            className="bg-gray-600 text-white px-4 py-2 rounded-md hover:bg-gray-700 text-sm font-medium"
-                        >
-                            Back to Places
-                        </Link>
+            <Head title={`Edit ${place.name}`} />
+
+            <Stack gap="lg" maw={1100} mx="auto">
+                <Group justify="space-between">
+                    <div>
+                        <Text size="xl" fw={800}>Edit Place</Text>
+                        <Text size="sm" color="dimmed">Update customer catalog, map, Google cache, and feature metadata.</Text>
                     </div>
+                    <Group>
+                        <Button component={Link} href={`/admin/places/${place.id}`} variant="light" leftSection={<Images size={16} />}>
+                            Manage Media
+                        </Button>
+                        <Button component={Link} href="/admin/places" variant="subtle" color="gray" leftSection={<ArrowLeft size={16} />}>
+                            Back to Places
+                        </Button>
+                    </Group>
+                </Group>
 
+                <Paper p="xl" radius="md" withBorder>
                     <form onSubmit={handleSubmit}>
-                        <div className="grid grid-cols-1 gap-6">
-                            <LocationInput
-                                label="Location"
-                                placeholder="Search for a location..."
-                                value={data.name}
-                                onChange={(value) => setData('name', value)}
-                                onLocationSelect={handleLocationSelect}
-                                error={errors.name}
-                                required
-                            />
-
-                            <div>
-                                <label htmlFor="description" className="block text-sm font-medium text-gray-700">
-                                    Description
-                                </label>
-                                <textarea
-                                    id="description"
-                                    value={data.description}
-                                    onChange={(e) => setData('description', e.target.value)}
-                                    rows={4}
-                                    className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
+                        <Stack gap="xl">
+                            <Stack gap="md">
+                                <Text fw={700}>Place Details</Text>
+                                <LocationInput
+                                    label="Search Location"
+                                    placeholder="Search for a Google place or enter a name"
+                                    value={data.name}
+                                    onChange={(value) => setData('name', value)}
+                                    onLocationSelect={handleLocationSelect}
+                                    error={errors.name}
                                     required
                                 />
-                                {errors.description && <div className="text-red-600 text-sm mt-1">{errors.description}</div>}
-                            </div>
 
-                            <div className="grid grid-cols-2 gap-4">
-                                <div>
-                                    <label htmlFor="lng" className="block text-sm font-medium text-gray-700">
-                                        Longitude
-                                    </label>
-                                    <input
-                                        type="number"
-                                        step="any"
-                                        id="lng"
-                                        value={data.lng}
-                                        onChange={(e) => setData('lng', e.target.value)}
-                                        className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
-                                        readOnly
-                                    />
-                                    {errors.lng && <div className="text-red-600 text-sm mt-1">{errors.lng}</div>}
-                                </div>
+                                <Textarea
+                                    label="Description"
+                                    rows={4}
+                                    value={data.description}
+                                    onChange={(event) => setData('description', event.currentTarget.value)}
+                                    error={errors.description}
+                                />
 
-                                <div>
-                                    <label htmlFor="lat" className="block text-sm font-medium text-gray-700">
-                                        Latitude
-                                    </label>
-                                    <input
-                                        type="number"
-                                        step="any"
-                                        id="lat"
-                                        value={data.lat}
-                                        onChange={(e) => setData('lat', e.target.value)}
-                                        className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
-                                        readOnly
-                                    />
-                                    {errors.lat && <div className="text-red-600 text-sm mt-1">{errors.lat}</div>}
-                                </div>
-                            </div>
+                                <TextInput
+                                    label="Short Description"
+                                    value={data.short_description}
+                                    onChange={(event) => setData('short_description', event.currentTarget.value)}
+                                    error={errors.short_description}
+                                />
+                            </Stack>
 
-                            <div>
-                                <label htmlFor="status" className="block text-sm font-medium text-gray-700">
-                                    Status
-                                </label>
-                                <select
-                                    id="status"
-                                    value={data.status}
-                                    onChange={(e) => setData('status', e.target.value)}
-                                    className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
-                                    required
-                                >
-                                    <option value="available">Available</option>
-                                    <option value="unavailable">Unavailable</option>
-                                    <option value="restricted">Restricted</option>
-                                </select>
-                                {errors.status && <div className="text-red-600 text-sm mt-1">{errors.status}</div>}
-                            </div>
-                        </div>
+                            <Divider />
 
-                        <div className="mt-6 flex justify-end">
-                            <Link
-                                href="/admin/places"
-                                className="mr-3 bg-gray-300 text-gray-700 px-4 py-2 rounded-md hover:bg-gray-400 text-sm font-medium"
-                            >
-                                Cancel
-                            </Link>
-                            <button
-                                type="submit"
-                                disabled={processing}
-                                className="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 text-sm font-medium disabled:opacity-50"
-                            >
-                                {processing ? 'Updating...' : 'Update Place'}
-                            </button>
-                        </div>
+                            <Stack gap="md">
+                                <Group gap="sm">
+                                    <MapPin size={18} />
+                                    <Text fw={700}>Location Metadata</Text>
+                                </Group>
+                                <TextInput
+                                    label="Display Address"
+                                    value={data.location}
+                                    onChange={(event) => setData('location', event.currentTarget.value)}
+                                    error={errors.location}
+                                />
+                                <SimpleGrid cols={{ base: 1, sm: 3 }} spacing="md">
+                                    <TextInput label="City" value={data.city} onChange={(event) => setData('city', event.currentTarget.value)} error={errors.city} />
+                                    <TextInput label="State" value={data.state} onChange={(event) => setData('state', event.currentTarget.value)} error={errors.state} />
+                                    <TextInput label="Country" value={data.country} onChange={(event) => setData('country', event.currentTarget.value)} error={errors.country} />
+                                </SimpleGrid>
+                                <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="md">
+                                    <TextInput type="number" step="any" label="Latitude" value={data.latitude} onChange={(event) => setData('latitude', event.currentTarget.value)} error={errors.latitude} />
+                                    <TextInput type="number" step="any" label="Longitude" value={data.longitude} onChange={(event) => setData('longitude', event.currentTarget.value)} error={errors.longitude} />
+                                </SimpleGrid>
+                            </Stack>
+
+                            <Divider />
+
+                            <Stack gap="md">
+                                <Group gap="sm">
+                                    <Star size={18} />
+                                    <Text fw={700}>Google And Catalog</Text>
+                                </Group>
+                                <TextInput
+                                    label="Google Place ID"
+                                    value={data.google_place_id}
+                                    onChange={(event) => setData('google_place_id', event.currentTarget.value)}
+                                    error={errors.google_place_id}
+                                />
+                                <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="md">
+                                    <TextInput type="number" step="0.01" label="Google Rating Cache" value={data.google_rating} onChange={(event) => setData('google_rating', event.currentTarget.value)} error={errors.google_rating} />
+                                    <TextInput type="number" label="Google Review Count" value={data.google_review_count} onChange={(event) => setData('google_review_count', event.currentTarget.value)} error={errors.google_review_count} />
+                                </SimpleGrid>
+                                <Text size="xs" color="dimmed">
+                                    Last Google sync: {place.google_synced_at ? new Date(place.google_synced_at).toLocaleString() : 'Never'}
+                                </Text>
+                                <TagsInput
+                                    label="Tags"
+                                    placeholder="Add tag"
+                                    value={data.tags}
+                                    onChange={(value) => setData('tags', value)}
+                                    error={errors.tags}
+                                    splitChars={[',']}
+                                />
+                                <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="md">
+                                    <Switch label="Active in customer apps" checked={data.is_active} onChange={(event) => setData('is_active', event.currentTarget.checked)} />
+                                    <Switch label="Featured place" checked={data.is_featured} onChange={(event) => setData('is_featured', event.currentTarget.checked)} />
+                                </SimpleGrid>
+                            </Stack>
+
+                            <Divider />
+
+                            <Group justify="flex-end">
+                                <Button component={Link} href="/admin/places" variant="default">
+                                    Cancel
+                                </Button>
+                                <Button type="submit" leftSection={<Save size={16} />} loading={processing}>
+                                    Update Place
+                                </Button>
+                            </Group>
+                        </Stack>
                     </form>
-                </div>
-            </div>
+                </Paper>
+            </Stack>
         </AdminLayout>
     );
 }

@@ -30,6 +30,7 @@ class AuthController extends Controller
         $request->validate([
             'email' => 'required|email',
             'password' => 'required|string',
+            'remember' => 'sometimes|boolean',
         ]);
 
         // Find user by email
@@ -56,7 +57,7 @@ class AuthController extends Controller
         }
 
         // Log the user in
-        Auth::login($user);
+        Auth::login($user, $request->boolean('remember'));
 
         return redirect()->route('admin.dashboard');
     }

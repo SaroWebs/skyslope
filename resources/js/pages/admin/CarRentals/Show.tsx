@@ -1,6 +1,84 @@
-import React from 'react';
-import { Link, router } from '@inertiajs/react';
+import React, { useState } from 'react';
+import { Head, Link, router } from '@inertiajs/react';
+import axios from 'axios';
 import AdminLayout from '@/layouts/AdminLayout';
+import {
+    Alert,
+    Badge,
+    Button,
+    Card,
+    Divider,
+    Grid,
+    Group,
+    Paper,
+    Select,
+    SimpleGrid,
+    Stack,
+    Table,
+    Text,
+    Textarea,
+    TextInput,
+    Timeline,
+} from '@mantine/core';
+import { AlertCircle, ArrowLeft, Car, CheckCircle2, CreditCard, IndianRupee, MapPin, RefreshCcw, Star, Truck, User } from 'lucide-react';
+
+interface Person {
+    id: number;
+    name: string;
+    phone?: string;
+    email?: string;
+}
+
+interface Vehicle {
+    id: number;
+    driver_id?: number | null;
+    car_category_id?: number | null;
+    registration_number: string;
+    make?: string | null;
+    model?: string | null;
+}
+
+interface DriverOption extends Person {
+    rating?: number | null;
+    vehicle_number?: string | null;
+}
+
+interface BookingRefund {
+    id: number;
+    amount: string;
+    cancellation_fee: string;
+    method: string;
+    status: string;
+    reason?: string | null;
+    processed_at?: string | null;
+}
+
+interface BookingIncident {
+    id: number;
+    type: string;
+    severity: string;
+    status: string;
+    title: string;
+    description?: string | null;
+    resolution?: string | null;
+}
+
+interface BookingAuditLog {
+    id: number;
+    action: string;
+    note?: string | null;
+    created_at: string;
+    admin?: Person | null;
+}
+
+interface BookingReview {
+    id: number;
+    rental_rating: number;
+    driver_rating?: number | null;
+    review?: string | null;
+    customer?: Person | null;
+    driver?: Person | null;
+}
 
 interface CarRental {
     id: number;
@@ -8,348 +86,401 @@ interface CarRental {
     customer_name: string;
     customer_email: string;
     customer_phone: string;
-    customer_address: string;
+    customer_address?: string | null;
     start_date: string;
     end_date: string;
-    start_time: string;
-    end_time: string;
+    start_time?: string | null;
+    end_time?: string | null;
+    number_of_days: number;
     pickup_location: string;
-    dropoff_location: string;
-    destination_details: string;
-    distance_km: number;
-    special_requests: string;
+    dropoff_location?: string | null;
+    destination_details?: string | null;
+    distance_km: string | number;
+    total_price: string;
+    base_price: string;
+    distance_price: string;
+    extras_price: string;
+    discount_amount: string;
+    commission_amount?: string | null;
+    driver_share?: string | null;
     status: string;
     payment_status: string;
     payment_method: string;
-    assigned_driver: number | null;
-    vehicle_number: string;
-    internal_notes: string;
-    whatsapp_notification: boolean;
-    email_notification: boolean;
-    sms_notification: boolean;
-    total_price: number;
-    base_price: number;
-    distance_price: number;
-    extras_price: number;
-    discount_amount: number;
-    number_of_days: number;
-    created_at: string;
-    carCategory: {
+    driver_id?: number | null;
+    vehicle_id?: number | null;
+    special_requests?: string | null;
+    internal_notes?: string | null;
+    cancellation_reason?: string | null;
+    cancellation_fee?: string | null;
+    refund_amount?: string | null;
+    cancelled_at?: string | null;
+    refunded_at?: string | null;
+    current_lat?: string | null;
+    current_lng?: string | null;
+    last_location_update?: string | null;
+    car_category?: {
         id: number;
         name: string;
         vehicle_type: string;
         seats: number;
-        has_ac: boolean;
-        has_driver: boolean;
-        base_price_per_day: number;
-        price_per_km: number;
-    };
-    user: {
+    } | null;
+    carCategory?: {
         id: number;
         name: string;
-        email: string;
-    };
-    driver?: {
-        id: number;
-        name: string;
-        email: string;
-    };
-    extras: Array<{
-        id: number;
-        name: string;
-        total_price: number;
-        quantity: number;
-    }>;
+        vehicle_type: string;
+        seats: number;
+    } | null;
+    driver?: Person | null;
+    vehicle?: Vehicle | null;
+    refunds: BookingRefund[];
+    incidents: BookingIncident[];
+    audit_logs: BookingAuditLog[];
+    reviews: BookingReview[];
 }
 
-interface ShowCarRentalProps {
+interface Props {
     title: string;
-    user: any;
     car_rental: CarRental;
+    drivers: DriverOption[];
+    vehicles: Vehicle[];
 }
 
-export default function Show({ title, user, car_rental }: ShowCarRentalProps) {
-    const handleDelete = () => {
-        if (confirm('Are you sure you want to delete this car rental? This action cannot be undone.')) {
-            router.delete(`/admin/car-rentals/${car_rental.id}`);
+const rentalStatusOptions = ['pending', 'confirmed', 'driver_assigned', 'in_progress', 'completed', 'cancelled'].map((value) => ({ value, label: value.replace('_', ' ') }));
+const paymentStatusOptions = ['pending', 'paid', 'failed', 'refunded'].map((value) => ({ value, label: value }));
+const paymentMethodOptions = ['cash', 'card', 'upi', 'bank_transfer', 'razorpay', 'wallet'].map((value) => ({ value, label: value.replace('_', ' ') }));
+
+export default function Show({ title, car_rental, drivers, vehicles }: Props) {
+    const category = car_rental.car_category || car_rental.carCategory;
+    const [status, setStatus] = useState(car_rental.status);
+    const [paymentStatus, setPaymentStatus] = useState(car_rental.payment_status);
+    const [cancellationReason, setCancellationReason] = useState('');
+    const [paymentMethod, setPaymentMethod] = useState(car_rental.payment_method || 'cash');
+    const [paymentReference, setPaymentReference] = useState('');
+    const [paymentNote, setPaymentNote] = useState('');
+    const [driverId, setDriverId] = useState(car_rental.driver_id ? String(car_rental.driver_id) : '');
+    const [vehicleId, setVehicleId] = useState(car_rental.vehicle_id ? String(car_rental.vehicle_id) : '');
+    const [incidentTitle, setIncidentTitle] = useState('');
+    const [incidentType, setIncidentType] = useState('no_show');
+    const [incidentSeverity, setIncidentSeverity] = useState('medium');
+    const [incidentDescription, setIncidentDescription] = useState('');
+    const [processing, setProcessing] = useState(false);
+
+    const reload = () => router.reload({ preserveScroll: true });
+
+    const submitStatus = async () => {
+        setProcessing(true);
+        try {
+            await axios.post(`/admin/car-rentals/${car_rental.id}/update-status`, {
+                status,
+                payment_status: paymentStatus,
+                cancellation_reason: cancellationReason || null,
+            });
+            reload();
+        } finally {
+            setProcessing(false);
         }
     };
 
-    const getStatusBadge = (status: string) => {
-        const badges = {
-            pending: 'bg-yellow-100 text-yellow-800',
-            confirmed: 'bg-blue-100 text-blue-800',
-            in_progress: 'bg-green-100 text-green-800',
-            completed: 'bg-gray-100 text-gray-800',
-            cancelled: 'bg-red-100 text-red-800',
-        };
-        return badges[status as keyof typeof badges] || 'bg-gray-100 text-gray-800';
+    const confirmPayment = async () => {
+        setProcessing(true);
+        try {
+            await axios.post(`/admin/car-rentals/${car_rental.id}/confirm-payment`, {
+                payment_method: paymentMethod,
+                payment_reference: paymentReference || null,
+                note: paymentNote || null,
+            });
+            reload();
+        } finally {
+            setProcessing(false);
+        }
     };
 
-    const getPaymentStatusBadge = (status: string) => {
-        const badges = {
-            pending: 'bg-yellow-100 text-yellow-800',
-            paid: 'bg-green-100 text-green-800',
-            failed: 'bg-red-100 text-red-800',
-            refunded: 'bg-gray-100 text-gray-800',
-        };
-        return badges[status as keyof typeof badges] || 'bg-gray-100 text-gray-800';
+    const assignDriver = async () => {
+        if (!driverId) return;
+        setProcessing(true);
+        try {
+            await axios.post(`/admin/car-rentals/${car_rental.id}/assign-driver`, {
+                driver_id: Number(driverId),
+                vehicle_id: vehicleId ? Number(vehicleId) : null,
+            });
+            reload();
+        } finally {
+            setProcessing(false);
+        }
+    };
+
+    const createIncident = async () => {
+        if (!incidentTitle) return;
+        setProcessing(true);
+        try {
+            await axios.post(`/admin/car-rentals/${car_rental.id}/incidents`, {
+                title: incidentTitle,
+                type: incidentType,
+                severity: incidentSeverity,
+                description: incidentDescription || null,
+            });
+            setIncidentTitle('');
+            setIncidentDescription('');
+            reload();
+        } finally {
+            setProcessing(false);
+        }
+    };
+
+    const processRefund = async (refundId: number) => {
+        setProcessing(true);
+        try {
+            await axios.post(`/admin/booking-refunds/${refundId}/process`);
+            reload();
+        } finally {
+            setProcessing(false);
+        }
     };
 
     return (
         <AdminLayout title={title}>
-            <div className="bg-white shadow rounded-lg">
-                <div className="px-4 py-5 sm:p-6">
-                    <div className="flex justify-between items-center mb-6">
-                        <h2 className="text-lg font-medium text-gray-900">
-                            Car Rental Details - {car_rental.booking_number}
-                        </h2>
-                        <div className="space-x-2">
-                            <Link
-                                href={`/admin/car-rentals/${car_rental.id}/edit`}
-                                className="bg-yellow-600 text-white px-4 py-2 rounded-md hover:bg-yellow-700 text-sm font-medium"
-                            >
-                                Edit Rental
-                            </Link>
-                            <button
-                                onClick={handleDelete}
-                                className="bg-red-600 text-white px-4 py-2 rounded-md hover:bg-red-700 text-sm font-medium"
-                            >
-                                Delete Rental
-                            </button>
-                            <Link
-                                href="/admin/car-rentals"
-                                className="bg-gray-600 text-white px-4 py-2 rounded-md hover:bg-gray-700 text-sm font-medium"
-                            >
-                                Back to Car Rentals
-                            </Link>
-                        </div>
-                    </div>
+            <Head title={`Car Rental ${car_rental.booking_number}`} />
 
-                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                        {/* Customer & Trip Information */}
-                        <div className="space-y-6">
-                            <div className="bg-gray-50 p-4 rounded-md">
-                                <h3 className="text-md font-medium text-gray-900 mb-4">Customer Information</h3>
-                                <dl className="space-y-3">
-                                    <div>
-                                        <dt className="text-sm font-medium text-gray-500">Name</dt>
-                                        <dd className="text-sm text-gray-900">{car_rental.customer_name}</dd>
-                                    </div>
-                                    <div>
-                                        <dt className="text-sm font-medium text-gray-500">Email</dt>
-                                        <dd className="text-sm text-gray-900">{car_rental.customer_email}</dd>
-                                    </div>
-                                    <div>
-                                        <dt className="text-sm font-medium text-gray-500">Phone</dt>
-                                        <dd className="text-sm text-gray-900">{car_rental.customer_phone}</dd>
-                                    </div>
-                                    {car_rental.customer_address && (
-                                        <div>
-                                            <dt className="text-sm font-medium text-gray-500">Address</dt>
-                                            <dd className="text-sm text-gray-900">{car_rental.customer_address}</dd>
-                                        </div>
-                                    )}
-                                </dl>
-                            </div>
+            <Stack gap="lg">
+                <Group justify="space-between">
+                    <Button component={Link} href="/admin/car-rentals" variant="subtle" color="gray" leftSection={<ArrowLeft size={16} />}>
+                        Back to Car Rentals
+                    </Button>
+                    <Group>
+                        <Badge size="lg" color={car_rental.status === 'cancelled' ? 'red' : car_rental.status === 'completed' ? 'green' : 'blue'}>
+                            {car_rental.status.replace('_', ' ')}
+                        </Badge>
+                        <Badge size="lg" variant="outline" color={car_rental.payment_status === 'paid' ? 'green' : 'orange'}>
+                            {car_rental.payment_status}
+                        </Badge>
+                    </Group>
+                </Group>
 
-                            <div className="bg-gray-50 p-4 rounded-md">
-                                <h3 className="text-md font-medium text-gray-900 mb-4">Trip Details</h3>
-                                <dl className="space-y-3">
+                <Grid gutter="lg">
+                    <Grid.Col span={{ base: 12, lg: 8 }}>
+                        <Stack gap="lg">
+                            <Paper p="xl" radius="md" withBorder>
+                                <Group justify="space-between" mb="lg">
                                     <div>
-                                        <dt className="text-sm font-medium text-gray-500">Pickup Location</dt>
-                                        <dd className="text-sm text-gray-900">{car_rental.pickup_location}</dd>
+                                        <Text size="xs" color="dimmed" fw={700} tt="uppercase">Booking Number</Text>
+                                        <Text size="h3" fw={800}>{car_rental.booking_number}</Text>
                                     </div>
-                                    {car_rental.dropoff_location && (
-                                        <div>
-                                            <dt className="text-sm font-medium text-gray-500">Dropoff Location</dt>
-                                            <dd className="text-sm text-gray-900">{car_rental.dropoff_location}</dd>
-                                        </div>
-                                    )}
-                                    <div>
-                                        <dt className="text-sm font-medium text-gray-500">Start Date & Time</dt>
-                                        <dd className="text-sm text-gray-900">
-                                            {new Date(car_rental.start_date).toLocaleDateString()} at {car_rental.start_time}
-                                        </dd>
-                                    </div>
-                                    <div>
-                                        <dt className="text-sm font-medium text-gray-500">End Date & Time</dt>
-                                        <dd className="text-sm text-gray-900">
-                                            {new Date(car_rental.end_date).toLocaleDateString()} at {car_rental.end_time}
-                                        </dd>
-                                    </div>
-                                    <div>
-                                        <dt className="text-sm font-medium text-gray-500">Duration</dt>
-                                        <dd className="text-sm text-gray-900">{car_rental.number_of_days} day(s)</dd>
-                                    </div>
-                                    {car_rental.distance_km > 0 && (
-                                        <div>
-                                            <dt className="text-sm font-medium text-gray-500">Distance</dt>
-                                            <dd className="text-sm text-gray-900">{car_rental.distance_km} km</dd>
-                                        </div>
-                                    )}
-                                    {car_rental.destination_details && (
-                                        <div>
-                                            <dt className="text-sm font-medium text-gray-500">Destination Details</dt>
-                                            <dd className="text-sm text-gray-900">{car_rental.destination_details}</dd>
-                                        </div>
-                                    )}
-                                </dl>
-                            </div>
+                                    <Text size="xl" fw={800}>₹{car_rental.total_price}</Text>
+                                </Group>
+                                <SimpleGrid cols={{ base: 1, sm: 3 }}>
+                                    <Info label="Category" value={category?.name || 'N/A'} />
+                                    <Info label="Duration" value={`${car_rental.number_of_days} day(s)`} />
+                                    <Info label="Distance" value={`${car_rental.distance_km || 0} km`} />
+                                </SimpleGrid>
+                                <Divider my="lg" />
+                                <Timeline active={1}>
+                                    <Timeline.Item bullet={<MapPin size={14} />} title="Pickup">
+                                        <Text size="sm">{car_rental.pickup_location}</Text>
+                                    </Timeline.Item>
+                                    <Timeline.Item bullet={<Car size={14} />} title="Dropoff">
+                                        <Text size="sm">{car_rental.dropoff_location || 'Return / not specified'}</Text>
+                                    </Timeline.Item>
+                                </Timeline>
+                            </Paper>
 
-                            {car_rental.special_requests && (
-                                <div className="bg-gray-50 p-4 rounded-md">
-                                    <h3 className="text-md font-medium text-gray-900 mb-4">Special Requests</h3>
-                                    <p className="text-sm text-gray-900">{car_rental.special_requests}</p>
-                                </div>
-                            )}
-                        </div>
+                            <Paper p="xl" radius="md" withBorder>
+                                <Text fw={800} mb="md">Customer</Text>
+                                <Group gap="xl">
+                                    <User size={22} />
+                                    <div>
+                                        <Text fw={700}>{car_rental.customer_name}</Text>
+                                        <Text size="sm" color="dimmed">{car_rental.customer_phone} · {car_rental.customer_email}</Text>
+                                        {car_rental.customer_address && <Text size="sm" color="dimmed">{car_rental.customer_address}</Text>}
+                                    </div>
+                                </Group>
+                                {car_rental.special_requests && (
+                                    <Alert mt="lg" color="indigo" icon={<AlertCircle size={16} />} title="Special Requests">
+                                        {car_rental.special_requests}
+                                    </Alert>
+                                )}
+                            </Paper>
 
-                        {/* Car & Pricing Information */}
-                        <div className="space-y-6">
-                            <div className="bg-gray-50 p-4 rounded-md">
-                                <h3 className="text-md font-medium text-gray-900 mb-4">Car Details</h3>
-                                <dl className="space-y-3">
-                                    <div>
-                                        <dt className="text-sm font-medium text-gray-500">Category</dt>
-                                        <dd className="text-sm text-gray-900">{car_rental.carCategory.name}</dd>
-                                    </div>
-                                    <div>
-                                        <dt className="text-sm font-medium text-gray-500">Vehicle Type</dt>
-                                        <dd className="text-sm text-gray-900 capitalize">{car_rental.carCategory.vehicle_type}</dd>
-                                    </div>
-                                    <div>
-                                        <dt className="text-sm font-medium text-gray-500">Seats</dt>
-                                        <dd className="text-sm text-gray-900">{car_rental.carCategory.seats}</dd>
-                                    </div>
-                                    <div>
-                                        <dt className="text-sm font-medium text-gray-500">Air Conditioning</dt>
-                                        <dd className="text-sm text-gray-900">{car_rental.carCategory.has_ac ? 'Yes' : 'No'}</dd>
-                                    </div>
-                                    <div>
-                                        <dt className="text-sm font-medium text-gray-500">Driver Included</dt>
-                                        <dd className="text-sm text-gray-900">{car_rental.carCategory.has_driver ? 'Yes' : 'No'}</dd>
-                                    </div>
-                                    {car_rental.vehicle_number && (
-                                        <div>
-                                            <dt className="text-sm font-medium text-gray-500">Vehicle Number</dt>
-                                            <dd className="text-sm text-gray-900">{car_rental.vehicle_number}</dd>
-                                        </div>
+                            <Paper p="xl" radius="md" withBorder>
+                                <Text fw={800} mb="md">Lifecycle</Text>
+                                <Timeline active={car_rental.status === 'completed' ? 4 : car_rental.status === 'cancelled' ? 5 : 2}>
+                                    {['pending', 'confirmed', 'driver_assigned', 'in_progress', 'completed'].map((item) => (
+                                        <Timeline.Item key={item} bullet={<CheckCircle2 size={14} />} title={item.replace('_', ' ')}>
+                                            <Text size="xs" color="dimmed">{item === car_rental.status ? 'Current status' : 'Allowed lifecycle step'}</Text>
+                                        </Timeline.Item>
+                                    ))}
+                                    {car_rental.status === 'cancelled' && (
+                                        <Timeline.Item color="red" bullet={<AlertCircle size={14} />} title="cancelled">
+                                            <Text size="xs" color="dimmed">{car_rental.cancellation_reason || 'No cancellation reason recorded'}</Text>
+                                        </Timeline.Item>
                                     )}
-                                    {car_rental.driver && (
-                                        <div>
-                                            <dt className="text-sm font-medium text-gray-500">Assigned Driver</dt>
-                                            <dd className="text-sm text-gray-900">{car_rental.driver.name} ({car_rental.driver.email})</dd>
-                                        </div>
+                                </Timeline>
+                            </Paper>
+
+                            <Paper p="xl" radius="md" withBorder>
+                                <Text fw={800} mb="md">Tracking</Text>
+                                <SimpleGrid cols={{ base: 1, sm: 3 }}>
+                                    <Info label="Current Coordinates" value={car_rental.current_lat && car_rental.current_lng ? `${car_rental.current_lat}, ${car_rental.current_lng}` : 'No live location'} />
+                                    <Info label="Pickup Date" value={new Date(car_rental.start_date).toLocaleDateString()} />
+                                    <Info label="Last Update" value={car_rental.last_location_update ? new Date(car_rental.last_location_update).toLocaleString() : 'Never'} />
+                                </SimpleGrid>
+                            </Paper>
+
+                            <OperationalTables rental={car_rental} onProcessRefund={processRefund} processing={processing} />
+                        </Stack>
+                    </Grid.Col>
+
+                    <Grid.Col span={{ base: 12, lg: 4 }}>
+                        <Stack gap="lg">
+                            <Paper p="xl" radius="md" withBorder>
+                                <Text fw={800} mb="md">Driver & Vehicle</Text>
+                                {car_rental.driver && (
+                                    <Alert mb="md" color="green" title="Assigned Driver">
+                                        {car_rental.driver.name}{car_rental.vehicle ? ` · ${car_rental.vehicle.registration_number}` : ''}
+                                    </Alert>
+                                )}
+                                <Stack gap="sm">
+                                    <Select
+                                        label="Driver"
+                                        data={drivers.map((driver) => ({ value: String(driver.id), label: `${driver.name}${driver.vehicle_number ? ` · ${driver.vehicle_number}` : ''}` }))}
+                                        value={driverId}
+                                        onChange={(value) => setDriverId(value || '')}
+                                        searchable
+                                    />
+                                    <Select
+                                        label="Vehicle"
+                                        data={vehicles.map((vehicle) => ({ value: String(vehicle.id), label: `${vehicle.registration_number} · ${vehicle.make || ''} ${vehicle.model || ''}` }))}
+                                        value={vehicleId}
+                                        onChange={(value) => setVehicleId(value || '')}
+                                        searchable
+                                        clearable
+                                    />
+                                    <Button leftSection={<Truck size={16} />} loading={processing} onClick={assignDriver}>Assign Driver</Button>
+                                </Stack>
+                            </Paper>
+
+                            <Paper p="xl" radius="md" withBorder>
+                                <Text fw={800} mb="md">Status & Payment</Text>
+                                <Stack gap="sm">
+                                    <Select label="Lifecycle status" data={rentalStatusOptions} value={status} onChange={(value) => setStatus(value || car_rental.status)} />
+                                    <Select label="Payment status" data={paymentStatusOptions} value={paymentStatus} onChange={(value) => setPaymentStatus(value || car_rental.payment_status)} />
+                                    {status === 'cancelled' && (
+                                        <Textarea label="Cancellation reason" value={cancellationReason} onChange={(event) => setCancellationReason(event.currentTarget.value)} />
                                     )}
-                                </dl>
-                            </div>
+                                    <Button leftSection={<RefreshCcw size={16} />} loading={processing} onClick={submitStatus}>Update Rental</Button>
+                                </Stack>
+                            </Paper>
 
-                            <div className="bg-gray-50 p-4 rounded-md">
-                                <h3 className="text-md font-medium text-gray-900 mb-4">Pricing Breakdown</h3>
-                                <dl className="space-y-3">
-                                    <div>
-                                        <dt className="text-sm font-medium text-gray-500">Base Price ({car_rental.number_of_days} days)</dt>
-                                        <dd className="text-sm text-gray-900">₹{car_rental.base_price}</dd>
-                                    </div>
-                                    {car_rental.distance_price > 0 && (
-                                        <div>
-                                            <dt className="text-sm font-medium text-gray-500">Distance Price ({car_rental.distance_km} km)</dt>
-                                            <dd className="text-sm text-gray-900">₹{car_rental.distance_price}</dd>
-                                        </div>
-                                    )}
-                                    {car_rental.extras_price > 0 && (
-                                        <div>
-                                            <dt className="text-sm font-medium text-gray-500">Extras</dt>
-                                            <dd className="text-sm text-gray-900">₹{car_rental.extras_price}</dd>
-                                        </div>
-                                    )}
-                                    {car_rental.discount_amount > 0 && (
-                                        <div>
-                                            <dt className="text-sm font-medium text-gray-500">Discount</dt>
-                                            <dd className="text-sm text-red-600">-₹{car_rental.discount_amount}</dd>
-                                        </div>
-                                    )}
-                                    <div className="border-t border-gray-200 pt-3">
-                                        <dt className="text-lg font-medium text-gray-900">Total Price</dt>
-                                        <dd className="text-lg font-bold text-gray-900">₹{car_rental.total_price}</dd>
-                                    </div>
-                                </dl>
-                            </div>
+                            <Paper p="xl" radius="md" withBorder>
+                                <Text fw={800} mb="md">Confirm Payment</Text>
+                                <Stack gap="sm">
+                                    <Select label="Method" data={paymentMethodOptions} value={paymentMethod} onChange={(value) => setPaymentMethod(value || 'cash')} />
+                                    <TextInput label="Reference" value={paymentReference} onChange={(event) => setPaymentReference(event.currentTarget.value)} />
+                                    <Textarea label="Note" value={paymentNote} onChange={(event) => setPaymentNote(event.currentTarget.value)} />
+                                    <Button leftSection={<CreditCard size={16} />} loading={processing} onClick={confirmPayment}>Mark Paid</Button>
+                                </Stack>
+                            </Paper>
 
-                            <div className="bg-gray-50 p-4 rounded-md">
-                                <h3 className="text-md font-medium text-gray-900 mb-4">Status & Payment</h3>
-                                <dl className="space-y-3">
-                                    <div>
-                                        <dt className="text-sm font-medium text-gray-500">Status</dt>
-                                        <dd>
-                                            <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${getStatusBadge(car_rental.status)}`}>
-                                                {car_rental.status.replace('_', ' ')}
-                                            </span>
-                                        </dd>
-                                    </div>
-                                    <div>
-                                        <dt className="text-sm font-medium text-gray-500">Payment Status</dt>
-                                        <dd>
-                                            <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${getPaymentStatusBadge(car_rental.payment_status)}`}>
-                                                {car_rental.payment_status}
-                                            </span>
-                                        </dd>
-                                    </div>
-                                    <div>
-                                        <dt className="text-sm font-medium text-gray-500">Payment Method</dt>
-                                        <dd className="text-sm text-gray-900 capitalize">{car_rental.payment_method.replace('_', ' ')}</dd>
-                                    </div>
-                                </dl>
-                            </div>
-
-                            <div className="bg-gray-50 p-4 rounded-md">
-                                <h3 className="text-md font-medium text-gray-900 mb-4">Notification Preferences</h3>
-                                <dl className="space-y-2">
-                                    <div className="flex items-center">
-                                        <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${car_rental.whatsapp_notification ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'}`}>
-                                            WhatsApp: {car_rental.whatsapp_notification ? 'Enabled' : 'Disabled'}
-                                        </span>
-                                    </div>
-                                    <div className="flex items-center">
-                                        <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${car_rental.email_notification ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'}`}>
-                                            Email: {car_rental.email_notification ? 'Enabled' : 'Disabled'}
-                                        </span>
-                                    </div>
-                                    <div className="flex items-center">
-                                        <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${car_rental.sms_notification ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'}`}>
-                                            SMS: {car_rental.sms_notification ? 'Enabled' : 'Disabled'}
-                                        </span>
-                                    </div>
-                                </dl>
-                            </div>
-
-                            {car_rental.internal_notes && (
-                                <div className="bg-gray-50 p-4 rounded-md">
-                                    <h3 className="text-md font-medium text-gray-900 mb-4">Internal Notes</h3>
-                                    <p className="text-sm text-gray-900">{car_rental.internal_notes}</p>
-                                </div>
-                            )}
-
-                            <div className="bg-gray-50 p-4 rounded-md">
-                                <h3 className="text-md font-medium text-gray-900 mb-4">Booking Information</h3>
-                                <dl className="space-y-3">
-                                    <div>
-                                        <dt className="text-sm font-medium text-gray-500">Created By</dt>
-                                        <dd className="text-sm text-gray-900">{car_rental.user.name} ({car_rental.user.email})</dd>
-                                    </div>
-                                    <div>
-                                        <dt className="text-sm font-medium text-gray-500">Created At</dt>
-                                        <dd className="text-sm text-gray-900">
-                                            {new Date(car_rental.created_at).toLocaleString()}
-                                        </dd>
-                                    </div>
-                                </dl>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
+                            <Paper p="xl" radius="md" withBorder>
+                                <Text fw={800} mb="md">Record Incident</Text>
+                                <Stack gap="sm">
+                                    <TextInput label="Title" value={incidentTitle} onChange={(event) => setIncidentTitle(event.currentTarget.value)} />
+                                    <Select label="Type" data={['no_show', 'dispute', 'safety', 'payment', 'service_quality', 'other']} value={incidentType} onChange={(value) => setIncidentType(value || 'other')} />
+                                    <Select label="Severity" data={['low', 'medium', 'high', 'critical']} value={incidentSeverity} onChange={(value) => setIncidentSeverity(value || 'medium')} />
+                                    <Textarea label="Description" value={incidentDescription} onChange={(event) => setIncidentDescription(event.currentTarget.value)} />
+                                    <Button leftSection={<AlertCircle size={16} />} loading={processing} onClick={createIncident}>Add Incident</Button>
+                                </Stack>
+                            </Paper>
+                        </Stack>
+                    </Grid.Col>
+                </Grid>
+            </Stack>
         </AdminLayout>
+    );
+}
+
+function Info({ label, value }: { label: string; value: string }) {
+    return (
+        <Card withBorder radius="md" padding="md">
+            <Text size="xs" color="dimmed" fw={700} tt="uppercase">{label}</Text>
+            <Text fw={700}>{value}</Text>
+        </Card>
+    );
+}
+
+function OperationalTables({
+    rental,
+    onProcessRefund,
+    processing,
+}: {
+    rental: CarRental;
+    onProcessRefund: (refundId: number) => void;
+    processing: boolean;
+}) {
+    return (
+        <Stack gap="lg">
+            <Paper p="xl" radius="md" withBorder>
+                <Group gap="sm" mb="md"><IndianRupee size={18} /><Text fw={800}>Payment, Refunds & Cancellation</Text></Group>
+                <SimpleGrid cols={{ base: 1, sm: 4 }} mb="md">
+                    <Info label="Base" value={`₹${rental.base_price}`} />
+                    <Info label="Distance" value={`₹${rental.distance_price}`} />
+                    <Info label="Cancellation Fee" value={`₹${rental.cancellation_fee || '0.00'}`} />
+                    <Info label="Refund Amount" value={`₹${rental.refund_amount || '0.00'}`} />
+                </SimpleGrid>
+                <Table.ScrollContainer minWidth={700}>
+                    <Table>
+                        <Table.Thead><Table.Tr><Table.Th>Amount</Table.Th><Table.Th>Status</Table.Th><Table.Th>Reason</Table.Th><Table.Th /></Table.Tr></Table.Thead>
+                        <Table.Tbody>
+                            {rental.refunds.length === 0 ? (
+                                <Table.Tr><Table.Td colSpan={4}><Text ta="center" color="dimmed">No refund records.</Text></Table.Td></Table.Tr>
+                            ) : rental.refunds.map((refund) => (
+                                <Table.Tr key={refund.id}>
+                                    <Table.Td>₹{refund.amount}</Table.Td>
+                                    <Table.Td><Badge color={refund.status === 'processed' ? 'green' : 'orange'}>{refund.status}</Badge></Table.Td>
+                                    <Table.Td>{refund.reason || 'N/A'}</Table.Td>
+                                    <Table.Td>
+                                        {refund.status === 'pending' && <Button size="xs" loading={processing} onClick={() => onProcessRefund(refund.id)}>Process</Button>}
+                                    </Table.Td>
+                                </Table.Tr>
+                            ))}
+                        </Table.Tbody>
+                    </Table>
+                </Table.ScrollContainer>
+            </Paper>
+
+            <Paper p="xl" radius="md" withBorder>
+                <Text fw={800} mb="md">Incidents</Text>
+                {rental.incidents.length === 0 ? <Text color="dimmed">No incidents recorded.</Text> : rental.incidents.map((incident) => (
+                    <Card key={incident.id} withBorder radius="md" mb="sm">
+                        <Group justify="space-between"><Text fw={700}>{incident.title}</Text><Badge>{incident.status}</Badge></Group>
+                        <Text size="sm" color="dimmed">{incident.type} · {incident.severity}</Text>
+                        <Text size="sm" mt="xs">{incident.description || 'No description'}</Text>
+                    </Card>
+                ))}
+            </Paper>
+
+            <Paper p="xl" radius="md" withBorder>
+                <Group gap="sm" mb="md"><Star size={18} /><Text fw={800}>Reviews</Text></Group>
+                {rental.reviews.length === 0 ? <Text color="dimmed">No review submitted.</Text> : rental.reviews.map((review) => (
+                    <Card key={review.id} withBorder radius="md" mb="sm">
+                        <Text fw={700}>{review.customer?.name || 'Customer'} · Rental {review.rental_rating}/5</Text>
+                        <Text size="sm" color="dimmed">Driver rating: {review.driver_rating || 'N/A'}</Text>
+                        <Text size="sm" mt="xs">{review.review || 'No written review'}</Text>
+                    </Card>
+                ))}
+            </Paper>
+
+            <Paper p="xl" radius="md" withBorder>
+                <Text fw={800} mb="md">Audit History</Text>
+                {rental.audit_logs.length === 0 ? <Text color="dimmed">No audit entries.</Text> : rental.audit_logs.map((log) => (
+                    <Group key={log.id} justify="space-between" py="xs">
+                        <div>
+                            <Text fw={700}>{log.action}</Text>
+                            <Text size="xs" color="dimmed">{log.note || 'No note'}</Text>
+                        </div>
+                        <Text size="xs" color="dimmed">{new Date(log.created_at).toLocaleString()}</Text>
+                    </Group>
+                ))}
+            </Paper>
+        </Stack>
     );
 }

@@ -2,23 +2,32 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Events\NewRideRequest;
 use App\Http\Controllers\Controller;
-use App\Models\Booking;
 use App\Models\CarCategory;
 use App\Models\CarRental;
+use App\Models\CarRentalReview;
 use App\Models\Place;
-use App\Models\Tour;
-use App\Models\TourSchedule;
-use App\Models\TourBooking;
+use App\Models\PlaceReview;
 use App\Models\RideBooking;
 use App\Models\RideBookingReview;
 use App\Models\RideBookingTip;
+use App\Models\Tour;
+use App\Models\TourBooking;
+use App\Models\TourBookingReview;
+use App\Models\TourSchedule;
 use App\Models\Wallet;
+use App\Services\BookingCancellationService;
+use App\Services\BookingLifecycleNotifier;
+use App\Services\CustomerCouponService;
+use App\Services\DriverDispatchService;
 use App\Services\RideEstimateService;
-use App\Events\NewRideRequest;
+use App\Services\StartVerificationService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Validator;
+use Illuminate\Support\Str;
 
 class CustomerAppController extends Controller
 {
@@ -27,16 +36,18 @@ class CustomerAppController extends Controller
         return response()->json([
             'success' => true,
             'data' => [
-                'featured_tours' => Tour::with('itineraries')
+                'featured_tours' => Tour::with('itineraries.place.media')
                     ->where('available_to', '>=', now())
                     ->orderBy('available_from')
                     ->take(6)
-                    ->get(),
+                    ->get()
+                    ->map(fn (Tour $tour) => $this->formatPublicTour($tour)),
                 'featured_destinations' => Place::with('media')
                     ->where('is_active', true)
                     ->orderBy('name')
                     ->take(8)
-                    ->get(),
+                    ->get()
+                    ->map(fn (Place $place) => $this->formatPublicPlaceSummary($place)),
                 'car_categories' => CarCategory::active()->take(6)->get(),
             ],
         ]);
@@ -46,10 +57,13 @@ class CustomerAppController extends Controller
     {
         return response()->json([
             'success' => true,
-            'data' => Tour::with('itineraries')
+            'data' => Tour::with(['itineraries.place.media', 'schedules' => function ($q) {
+                $q->where('status', 'open')->where('departure_date', '>=', now());
+            }])
                 ->where('available_to', '>=', now())
                 ->orderBy('available_from')
-                ->get(),
+                ->get()
+                ->map(fn (Tour $tour) => $this->formatPublicTour($tour)),
         ]);
     }
 
@@ -61,7 +75,7 @@ class CustomerAppController extends Controller
 
         return response()->json([
             'success' => true,
-            'data' => $tour,
+            'data' => $this->formatPublicTour($tour, true),
         ]);
     }
 
@@ -85,17 +99,45 @@ class CustomerAppController extends Controller
             'data' => Place::with('media')
                 ->where('is_active', true)
                 ->orderBy('name')
-                ->get(),
+                ->get()
+                ->map(fn (Place $place) => $this->formatPublicPlaceSummary($place)),
+        ]);
+    }
+
+    public function publicPlaces()
+    {
+        return response()->json([
+            'success' => true,
+            'data' => Place::with('media')
+                ->where('is_active', true)
+                ->orderByDesc('is_featured')
+                ->orderByDesc('rating')
+                ->get()
+                ->map(fn (Place $place) => $this->formatPublicPlaceSummary($place)),
+        ]);
+    }
+
+    public function publicPopularPlaces()
+    {
+        return response()->json([
+            'success' => true,
+            'data' => Place::with('media')
+                ->where('is_active', true)
+                ->where('is_featured', true)
+                ->orderByDesc('rating')
+                ->take(12)
+                ->get()
+                ->map(fn (Place $place) => $this->formatPublicPlaceSummary($place)),
         ]);
     }
 
     public function publicDestination(Place $place)
     {
-        $place->load(['media', 'itineraries.tour']);
+        $place->load(['media', 'reviews.customer:id,name']);
 
         return response()->json([
             'success' => true,
-            'data' => $place,
+            'data' => $this->formatPlaceDetails($place),
         ]);
     }
 
@@ -170,6 +212,9 @@ class CustomerAppController extends Controller
             'number_of_children' => 'nullable|integer|min:0|max:10',
             'payment_method' => 'required|in:cash,card,wallet,upi',
             'special_requests' => 'nullable|string|max:1000',
+            'pickup_option' => 'nullable|string|max:120',
+            'insurance_selected' => 'nullable|boolean',
+            'coupon_code' => 'nullable|string|max:40',
         ]);
 
         if ($validator->fails()) {
@@ -178,62 +223,93 @@ class CustomerAppController extends Controller
 
         $schedule = TourSchedule::with('tour')->findOrFail($request->tour_schedule_id);
 
-        if (!$schedule->isAvailable()) {
+        if (! $schedule->isAvailable()) {
             return response()->json(['success' => false, 'message' => 'This schedule is no longer available or is sold out.'], 400);
         }
 
-        $totalPax = (int)$request->number_of_adults + (int)($request->number_of_children ?? 0);
-        
+        $totalPax = (int) $request->number_of_adults + (int) ($request->number_of_children ?? 0);
+
         if ($schedule->getAvailableSeats() < $totalPax) {
-            return response()->json(['success' => false, 'message' => 'Only ' . $schedule->getAvailableSeats() . ' seats remaining.'], 400);
+            return response()->json(['success' => false, 'message' => 'Only '.$schedule->getAvailableSeats().' seats remaining.'], 400);
         }
 
         $priceAdult = $schedule->getEffectivePrice();
         $priceChild = $schedule->getEffectiveChildPrice();
         $subtotal = ($request->number_of_adults * $priceAdult) + ($request->number_of_children * $priceChild);
+        $couponResult = app(CustomerCouponService::class)->preview($customer, $request->input('coupon_code'), 'tour', (float) $subtotal);
 
-        $booking = DB::transaction(function () use ($request, $customer, $schedule, $subtotal, $totalPax) {
-            $booking = TourBooking::create([
-                'customer_id' => $customer->id,
-                'tour_id' => $schedule->tour_id,
-                'tour_schedule_id' => $schedule->id,
-                'number_of_adults' => $request->number_of_adults,
-                'number_of_children' => $request->number_of_children ?? 0,
-                'travel_date' => $schedule->departure_date,
-                'customer_name' => $customer->name,
-                'customer_email' => $customer->email,
-                'customer_phone' => $customer->phone,
-                'price_per_adult' => $schedule->getEffectivePrice(),
-                'price_per_child' => $schedule->getEffectiveChildPrice(),
-                'subtotal' => $subtotal,
-                'total_price' => $subtotal,
-                'payment_method' => $request->payment_method,
-                'status' => 'pending',
-                'payment_status' => 'pending',
-                'special_requests' => $request->special_requests,
-                'whatsapp_notification' => true,
-            ]);
+        if ($request->filled('coupon_code') && ! $couponResult['eligible']) {
+            return response()->json(['success' => false, 'message' => $couponResult['message']], 422);
+        }
 
-            // Handle Wallet Payment
-            if ($request->payment_method === 'wallet') {
-                $wallet = Wallet::forOwner($customer)->first();
-                if (!$wallet || !$wallet->hasSufficientBalance($subtotal)) {
-                    throw new \RuntimeException('Insufficient wallet balance.');
+        try {
+            $booking = DB::transaction(function () use ($request, $customer, $schedule, $subtotal, $totalPax, $couponResult) {
+                $discountAmount = (float) ($couponResult['discount_amount'] ?? 0);
+                $totalPrice = max(0, round((float) $subtotal - $discountAmount, 2));
+
+                $booking = TourBooking::create([
+                    'customer_id' => $customer->id,
+                    'tour_id' => $schedule->tour_id,
+                    'tour_schedule_id' => $schedule->id,
+                    'number_of_adults' => $request->number_of_adults,
+                    'number_of_children' => $request->number_of_children ?? 0,
+                    'travel_date' => $schedule->departure_date,
+                    'customer_name' => $customer->name,
+                    'customer_email' => $customer->email,
+                    'customer_phone' => $customer->phone,
+                    'price_per_adult' => $schedule->getEffectivePrice(),
+                    'price_per_child' => $schedule->getEffectiveChildPrice(),
+                    'subtotal' => $subtotal,
+                    'discount_amount' => $discountAmount,
+                    'total_price' => $totalPrice,
+                    'payment_method' => $request->payment_method,
+                    'coupon_code' => $couponResult['eligible'] ? $couponResult['code'] : null,
+                    'status' => 'pending',
+                    'payment_status' => 'pending',
+                    'special_requests' => $this->appendStructuredNotes($request->special_requests, [
+                        'pickup_option' => $request->input('pickup_option'),
+                        'insurance_selected' => $request->boolean('insurance_selected'),
+                    ]),
+                    'whatsapp_notification' => true,
+                ]);
+
+                $schedule->increment('reserved_seats', $totalPax);
+
+                if ($couponResult['eligible'] && $couponResult['coupon']) {
+                    app(CustomerCouponService::class)->redeem($customer, $couponResult['coupon'], $booking, 'tour', (float) $subtotal, $discountAmount);
                 }
-                $wallet->debit($subtotal, "Payment for Tour Booking #{$booking->id}", 'tour_booking', $booking->id);
-                $booking->update(['payment_status' => 'paid', 'status' => 'confirmed']);
-            }
 
-            // Update inventory
-            $schedule->increment('booked_seats', $totalPax);
+                // Handle Wallet Payment
+                if ($request->payment_method === 'wallet') {
+                    $wallet = Wallet::forOwner($customer)->first();
+                    if (! $wallet || ! $wallet->hasSufficientBalance($totalPrice)) {
+                        throw new \RuntimeException('Insufficient wallet balance.');
+                    }
+                    $wallet->debit($totalPrice, "Payment for Tour Booking #{$booking->id}", 'tour_booking', $booking->id);
+                    $booking->update(['payment_status' => 'paid', 'status' => 'confirmed']);
+                    $schedule->decrement('reserved_seats', $totalPax);
+                    $schedule->increment('booked_seats', $totalPax);
+                }
 
-            return $booking;
-        });
+                return $booking;
+            });
+        } catch (\RuntimeException $exception) {
+            return response()->json([
+                'success' => false,
+                'message' => $exception->getMessage(),
+            ], 422);
+        }
+
+        app(BookingLifecycleNotifier::class)->emit($booking->fresh('customer'), 'booking.created');
+        if ($booking->payment_status === 'paid') {
+            app(BookingLifecycleNotifier::class)->emit($booking->fresh('customer'), 'payment.paid');
+        }
 
         return response()->json([
             'success' => true,
             'message' => 'Tour booked successfully.',
             'data' => $booking->load('tour:id,title'),
+            'receipt' => $this->formatBookingReceipt($booking, 'tour'),
         ], 201);
     }
 
@@ -267,10 +343,18 @@ class CustomerAppController extends Controller
             'start_date' => 'required|date|after:today',
             'end_date' => 'required|date|after:start_date',
             'pickup_location' => 'required|string|max:255',
+            'pickup_lat' => 'nullable|numeric|between:-90,90',
+            'pickup_lng' => 'nullable|numeric|between:-180,180',
             'dropoff_location' => 'nullable|string|max:255',
+            'dropoff_lat' => 'nullable|numeric|between:-90,90',
+            'dropoff_lng' => 'nullable|numeric|between:-180,180',
             'destination_details' => 'nullable|string',
             'special_requests' => 'nullable|string',
             'distance_km' => 'nullable|numeric|min:0',
+            'payment_method' => 'nullable|in:cash,card,wallet,upi',
+            'extras' => 'nullable|array',
+            'insurance_selected' => 'nullable|boolean',
+            'coupon_code' => 'nullable|string|max:40',
         ]);
 
         if ($validator->fails()) {
@@ -283,55 +367,87 @@ class CustomerAppController extends Controller
         $numberOfDays = $startDate->diffInDays($endDate) + 1;
         $distanceKm = (float) ($request->distance_km ?? 0);
         $pricing = $category->calculatePrice($numberOfDays, $distanceKm);
+        $couponResult = app(CustomerCouponService::class)->preview($customer, $request->input('coupon_code'), 'rental', (float) $pricing['subtotal']);
 
-        $rental = DB::transaction(function () use ($request, $customer, $category, $numberOfDays, $distanceKm, $pricing) {
-            $rental = CarRental::create([
-                'customer_id' => $customer->id,
-                'car_category_id' => $category->id,
-                'customer_name' => $customer->name,
-                'customer_email' => $customer->email,
-                'customer_phone' => $customer->phone,
-                'start_date' => $request->start_date,
-                'end_date' => $request->end_date,
-                'start_time' => $request->input('start_time', '09:00'),
-                'end_time' => $request->input('end_time', '18:00'),
-                'pickup_location' => $request->pickup_location,
-                'dropoff_location' => $request->dropoff_location,
-                'destination_details' => $request->destination_details,
-                'number_of_days' => $numberOfDays,
-                'base_price' => $pricing['base_price'],
-                'distance_km' => $distanceKm,
-                'distance_price' => $pricing['distance_price'],
-                'extras_price' => 0,
-                'discount_amount' => 0,
-                'total_price' => $pricing['subtotal'],
-                'status' => 'pending',
-                'payment_status' => 'pending',
-                'payment_method' => $request->payment_method ?? 'cash',
-                'special_requests' => $request->special_requests,
-                'whatsapp_notification' => true,
-                'email_notification' => true,
-                'sms_notification' => false,
-            ]);
+        if ($request->filled('coupon_code') && ! $couponResult['eligible']) {
+            return response()->json(['success' => false, 'message' => $couponResult['message']], 422);
+        }
 
-            // Handle Wallet Payment
-            if ($request->payment_method === 'wallet') {
-                $wallet = Wallet::forOwner($customer)->first();
-                $totalPrice = (float) $pricing['subtotal'];
-                if (!$wallet || !$wallet->hasSufficientBalance($totalPrice)) {
-                    throw new \RuntimeException('Insufficient wallet balance.');
+        try {
+            $rental = DB::transaction(function () use ($request, $customer, $category, $numberOfDays, $distanceKm, $pricing, $couponResult) {
+                $discountAmount = (float) ($couponResult['discount_amount'] ?? 0);
+                $totalPrice = max(0, round((float) $pricing['subtotal'] - $discountAmount, 2));
+
+                $rental = CarRental::create([
+                    'customer_id' => $customer->id,
+                    'car_category_id' => $category->id,
+                    'customer_name' => $customer->name,
+                    'customer_email' => $customer->email,
+                    'customer_phone' => $customer->phone,
+                    'start_date' => $request->start_date,
+                    'end_date' => $request->end_date,
+                    'start_time' => $request->input('start_time', '09:00'),
+                    'end_time' => $request->input('end_time', '18:00'),
+                    'pickup_location' => $request->pickup_location,
+                    'pickup_lat' => $request->pickup_lat,
+                    'pickup_lng' => $request->pickup_lng,
+                    'dropoff_location' => $request->dropoff_location,
+                    'dropoff_lat' => $request->dropoff_lat,
+                    'dropoff_lng' => $request->dropoff_lng,
+                    'destination_details' => $request->destination_details,
+                    'number_of_days' => $numberOfDays,
+                    'base_price' => $pricing['base_price'],
+                    'distance_km' => $distanceKm,
+                    'distance_price' => $pricing['distance_price'],
+                    'extras_price' => 0,
+                    'discount_amount' => $discountAmount,
+                    'total_price' => $totalPrice,
+                    'status' => 'pending',
+                    'payment_status' => 'pending',
+                    'payment_method' => $request->payment_method ?? 'cash',
+                    'coupon_code' => $couponResult['eligible'] ? $couponResult['code'] : null,
+                    'special_requests' => $this->appendStructuredNotes($request->special_requests, [
+                        'extras' => $request->input('extras', []),
+                        'insurance_selected' => $request->boolean('insurance_selected'),
+                    ]),
+                    'whatsapp_notification' => true,
+                    'email_notification' => true,
+                    'sms_notification' => false,
+                ]);
+
+                if ($couponResult['eligible'] && $couponResult['coupon']) {
+                    app(CustomerCouponService::class)->redeem($customer, $couponResult['coupon'], $rental, 'rental', (float) $pricing['subtotal'], $discountAmount);
                 }
-                $wallet->debit($totalPrice, "Payment for Car Rental #{$rental->id}", 'car_rental', $rental->id);
-                $rental->update(['payment_status' => 'paid', 'status' => 'confirmed']);
-            }
 
-            return $rental;
-        });
+                // Handle Wallet Payment
+                if ($request->payment_method === 'wallet') {
+                    $wallet = Wallet::forOwner($customer)->first();
+                    if (! $wallet || ! $wallet->hasSufficientBalance($totalPrice)) {
+                        throw new \RuntimeException('Insufficient wallet balance.');
+                    }
+                    $wallet->debit($totalPrice, "Payment for Car Rental #{$rental->id}", 'car_rental', $rental->id);
+                    $rental->update(['payment_status' => 'paid', 'status' => 'confirmed']);
+                }
+
+                return $rental;
+            });
+        } catch (\RuntimeException $exception) {
+            return response()->json([
+                'success' => false,
+                'message' => $exception->getMessage(),
+            ], 422);
+        }
+
+        app(BookingLifecycleNotifier::class)->emit($rental->fresh('customer'), 'booking.created');
+        if ($rental->payment_status === 'paid') {
+            app(BookingLifecycleNotifier::class)->emit($rental->fresh('customer'), 'payment.paid');
+        }
 
         return response()->json([
             'success' => true,
             'message' => 'Car rental booking created successfully.',
             'data' => $rental->load('carCategory'),
+            'receipt' => $this->formatBookingReceipt($rental, 'rental'),
         ], 201);
     }
 
@@ -350,9 +466,7 @@ class CustomerAppController extends Controller
 
     public function showRide(Request $request, RideBooking $booking)
     {
-        if ((int) $booking->customer_id !== (int) $request->user()->id) {
-            abort(403);
-        }
+        Gate::authorize('view', $booking);
 
         $booking->load([
             'driver:id,name,phone',
@@ -366,15 +480,23 @@ class CustomerAppController extends Controller
         ]);
     }
 
+    public function cancelRide(Request $request, RideBooking $booking)
+    {
+        Gate::authorize('view', $booking);
+
+        return $this->cancelCustomerBooking($request, $booking, 'ride');
+    }
+
     public function estimateRide(Request $request)
     {
         $validator = Validator::make($request->all(), [
-            'pickup_lat'   => 'required|numeric|between:-90,90',
-            'pickup_lng'   => 'required|numeric|between:-180,180',
-            'dropoff_lat'  => 'nullable|numeric|between:-90,90',
-            'dropoff_lng'  => 'nullable|numeric|between:-180,180',
-            'service_type' => 'required|in:point_to_point,hourly_rental,round_trip',
+            'pickup_lat' => 'required|numeric|between:-90,90',
+            'pickup_lng' => 'required|numeric|between:-180,180',
+            'dropoff_lat' => 'nullable|numeric|between:-90,90',
+            'dropoff_lng' => 'nullable|numeric|between:-180,180',
+            'service_type' => 'required|in:point_to_point,hourly,hourly_rental,round_trip',
             'scheduled_at' => 'required|date|after:now',
+            'coupon_code' => 'nullable|string|max:40',
         ]);
 
         if ($validator->fails()) {
@@ -384,9 +506,23 @@ class CustomerAppController extends Controller
         $result = app(RideEstimateService::class)->estimate(
             (float) $request->pickup_lat,
             (float) $request->pickup_lng,
-            $request->dropoff_lat  ? (float) $request->dropoff_lat  : null,
-            $request->dropoff_lng ? (float) $request->dropoff_lng : null
+            $request->dropoff_lat ? (float) $request->dropoff_lat : null,
+            $request->dropoff_lng ? (float) $request->dropoff_lng : null,
+            $request->service_type
         );
+
+        if ($request->filled('coupon_code')) {
+            $couponResult = app(CustomerCouponService::class)->preview(
+                $request->user(),
+                $request->input('coupon_code'),
+                'ride',
+                (float) $result['pricing']['subtotal']
+            );
+
+            $result['coupon'] = $this->formatCouponResult($couponResult);
+            $result['pricing']['discount_amount'] = (float) $couponResult['discount_amount'];
+            $result['pricing']['total'] = (float) $couponResult['final_amount'];
+        }
 
         return response()->json($result);
     }
@@ -396,16 +532,17 @@ class CustomerAppController extends Controller
         $customer = $request->user();
 
         $validator = Validator::make($request->all(), [
-            'service_type'     => 'required|in:point_to_point,hourly_rental,round_trip',
-            'pickup_location'  => 'required|string|max:255',
-            'pickup_lat'       => 'required|numeric|between:-90,90',
-            'pickup_lng'       => 'required|numeric|between:-180,180',
+            'service_type' => 'required|in:point_to_point,hourly,hourly_rental,round_trip',
+            'pickup_location' => 'required|string|max:255',
+            'pickup_lat' => 'required|numeric|between:-90,90',
+            'pickup_lng' => 'required|numeric|between:-180,180',
             'dropoff_location' => 'nullable|string|max:255',
-            'dropoff_lat'      => 'nullable|numeric|between:-90,90',
-            'dropoff_lng'      => 'nullable|numeric|between:-180,180',
-            'scheduled_at'     => 'required|date|after:now',
+            'dropoff_lat' => 'nullable|numeric|between:-90,90',
+            'dropoff_lng' => 'nullable|numeric|between:-180,180',
+            'scheduled_at' => 'required|date|after:now',
             'special_requests' => 'nullable|string',
-            'payment_method'   => 'required|in:cash,card,wallet,upi',
+            'payment_method' => 'required|in:cash,card,wallet,upi',
+            'coupon_code' => 'nullable|string|max:40',
         ]);
 
         if ($validator->fails()) {
@@ -416,62 +553,155 @@ class CustomerAppController extends Controller
             (float) $request->pickup_lat,
             (float) $request->pickup_lng,
             $request->dropoff_lat ? (float) $request->dropoff_lat : null,
-            $request->dropoff_lng ? (float) $request->dropoff_lng : null
+            $request->dropoff_lng ? (float) $request->dropoff_lng : null,
+            $request->service_type
         );
+        $couponResult = app(CustomerCouponService::class)->preview($customer, $request->input('coupon_code'), 'ride', (float) $estimate['pricing']['subtotal']);
 
-        $ride = DB::transaction(function () use ($request, $customer, $estimate) {
-            $ride = RideBooking::create([
-                'customer_id'      => $customer->id,
-                'service_type'     => $request->service_type,
-                'customer_name'    => $customer->name,
-                'customer_email'   => $customer->email,
-                'customer_phone'   => $customer->phone,
-                'pickup_location'  => $request->pickup_location,
-                'pickup_lat'       => $request->pickup_lat,
-                'pickup_lng'       => $request->pickup_lng,
-                'dropoff_location' => $request->dropoff_location,
-                'dropoff_lat'      => $request->dropoff_lat,
-                'dropoff_lng'      => $request->dropoff_lng,
-                'scheduled_at'     => $request->scheduled_at,
-                'distance_km'      => $estimate['distance_km'],
-                'estimated_duration' => $estimate['estimated_duration'],
-                'base_fare'        => $estimate['pricing']['base_fare'],
-                'distance_fare'    => $estimate['pricing']['distance_fare'],
-                'surge_multiplier' => $estimate['pricing']['surge_multiplier'],
-                'total_fare'       => $estimate['pricing']['subtotal'],
-                'payment_method'   => $request->payment_method,
-                'special_requests' => $request->special_requests,
-                'status'           => 'pending',
-                'payment_status'   => 'pending',
-            ]);
+        if ($request->filled('coupon_code') && ! $couponResult['eligible']) {
+            return response()->json(['success' => false, 'message' => $couponResult['message']], 422);
+        }
 
-            // Handle Wallet Payment
-            if ($request->payment_method === 'wallet') {
-                $wallet = Wallet::forOwner($customer)->first();
-                $totalFare = (float) $estimate['pricing']['subtotal'];
-                if (!$wallet || !$wallet->hasSufficientBalance($totalFare)) {
-                    throw new \RuntimeException('Insufficient wallet balance.');
+        try {
+            $ride = DB::transaction(function () use ($request, $customer, $estimate, $couponResult) {
+                $discountAmount = (float) ($couponResult['discount_amount'] ?? 0);
+                $totalFare = max(0, round((float) $estimate['pricing']['subtotal'] - $discountAmount, 2));
+
+                $ride = RideBooking::create([
+                    'booking_number' => RideBooking::generateBookingNumber(),
+                    'customer_id' => $customer->id,
+                    'service_type' => $estimate['service_type'],
+                    'customer_name' => $customer->name,
+                    'customer_email' => $customer->email,
+                    'customer_phone' => $customer->phone,
+                    'pickup_location' => $request->pickup_location,
+                    'pickup_lat' => $request->pickup_lat,
+                    'pickup_lng' => $request->pickup_lng,
+                    'dropoff_location' => $request->dropoff_location,
+                    'dropoff_lat' => $request->dropoff_lat,
+                    'dropoff_lng' => $request->dropoff_lng,
+                    'scheduled_at' => $request->scheduled_at,
+                    'estimated_distance_km' => $estimate['estimated_distance_km'],
+                    'estimated_duration' => $estimate['estimated_duration'],
+                    'base_fare' => $estimate['pricing']['base_fare'],
+                    'distance_fare' => $estimate['pricing']['distance_fare'],
+                    'surge_multiplier' => $estimate['pricing']['surge_multiplier'],
+                    'discount_amount' => $discountAmount,
+                    'total_fare' => $totalFare,
+                    'payment_method' => $request->payment_method,
+                    'coupon_code' => $couponResult['eligible'] ? $couponResult['code'] : null,
+                    'special_requests' => $request->special_requests,
+                    'status' => 'pending',
+                    'payment_status' => 'pending',
+                ]);
+
+                if ($couponResult['eligible'] && $couponResult['coupon']) {
+                    app(CustomerCouponService::class)->redeem($customer, $couponResult['coupon'], $ride, 'ride', (float) $estimate['pricing']['subtotal'], $discountAmount);
                 }
-                $wallet->debit($totalFare, "Payment for Ride Booking #{$ride->id}", 'ride_booking', $ride->id);
-                $ride->update(['payment_status' => 'paid']);
-            }
 
-            return $ride;
-        });
+                // Handle Wallet Payment
+                if ($request->payment_method === 'wallet') {
+                    $wallet = Wallet::forOwner($customer)->first();
+                    if (! $wallet || ! $wallet->hasSufficientBalance($totalFare)) {
+                        throw new \RuntimeException('Insufficient wallet balance.');
+                    }
+                    $wallet->debit($totalFare, "Payment for Ride Booking #{$ride->id}", 'ride_booking', $ride->id);
+                    $ride->update(['payment_status' => 'paid']);
+                }
 
-        broadcast(new NewRideRequest($ride));
+                return $ride;
+            });
+        } catch (\RuntimeException $exception) {
+            return response()->json([
+                'success' => false,
+                'message' => $exception->getMessage(),
+            ], 422);
+        }
+
+        $dispatchService = app(DriverDispatchService::class);
+        $dispatchCandidates = $dispatchService->rankedCandidates(
+            $estimate['ride_classification'],
+            (float) $request->pickup_lat,
+            (float) $request->pickup_lng,
+            null,
+            10,
+            $ride->car_category_id ? (int) $ride->car_category_id : null
+        );
+        $dispatchService->createRideAttempts($ride, $dispatchCandidates);
+        $candidateDriverIds = $dispatchCandidates
+            ->pluck('driver_id')
+            ->map(fn ($id) => (int) $id)
+            ->values()
+            ->all();
+
+        $ride->update([
+            'dispatch_status' => count($candidateDriverIds) > 0 ? 'offered' : 'admin_queue',
+            'admin_assignable' => count($candidateDriverIds) === 0,
+            'dispatch_failed_at' => count($candidateDriverIds) === 0 ? now() : null,
+        ]);
+
+        broadcast(new NewRideRequest($ride, $candidateDriverIds));
+        app(BookingLifecycleNotifier::class)->emit($ride->fresh('customer'), 'booking.created');
+        if ($ride->payment_status === 'paid') {
+            app(BookingLifecycleNotifier::class)->emit($ride->fresh('customer'), 'payment.paid');
+        }
 
         return response()->json([
             'success' => true,
-            'data'    => $ride->load('driver:id,name,phone'),
+            'data' => $ride->load('driver:id,name,phone'),
+            'receipt' => $this->formatBookingReceipt($ride, 'ride'),
+            'dispatch' => [
+                'classification' => $estimate['ride_classification'],
+                'candidate_count' => count($candidateDriverIds),
+                'candidate_driver_ids' => $candidateDriverIds,
+                'admin_assignable' => (bool) $ride->admin_assignable,
+                'dispatch_status' => $ride->dispatch_status,
+            ],
         ], 201);
+    }
+
+    public function previewCoupon(Request $request)
+    {
+        $validated = $request->validate([
+            'coupon_code' => 'required|string|max:40',
+            'service_type' => 'required|in:ride,tour,rental',
+            'subtotal' => 'required|numeric|min:0',
+        ]);
+
+        $result = app(CustomerCouponService::class)->preview(
+            $request->user(),
+            $validated['coupon_code'],
+            $validated['service_type'],
+            (float) $validated['subtotal']
+        );
+
+        return response()->json([
+            'success' => (bool) $result['eligible'],
+            'message' => $result['message'],
+            'data' => $this->formatCouponResult($result),
+        ], $result['eligible'] ? 200 : 422);
+    }
+
+    public function availableCoupons(Request $request)
+    {
+        $validated = $request->validate([
+            'service_type' => 'required|in:ride,tour,rental',
+            'subtotal' => 'required|numeric|min:0',
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'data' => app(CustomerCouponService::class)->availableOffers(
+                $request->user(),
+                $validated['service_type'],
+                (float) $validated['subtotal']
+            ),
+        ]);
     }
 
     public function submitReview(Request $request, RideBooking $booking)
     {
-        if ((int) $booking->customer_id !== (int) $request->user()->id) {
-            abort(403);
-        }
+        Gate::authorize('review', $booking);
 
         $validated = $request->validate([
             'rating' => 'required|integer|min:1|max:5',
@@ -485,8 +715,8 @@ class CustomerAppController extends Controller
             ],
             [
                 'driver_id' => $booking->driver_id,
-                'rating' => $validated['rating'],
-                'comment' => $validated['comment'] ?? null,
+                'driver_rating' => $validated['rating'],
+                'review' => $validated['comment'] ?? null,
             ]
         );
 
@@ -496,15 +726,19 @@ class CustomerAppController extends Controller
         ]);
     }
 
+    public function cancelTour(Request $request, TourBooking $booking)
+    {
+        Gate::authorize('view', $booking);
+
+        return $this->cancelCustomerBooking($request, $booking, 'tour');
+    }
+
     public function submitTip(Request $request, RideBooking $booking)
     {
-        if ((int) $booking->customer_id !== (int) $request->user()->id) {
-            abort(403);
-        }
+        Gate::authorize('tip', $booking);
 
         $validated = $request->validate([
             'amount' => 'required|numeric|min:10|max:50000',
-            'message' => 'nullable|string|max:500',
         ]);
 
         $customerWallet = Wallet::forOwner($request->user())->first();
@@ -518,7 +752,7 @@ class CustomerAppController extends Controller
             'status' => 'active',
         ]) : null;
 
-        if (!$customerWallet || !$driverWallet) {
+        if (! $customerWallet || ! $driverWallet) {
             return response()->json([
                 'success' => false,
                 'message' => 'Wallet not available.',
@@ -527,12 +761,12 @@ class CustomerAppController extends Controller
 
         $amount = round((float) $validated['amount'], 2);
 
-        DB::transaction(function () use ($customerWallet, $driverWallet, $booking, $amount, $request, $validated) {
-            if (!$customerWallet->debit($amount, 'Tip paid for booking #' . $booking->booking_number, 'ride_tip_' . $booking->id)) {
+        DB::transaction(function () use ($customerWallet, $driverWallet, $booking, $amount, $request) {
+            if (! $customerWallet->debit($amount, 'Tip paid for booking #'.$booking->booking_number, 'ride_tip_'.$booking->id)) {
                 abort(422, 'Insufficient wallet balance.');
             }
 
-            $driverWallet->credit($amount, 'Tip received for booking #' . $booking->booking_number, 'ride_tip_' . $booking->id);
+            $driverWallet->credit($amount, 'Tip received for booking #'.$booking->booking_number, 'ride_tip_'.$booking->id);
 
             RideBookingTip::create([
                 'ride_booking_id' => $booking->id,
@@ -540,13 +774,573 @@ class CustomerAppController extends Controller
                 'driver_id' => $booking->driver_id,
                 'amount' => $amount,
                 'payment_method' => 'wallet',
-                'status' => 'completed',
-                'message' => $validated['message'] ?? null,
+                'status' => 'paid',
             ]);
         });
 
         return response()->json([
             'success' => true,
         ]);
+    }
+
+    public function placeReviews(Place $place)
+    {
+        return response()->json([
+            'success' => true,
+            'data' => $place->reviews()->with('customer:id,name')->paginate(20),
+        ]);
+    }
+
+    public function submitPlaceReview(Request $request, Place $place)
+    {
+        Gate::authorize('create', [PlaceReview::class, $place]);
+
+        $validated = $request->validate([
+            'rating' => 'required|integer|min:1|max:5',
+            'review' => 'nullable|string|max:1000',
+        ]);
+
+        $review = PlaceReview::updateOrCreate(
+            ['place_id' => $place->id, 'customer_id' => $request->user()->id],
+            $validated
+        );
+
+        $place->update([
+            'rating' => round((float) $place->reviews()->avg('rating'), 2),
+            'review_count' => $place->reviews()->count(),
+        ]);
+
+        return response()->json(['success' => true, 'data' => $review->load('customer:id,name')]);
+    }
+
+    public function submitTourReview(Request $request, TourBooking $booking)
+    {
+        Gate::authorize('review', $booking);
+
+        $validated = $request->validate([
+            'tour_rating' => 'nullable|integer|min:1|max:5',
+            'driver_rating' => 'nullable|integer|min:1|max:5',
+            'review' => 'nullable|string|max:1000',
+        ]);
+
+        $review = TourBookingReview::updateOrCreate(
+            ['tour_booking_id' => $booking->id, 'customer_id' => $request->user()->id],
+            array_merge($validated, ['driver_id' => $booking->assigned_driver_id])
+        );
+
+        return response()->json(['success' => true, 'data' => $review]);
+    }
+
+    public function submitRentalReview(Request $request, CarRental $rental)
+    {
+        Gate::authorize('review', $rental);
+
+        $validated = $request->validate([
+            'rental_rating' => 'nullable|integer|min:1|max:5',
+            'driver_rating' => 'nullable|integer|min:1|max:5',
+            'review' => 'nullable|string|max:1000',
+        ]);
+
+        $review = CarRentalReview::updateOrCreate(
+            ['car_rental_id' => $rental->id, 'customer_id' => $request->user()->id],
+            array_merge($validated, ['driver_id' => $rental->driver_id])
+        );
+
+        return response()->json(['success' => true, 'data' => $review]);
+    }
+
+    public function cancelRental(Request $request, CarRental $rental)
+    {
+        Gate::authorize('view', $rental);
+
+        return $this->cancelCustomerBooking($request, $rental, 'rental');
+    }
+
+    public function storeSupportRequest(Request $request)
+    {
+        $validated = $request->validate([
+            'service_type' => 'required|in:ride,tour,rental',
+            'booking_id' => 'required|integer|min:1',
+            'topic' => 'required|string|max:120',
+            'details' => 'required|string|max:2000',
+            'severity' => 'nullable|in:low,medium,high,critical',
+        ]);
+
+        $booking = match ($validated['service_type']) {
+            'ride' => RideBooking::where('customer_id', $request->user()->id)->findOrFail($validated['booking_id']),
+            'tour' => TourBooking::where('customer_id', $request->user()->id)->findOrFail($validated['booking_id']),
+            'rental' => CarRental::where('customer_id', $request->user()->id)->findOrFail($validated['booking_id']),
+        };
+
+        $topic = strtolower($validated['topic']);
+        $type = match (true) {
+            str_contains($topic, 'payment') || str_contains($topic, 'wallet') => 'payment',
+            str_contains($topic, 'cancel') || str_contains($topic, 'refund') => 'dispute',
+            str_contains($topic, 'emergency') || str_contains($topic, 'safety') => 'safety',
+            str_contains($topic, 'service') || str_contains($topic, 'active') => 'service_quality',
+            default => 'other',
+        };
+
+        $incident = $booking->incidents()->create([
+            'customer_id' => $request->user()->id,
+            'driver_id' => $booking->driver_id ?? $booking->assigned_driver_id ?? null,
+            'opened_by_type' => get_class($request->user()),
+            'opened_by_id' => $request->user()->id,
+            'type' => $type,
+            'severity' => $validated['severity'] ?? 'medium',
+            'status' => 'open',
+            'title' => $validated['topic'],
+            'description' => $validated['details'],
+            'reported_at' => now(),
+        ]);
+
+        app(BookingLifecycleNotifier::class)->emit($booking->fresh('customer'), 'support.updated');
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Support request submitted successfully.',
+            'data' => $incident,
+        ], 201);
+    }
+
+    public function bookingNextSteps(Request $request, string $serviceType, int $booking)
+    {
+        $serviceType = $this->normalizeCustomerServiceType($serviceType);
+        $model = $this->resolveCustomerBooking($request, $serviceType, $booking);
+        $verification = app(StartVerificationService::class);
+
+        return response()->json([
+            'success' => true,
+            'data' => [
+                'service_type' => $serviceType,
+                'booking_id' => $model->id,
+                'booking_number' => $model->booking_number,
+                'status' => $model->status,
+                'payment_status' => $model->payment_status,
+                'tracking_url' => "/tracking?kind={$serviceType}&id={$model->id}",
+                'start_verification' => [
+                    'required' => true,
+                    'code' => $verification->codeFor($model, $serviceType),
+                    'verified' => $verification->isVerified($model),
+                ],
+                'instructions' => $this->nextStepInstructions($model, $serviceType),
+                'actions' => [
+                    'can_check_in' => ! in_array($model->status, ['completed', 'cancelled'], true),
+                    'can_track' => true,
+                    'can_contact_support' => true,
+                    'can_review' => $model->status === 'completed',
+                ],
+            ],
+        ]);
+    }
+
+    public function bookingCheckIn(Request $request, string $serviceType, int $booking)
+    {
+        $serviceType = $this->normalizeCustomerServiceType($serviceType);
+        $model = $this->resolveCustomerBooking($request, $serviceType, $booking);
+
+        if (in_array($model->status, ['completed', 'cancelled'], true)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Completed or cancelled bookings cannot be checked in.',
+            ], 422);
+        }
+
+        $validated = $request->validate([
+            'latitude' => 'nullable|numeric|between:-90,90',
+            'longitude' => 'nullable|numeric|between:-180,180',
+            'note' => 'nullable|string|max:500',
+        ]);
+
+        $audit = app(StartVerificationService::class)->checkIn($model, $request->user(), $validated);
+        app(BookingLifecycleNotifier::class)->emit($model->fresh('customer'), 'booking.started', [
+            'actor' => 'customer',
+            'check_in_id' => $audit->id,
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Customer check-in recorded. Share the start OTP with the assigned operator at pickup/handover.',
+            'data' => [
+                'check_in' => $audit,
+                'next_steps' => $this->nextStepInstructions($model->fresh(), $serviceType),
+            ],
+        ]);
+    }
+
+    private function cancelCustomerBooking(Request $request, RideBooking|TourBooking|CarRental $booking, string $serviceType)
+    {
+        $validated = $request->validate([
+            'reason' => 'nullable|string|max:1000',
+        ]);
+
+        if (in_array($booking->status, ['completed', 'cancelled'], true)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Completed or cancelled bookings cannot be cancelled again.',
+            ], 422);
+        }
+
+        $refund = app(BookingCancellationService::class)->cancel(
+            $booking,
+            $serviceType,
+            $validated['reason'] ?? null
+        );
+
+        $booking->refresh();
+        app(BookingLifecycleNotifier::class)->emit($booking->fresh('customer'), 'booking.cancelled');
+        if ($refund && $refund->status === 'processed') {
+            app(BookingLifecycleNotifier::class)->emit($booking->fresh('customer'), 'refund.processed');
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Booking cancelled successfully.',
+            'data' => [
+                'booking' => $booking,
+                'refund' => $refund,
+                'receipt' => $this->formatBookingReceipt($booking, $serviceType, $refund),
+            ],
+        ]);
+    }
+
+    private function normalizeCustomerServiceType(string $serviceType): string
+    {
+        return match ($serviceType) {
+            'ride', 'rides' => 'ride',
+            'tour', 'tours', 'tour-booking', 'tour-bookings' => 'tour',
+            'rental', 'rentals', 'car-rental', 'car-rentals' => 'rental',
+            default => abort(404, 'Unknown service type.'),
+        };
+    }
+
+    private function resolveCustomerBooking(Request $request, string $serviceType, int $booking): RideBooking|TourBooking|CarRental
+    {
+        return match ($serviceType) {
+            'ride' => RideBooking::where('customer_id', $request->user()->id)->findOrFail($booking),
+            'tour' => TourBooking::with('tour:id,title,start_location,end_location')
+                ->where('customer_id', $request->user()->id)
+                ->findOrFail($booking),
+            'rental' => CarRental::with('carCategory:id,name')
+                ->where('customer_id', $request->user()->id)
+                ->findOrFail($booking),
+            default => abort(404, 'Unknown service type.'),
+        };
+    }
+
+    private function nextStepInstructions(RideBooking|TourBooking|CarRental $booking, string $serviceType): array
+    {
+        if ($booking->status === 'completed') {
+            return [
+                'Service is completed.',
+                'Rate the service and add a tip or review if you want.',
+                'Contact support from the booking if any receipt, refund, or claim detail looks wrong.',
+            ];
+        }
+
+        if ($booking->status === 'cancelled') {
+            return [
+                'Booking is cancelled.',
+                'Track refund state from the receipt or wallet.',
+                'Contact support if the cancellation reason or refund amount needs review.',
+            ];
+        }
+
+        $payment = $booking->payment_status === 'paid'
+            ? 'Payment is already recorded.'
+            : 'Payment can be completed now or settled later according to the selected method.';
+
+        return match ($serviceType) {
+            'ride' => [
+                $payment,
+                'Keep pickup notes and phone reachable for driver assignment.',
+                'When the driver arrives, share the start OTP shown on tracking.',
+                'Track driver location and ETA from the live tracking screen.',
+            ],
+            'tour' => [
+                $payment,
+                'Review schedule, pickup option, participants, and inclusions before travel.',
+                'At guide/driver check-in, share the tour start OTP and press customer check-in.',
+                'Track tour status, current stop, weather, support, and rating from tracking.',
+            ],
+            'rental' => [
+                $payment,
+                'Carry ID and inspect vehicle condition/features at handover.',
+                'At handover, share the rental start OTP and press customer check-in.',
+                'Track rental location, roadside care, insurance, and return steps from tracking.',
+            ],
+            default => [],
+        };
+    }
+
+    private function appendStructuredNotes(?string $notes, array $metadata): ?string
+    {
+        $lines = collect([$notes])
+            ->filter(fn ($value) => is_string($value) && trim($value) !== '')
+            ->map(fn ($value) => trim((string) $value));
+
+        foreach ($metadata as $key => $value) {
+            if ($value === null || $value === false || $value === [] || $value === '') {
+                continue;
+            }
+
+            $formatted = is_array($value) ? implode(', ', array_filter($value)) : (string) $value;
+            if ($formatted !== '') {
+                $lines->push(str_replace('_', ' ', ucfirst($key)).': '.$formatted);
+            }
+        }
+
+        return $lines->isEmpty() ? null : $lines->join("\n");
+    }
+
+    private function formatCouponResult(array $result): array
+    {
+        return [
+            'eligible' => (bool) ($result['eligible'] ?? false),
+            'code' => $result['code'] ?? null,
+            'name' => $result['name'] ?? null,
+            'description' => $result['description'] ?? null,
+            'service_type' => $result['service_type'] ?? null,
+            'subtotal' => (float) ($result['subtotal'] ?? 0),
+            'discount_amount' => (float) ($result['discount_amount'] ?? 0),
+            'final_amount' => (float) ($result['final_amount'] ?? 0),
+            'message' => $result['message'] ?? null,
+        ];
+    }
+
+    private function formatBookingReceipt(RideBooking|TourBooking|CarRental $booking, string $serviceType, mixed $refund = null): array
+    {
+        $title = match ($serviceType) {
+            'ride' => $booking->pickup_location ?? 'Ride booking',
+            'tour' => $booking->tour?->title ?? 'Tour booking',
+            'rental' => $booking->carCategory?->name ?? 'Car rental',
+            default => 'Booking',
+        };
+
+        $amount = match ($serviceType) {
+            'ride' => $booking->total_fare,
+            default => $booking->total_price,
+        };
+
+        $travelDate = match ($serviceType) {
+            'ride' => $booking->scheduled_at,
+            'tour' => $booking->travel_date,
+            'rental' => $booking->start_date,
+            default => $booking->created_at,
+        };
+
+        return [
+            'id' => $booking->id,
+            'service_type' => $serviceType,
+            'title' => $title,
+            'receipt_number' => $booking->booking_number ?? (string) $booking->id,
+            'booking_number' => $booking->booking_number ?? (string) $booking->id,
+            'transaction_id' => $booking->transaction_id ?? $booking->payment_reference ?? null,
+            'payment_method' => $booking->payment_method,
+            'payment_status' => $booking->payment_status,
+            'status' => $booking->status,
+            'amount' => (float) $amount,
+            'coupon_code' => $booking->coupon_code ?? null,
+            'discount_amount' => (float) ($booking->discount_amount ?? 0),
+            'currency' => 'INR',
+            'travel_date' => optional($travelDate)->toDateString(),
+            'refund_status' => $refund->status ?? $booking->refund_status ?? ($booking->refunded_at ? 'processed' : 'not-applicable'),
+            'support_actions' => [
+                'can_contact_support' => true,
+                'can_cancel' => ! in_array($booking->status, ['completed', 'cancelled'], true),
+                'can_review' => $booking->status === 'completed',
+            ],
+        ];
+    }
+
+    private function formatPlaceDetails(Place $place): array
+    {
+        return [
+            'place' => $place,
+            'media' => $place->media,
+            'active_tours' => $this->relatedToursForPlace($place)->map(fn (Tour $tour) => $this->formatPublicTour($tour)),
+            'skyslope_reviews' => $place->reviews,
+            'google_summary' => [
+                'place_id' => $place->google_place_id,
+                'rating' => $place->google_rating,
+                'review_count' => $place->google_review_count,
+                'reviews' => $place->google_reviews ?? [],
+                'photos' => $place->google_photos ?? [],
+                'coordinates' => [
+                    'latitude' => $place->latitude,
+                    'longitude' => $place->longitude,
+                ],
+                'last_synced_at' => $place->google_synced_at,
+            ],
+        ];
+    }
+
+    private function formatPublicPlaceSummary(Place $place): array
+    {
+        return [
+            'id' => $place->id,
+            'name' => $place->name,
+            'slug' => $place->slug,
+            'description' => $place->description,
+            'short_description' => $place->short_description,
+            'location' => $place->location,
+            'city' => $place->city,
+            'state' => $place->state,
+            'country' => $place->country,
+            'rating' => $place->rating,
+            'review_count' => $place->review_count,
+            'cover_image' => $place->cover_image,
+            'tags' => $place->tags ?? [],
+            'media' => $place->media,
+        ];
+    }
+
+    private function formatPublicTour(Tour $tour, bool $includePlaces = false): array
+    {
+        $nextSchedule = $tour->relationLoaded('schedules') ? $tour->schedules->first() : $tour->getNextAvailableSchedule();
+
+        return [
+            'id' => $tour->id,
+            'title' => $tour->title,
+            'slug' => $tour->slug,
+            'description' => $tour->description,
+            'short_description' => $tour->short_description,
+            'highlights' => $tour->highlights ?? [],
+            'inclusions' => $tour->inclusions ?? [],
+            'exclusions' => $tour->exclusions ?? [],
+            'duration_days' => $tour->duration_days,
+            'duration_nights' => $tour->duration_nights,
+            'price_per_person' => $tour->price_per_person,
+            'child_price' => $tour->child_price,
+            'start_location' => $tour->start_location,
+            'end_location' => $tour->end_location,
+            'region' => $tour->region,
+            'difficulty' => $tour->difficulty,
+            'cover_image' => $tour->cover_image,
+            'gallery' => $tour->gallery ?? [],
+            'available_from' => optional($tour->available_from)->toDateString(),
+            'available_to' => optional($tour->available_to)->toDateString(),
+            'available_seats' => $nextSchedule ? $nextSchedule->getAvailableSeats() : null,
+            'itineraries' => $tour->itineraries,
+            'schedules' => $tour->relationLoaded('schedules') ? $tour->schedules : collect([$nextSchedule])->filter()->values(),
+            'related_places' => $includePlaces ? $this->relatedPlacesForTour($tour)->map(fn (Place $place) => $this->formatPublicPlaceSummary($place)) : [],
+        ];
+    }
+
+    private function relatedToursForPlace(Place $place)
+    {
+        $terms = collect([
+            $place->name,
+            $place->slug,
+            $place->location,
+            $place->city,
+            $place->state,
+            ...($place->tags ?? []),
+        ])
+            ->filter()
+            ->map(fn ($term) => Str::lower((string) $term))
+            ->filter(fn ($term) => Str::length($term) > 2)
+            ->values();
+
+        if ($terms->isEmpty()) {
+            return collect();
+        }
+
+        $explicitTours = Tour::with(['itineraries.place.media', 'schedules' => function ($q) {
+            $q->where('status', 'open')->where('departure_date', '>=', now());
+        }])
+            ->active()
+            ->where('available_to', '>=', now())
+            ->whereHas('itineraries', fn ($query) => $query->where('place_id', $place->id))
+            ->get();
+
+        if ($explicitTours->isNotEmpty()) {
+            return $explicitTours->values();
+        }
+
+        return Tour::with(['itineraries.place.media', 'schedules' => function ($q) {
+            $q->where('status', 'open')->where('departure_date', '>=', now());
+        }])
+            ->active()
+            ->where('available_to', '>=', now())
+            ->get()
+            ->filter(function (Tour $tour) use ($terms) {
+                $haystack = Str::lower(collect([
+                    $tour->title,
+                    $tour->description,
+                    $tour->short_description,
+                    $tour->start_location,
+                    $tour->end_location,
+                    $tour->region,
+                    ...($tour->highlights ?? []),
+                    ...$tour->itineraries->flatMap(fn ($itinerary) => [
+                        $itinerary->title,
+                        $itinerary->description,
+                        ...($itinerary->activities ?? []),
+                    ])->all(),
+                ])->filter()->join(' '));
+
+                return $terms->contains(fn ($term) => Str::contains($haystack, $term));
+            })
+            ->values();
+    }
+
+    private function relatedPlacesForTour(Tour $tour)
+    {
+        $terms = collect([
+            $tour->title,
+            $tour->description,
+            $tour->short_description,
+            $tour->start_location,
+            $tour->end_location,
+            $tour->region,
+            ...($tour->highlights ?? []),
+            ...$tour->itineraries->flatMap(fn ($itinerary) => [
+                $itinerary->title,
+                $itinerary->description,
+                ...($itinerary->activities ?? []),
+            ])->all(),
+        ])
+            ->filter()
+            ->map(fn ($term) => Str::lower((string) $term))
+            ->join(' ');
+
+        if (! $terms) {
+            return collect();
+        }
+
+        $explicitPlaceIds = $tour->itineraries
+            ->pluck('place_id')
+            ->filter()
+            ->unique()
+            ->values();
+
+        if ($explicitPlaceIds->isNotEmpty()) {
+            return Place::with('media')
+                ->whereIn('id', $explicitPlaceIds)
+                ->where('is_active', true)
+                ->get()
+                ->values();
+        }
+
+        return Place::with('media')
+            ->where('is_active', true)
+            ->get()
+            ->filter(function (Place $place) use ($terms) {
+                $placeTerms = collect([
+                    $place->name,
+                    $place->slug,
+                    $place->location,
+                    $place->city,
+                    $place->state,
+                    ...($place->tags ?? []),
+                ])
+                    ->filter()
+                    ->map(fn ($term) => Str::lower((string) $term))
+                    ->filter(fn ($term) => Str::length($term) > 2);
+
+                return $placeTerms->contains(fn ($term) => Str::contains($terms, $term));
+            })
+            ->values();
     }
 }

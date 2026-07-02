@@ -1,5 +1,5 @@
 import React from 'react';
-import { Head, Link, router } from '@inertiajs/react';
+import { Head, Link, router, useForm } from '@inertiajs/react';
 import AdminLayout from '@/layouts/AdminLayout';
 import { 
     Grid, 
@@ -15,19 +15,16 @@ import {
     ActionIcon, 
     Divider,
     SimpleGrid,
-    Box,
     Card,
     ThemeIcon,
-    Tooltip,
     Indicator,
-    Progress
+    Progress,
+    Switch,
+    TagsInput,
+    Textarea
 } from '@mantine/core';
 import { 
-    User, 
     Phone, 
-    Mail, 
-    Calendar, 
-    Wallet, 
     Car, 
     MapPin, 
     ArrowLeft, 
@@ -35,13 +32,36 @@ import {
     Ban, 
     ShieldCheck,
     Map,
-    IndianRupee,
     TrendingUp,
     Navigation,
     Activity,
     ExternalLink,
-    Clock
+    Clock,
+    Save,
+    Languages,
+    BadgeCheck
 } from 'lucide-react';
+
+interface DriverRideBooking {
+    id: number;
+    booking_number: string;
+    scheduled_at: string;
+    pickup_location: string;
+    dropoff_location: string;
+    status: string;
+    total_fare: number;
+}
+
+interface DriverTourAssignment {
+    id: number;
+    role?: string;
+    schedule?: {
+        tour?: {
+            id: number;
+            title: string;
+        };
+    };
+}
 
 interface Driver {
     id: number;
@@ -51,8 +71,16 @@ interface Driver {
     status: 'pending' | 'active' | 'suspended';
     vehicle_number: string;
     vehicle_type: string;
+    can_short_ride: boolean;
+    can_long_ride: boolean;
+    can_tour_lead: boolean;
+    can_tour_transport: boolean;
+    can_rental_delivery: boolean;
+    languages: string[] | null;
+    expertise_tags: string[] | null;
+    certification_notes: string | null;
     created_at: string;
-    assigned_ride_bookings: any[];
+    assigned_ride_bookings: DriverRideBooking[];
     driver_availability?: {
         is_online: boolean;
         is_available: boolean;
@@ -63,7 +91,7 @@ interface Driver {
     wallet?: {
         balance: number;
     };
-    tour_drivers: any[];
+    tour_driver_assignments: DriverTourAssignment[];
 }
 
 interface DriverShowProps {
@@ -80,9 +108,24 @@ interface DriverShowProps {
 }
 
 export default function DriverShow({ title, driver, stats }: DriverShowProps) {
+    const { data, setData, put, processing, errors } = useForm({
+        can_short_ride: Boolean(driver.can_short_ride),
+        can_long_ride: Boolean(driver.can_long_ride),
+        can_tour_lead: Boolean(driver.can_tour_lead),
+        can_tour_transport: Boolean(driver.can_tour_transport),
+        can_rental_delivery: Boolean(driver.can_rental_delivery),
+        languages: driver.languages ?? [],
+        expertise_tags: driver.expertise_tags ?? [],
+        certification_notes: driver.certification_notes ?? '',
+    });
+
     const handleApprove = () => router.post(`/admin/drivers/${driver.id}/approve`, {}, { preserveScroll: true });
     const handleSuspend = () => router.post(`/admin/drivers/${driver.id}/suspend`, {}, { preserveScroll: true });
     const handleActivate = () => router.post(`/admin/drivers/${driver.id}/activate`, {}, { preserveScroll: true });
+    const handleCapabilitiesSubmit = (event: React.FormEvent) => {
+        event.preventDefault();
+        put(`/admin/drivers/${driver.id}/capabilities`, { preserveScroll: true });
+    };
 
     return (
         <AdminLayout title={title}>
@@ -129,7 +172,6 @@ export default function DriverShow({ title, driver, stats }: DriverShowProps) {
                                 Suspend
                             </Button>
                         )}
-                        <Button variant="filled" color="blue">Edit Profile</Button>
                     </Group>
                 </Group>
 
@@ -206,6 +248,82 @@ export default function DriverShow({ title, driver, stats }: DriverShowProps) {
                                 <Text color="white" size="h1" fw={800}>₹{parseFloat(stats.total_earned.toString()).toLocaleString()}</Text>
                                 <Text color="teal.1" size="xs" mt={4}>Current Wallet: ₹{stats.wallet_balance}</Text>
                                 <Button fullWidth variant="white" color="teal.9" mt="xl" size="sm">Payout History</Button>
+                            </Paper>
+
+                            <Paper p="xl" radius="md" withBorder>
+                                <form onSubmit={handleCapabilitiesSubmit}>
+                                    <Stack gap="lg">
+                                        <Group gap="sm">
+                                            <ThemeIcon variant="light" color="blue" radius="md">
+                                                <BadgeCheck size={18} />
+                                            </ThemeIcon>
+                                            <div>
+                                                <Text fw={700}>Capabilities</Text>
+                                                <Text size="xs" color="dimmed">Driver app eligibility and guide-style profile.</Text>
+                                            </div>
+                                        </Group>
+
+                                        <Stack gap="sm">
+                                            <Switch
+                                                label="Short rides"
+                                                checked={data.can_short_ride}
+                                                onChange={(event) => setData('can_short_ride', event.currentTarget.checked)}
+                                            />
+                                            <Switch
+                                                label="Long rides"
+                                                checked={data.can_long_ride}
+                                                onChange={(event) => setData('can_long_ride', event.currentTarget.checked)}
+                                            />
+                                            <Switch
+                                                label="Tour lead"
+                                                checked={data.can_tour_lead}
+                                                onChange={(event) => setData('can_tour_lead', event.currentTarget.checked)}
+                                            />
+                                            <Switch
+                                                label="Tour transport"
+                                                checked={data.can_tour_transport}
+                                                onChange={(event) => setData('can_tour_transport', event.currentTarget.checked)}
+                                            />
+                                            <Switch
+                                                label="Rental delivery"
+                                                checked={data.can_rental_delivery}
+                                                onChange={(event) => setData('can_rental_delivery', event.currentTarget.checked)}
+                                            />
+                                        </Stack>
+
+                                        <Divider />
+
+                                        <TagsInput
+                                            label="Languages"
+                                            placeholder="Add language"
+                                            value={data.languages}
+                                            onChange={(value) => setData('languages', value)}
+                                            leftSection={<Languages size={16} />}
+                                            error={errors.languages}
+                                            splitChars={[',']}
+                                        />
+                                        <TagsInput
+                                            label="Expertise tags"
+                                            placeholder="Add expertise"
+                                            value={data.expertise_tags}
+                                            onChange={(value) => setData('expertise_tags', value)}
+                                            error={errors.expertise_tags}
+                                            splitChars={[',']}
+                                        />
+                                        <Textarea
+                                            label="Certification notes"
+                                            placeholder="Tour guide certifications, local permits, training notes"
+                                            rows={4}
+                                            value={data.certification_notes}
+                                            onChange={(event) => setData('certification_notes', event.currentTarget.value)}
+                                            error={errors.certification_notes}
+                                        />
+
+                                        <Button type="submit" leftSection={<Save size={16} />} loading={processing}>
+                                            Save Capabilities
+                                        </Button>
+                                    </Stack>
+                                </form>
                             </Paper>
                         </Stack>
                     </Grid.Col>
@@ -299,12 +417,12 @@ export default function DriverShow({ title, driver, stats }: DriverShowProps) {
                                     <Tabs.Panel value="tours" p="md">
                                         <Table verticalSpacing="sm">
                                             <Table.Tbody>
-                                                {driver.tour_drivers.length > 0 ? driver.tour_drivers.map((td) => (
+                                                {driver.tour_driver_assignments.length > 0 ? driver.tour_driver_assignments.map((td) => (
                                                     <Table.Tr key={td.id}>
-                                                        <Table.Td><Text size="sm" fw={600}>{td.tour?.title}</Text></Table.Td>
-                                                        <Table.Td><Text size="xs">Tour Driver</Text></Table.Td>
+                                                        <Table.Td><Text size="sm" fw={600}>{td.schedule?.tour?.title}</Text></Table.Td>
+                                                        <Table.Td><Text size="xs">{td.role ?? 'Tour Driver'}</Text></Table.Td>
                                                         <Table.Td>
-                                                            <ActionIcon variant="link" color="blue" component={Link} href={`/admin/tours/${td.tour?.id}`}>
+                                                            <ActionIcon variant="subtle" color="blue" component={Link} href={`/admin/tours/${td.schedule?.tour?.id}`}>
                                                                 <ExternalLink size={14} />
                                                             </ActionIcon>
                                                         </Table.Td>

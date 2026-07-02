@@ -37,6 +37,19 @@ return [
 
     'google_maps' => [
         'api_key' => env('GOOGLE_MAPS_API_KEY'),
+        'cache_ttl_hours' => env('GOOGLE_PLACE_CACHE_TTL_HOURS', 24),
+    ],
+
+    'maps' => [
+        'provider' => env('MAPS_PROVIDER', 'fallback'),
+        'google_api_key' => env('GOOGLE_MAPS_API_KEY'),
+        'mapbox_api_key' => env('MAPBOX_API_KEY'),
+        'fallback_average_speed_kmh' => env('MAPS_FALLBACK_AVERAGE_SPEED_KMH', 28),
+    ],
+
+    'weather' => [
+        'provider' => env('WEATHER_PROVIDER', 'fallback'),
+        'api_key' => env('WEATHER_API_KEY'),
     ],
 
     'razorpay' => [

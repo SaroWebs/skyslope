@@ -1,44 +1,35 @@
 import React from 'react';
 import { Head, Link, router, usePage } from '@inertiajs/react';
 import AdminLayout from '@/layouts/AdminLayout';
-import { 
-    Table, 
-    Badge, 
-    Text, 
-    Group, 
-    ActionIcon, 
-    Button, 
-    Paper, 
-    Pagination, 
-    Select, 
+import {
+    Table,
+    Badge,
+    Text,
+    Group,
+    ActionIcon,
+    Button,
+    Paper,
+    Pagination,
+    Select,
     Avatar,
     Tooltip,
     Stack,
-    Box,
     TextInput,
-    Divider,
-    Menu,
-    rem
+    Menu
 } from '@mantine/core';
-import { 
-    Search, 
-    Filter, 
-    Eye, 
-    Car, 
-    MapPin, 
-    Calendar, 
-    Clock, 
+import {
+    Search,
+    Eye,
+    Car,
+    MapPin,
+    Calendar,
     IndianRupee,
-    User,
-    CheckCircle2,
-    XCircle,
     MoreVertical,
     Pencil,
     Trash,
-    ExternalLink,
-    ArrowRight,
     Navigation,
-    MoveRight
+    MoveRight,
+    Plus
 } from 'lucide-react';
 
 interface CarRental {
@@ -78,12 +69,12 @@ export default function CarRentals({ title, car_rentals }: CarRentalsProps) {
 
     const getStatusProps = (status: string) => {
         const s = status.toLowerCase();
-        if (s === 'pending') return { color: 'yellow', label: 'Pending' };
-        if (s === 'confirmed') return { color: 'blue', label: 'Confirmed' };
-        if (s === 'in_progress') return { color: 'indigo', label: 'In Progress' };
-        if (s === 'completed') return { color: 'green', label: 'Completed' };
-        if (s === 'cancelled') return { color: 'red', label: 'Cancelled' };
-        return { color: 'gray', label: status };
+        if (s === 'pending') return { color: '#fbbf24', label: 'Pending' };
+        if (s === 'confirmed') return { color: '#3b82f6', label: 'Confirmed' };
+        if (s === 'in_progress') return { color: '#6366f1', label: 'In Progress' };
+        if (s === 'completed') return { color: '#22c55e', label: 'Completed' };
+        if (s === 'cancelled') return { color: '#ef4444', label: 'Cancelled' };
+        return { color: 'rgba(255,255,255,0.4)', label: status };
     };
 
     const handleDelete = (id: number) => {
@@ -100,8 +91,16 @@ export default function CarRentals({ title, car_rentals }: CarRentalsProps) {
         <AdminLayout title={title}>
             <Head title="Car Rentals" />
 
-            <Stack gap="lg">
-                <Paper p="xl" radius="md" withBorder>
+            <Stack gap="xl">
+                <Paper 
+                    p="xl" 
+                    radius="md" 
+                    style={{
+                        background: 'rgba(17,17,17,0.6)',
+                        border: '1px solid rgba(255,255,255,0.06)',
+                        backdropFilter: 'blur(12px)',
+                    }}
+                >
                     <Group justify="space-between" mb="xl">
                         <Group gap="md" style={{ flex: 1 }}>
                             <TextInput
@@ -124,6 +123,13 @@ export default function CarRentals({ title, car_rentals }: CarRentalsProps) {
                                 clearable
                                 radius="md"
                                 style={{ width: 200 }}
+                                styles={{
+                                    input: {
+                                        background: 'rgba(255,255,255,0.03)',
+                                        border: '1px solid rgba(255,255,255,0.08)',
+                                        color: 'rgba(255,255,255,0.85)',
+                                    }
+                                }}
                             />
                         </Group>
                         <Button 
@@ -131,13 +137,32 @@ export default function CarRentals({ title, car_rentals }: CarRentalsProps) {
                             href="/admin/car-rentals/create" 
                             leftSection={<Plus size={16} />}
                             radius="md"
+                            style={{
+                                background: 'linear-gradient(135deg, #fbbf24, #d97706)',
+                                border: 'none',
+                                color: '#000',
+                                fontWeight: 600,
+                            }}
                         >
                             New Rental
                         </Button>
                     </Group>
 
                     <Table.ScrollContainer minWidth={1000}>
-                        <Table verticalSpacing="md" highlightOnHover>
+                        <Table 
+                            verticalSpacing="md" 
+                            highlightOnHover
+                            styles={{
+                                table: { background: 'transparent' },
+                                th: { 
+                                    color: 'rgba(255,255,255,0.4)',
+                                    textTransform: 'uppercase',
+                                    letterSpacing: '0.08em',
+                                    fontSize: 11,
+                                    borderBottom: '1px solid rgba(255,255,255,0.06)',
+                                },
+                            }}
+                        >
                             <Table.Thead>
                                 <Table.Tr>
                                     <Table.Th>Booking & Car</Table.Th>
@@ -154,43 +179,68 @@ export default function CarRentals({ title, car_rentals }: CarRentalsProps) {
                                         <Table.Tr key={rental.id}>
                                             <Table.Td>
                                                 <Stack gap={2}>
-                                                    <Text size="sm" fw={700}>{rental.booking_number}</Text>
+                                                    <Text size="sm" fw={600} style={{ color: 'rgba(255,255,255,0.9)', letterSpacing: '0.02em' }}>
+                                                        {rental.booking_number}
+                                                    </Text>
                                                     <Group gap={6}>
-                                                        <Car size={12} color="var(--mantine-color-blue-6)" />
-                                                        <Text size="xs" fw={600} color="blue">{rental.carCategory?.name}</Text>
+                                                        <Car size={12} color="#fbbf24" />
+                                                        <Text size="xs" fw={500} style={{ color: '#fbbf24' }}>
+                                                            {rental.carCategory?.name}
+                                                        </Text>
                                                     </Group>
-                                                    <Text size="xs" color="dimmed">{new Date(rental.created_at).toLocaleDateString()}</Text>
+                                                    <Text size="xs" style={{ color: 'rgba(255,255,255,0.35)' }}>
+                                                        {new Date(rental.created_at).toLocaleDateString()}
+                                                    </Text>
                                                 </Stack>
                                             </Table.Td>
                                             <Table.Td>
                                                 <Group gap="sm">
-                                                    <Avatar color="blue" radius="xl" size="sm">
+                                                    <Avatar 
+                                                        color="blue" 
+                                                        radius="xl" 
+                                                        size="sm"
+                                                        style={{
+                                                            background: 'rgba(59,130,246,0.15)',
+                                                            border: '1px solid rgba(59,130,246,0.2)',
+                                                            color: '#3b82f6',
+                                                        }}
+                                                    >
                                                         {rental.customer_name?.charAt(0)}
                                                     </Avatar>
                                                     <Stack gap={0}>
-                                                        <Text size="sm" fw={600}>{rental.customer_name}</Text>
-                                                        <Text size="xs" color="dimmed">{rental.customer_phone}</Text>
+                                                        <Text size="sm" fw={600} style={{ color: 'rgba(255,255,255,0.9)' }}>
+                                                            {rental.customer_name}
+                                                        </Text>
+                                                        <Text size="xs" style={{ color: 'rgba(255,255,255,0.4)' }}>
+                                                            {rental.customer_phone}
+                                                        </Text>
                                                     </Stack>
                                                 </Group>
                                             </Table.Td>
                                             <Table.Td>
                                                 <Stack gap={4}>
                                                     <Group gap={6}>
-                                                        <MapPin size={12} color="gray" />
-                                                        <Text size="xs" fw={500} lineClamp={1}>{rental.pickup_location}</Text>
-                                                        <MoveRight size={10} color="gray" />
-                                                        <Text size="xs" fw={500} lineClamp={1}>{rental.dropoff_location || 'Return'}</Text>
+                                                        <MapPin size={12} color="rgba(255,255,255,0.3)" />
+                                                        <Text size="xs" fw={500} lineClamp={1} style={{ color: 'rgba(255,255,255,0.7)' }}>
+                                                            {rental.pickup_location}
+                                                        </Text>
+                                                        <MoveRight size={10} color="rgba(255,255,255,0.2)" />
+                                                        <Text size="xs" fw={500} lineClamp={1} style={{ color: 'rgba(255,255,255,0.7)' }}>
+                                                            {rental.dropoff_location || 'Return'}
+                                                        </Text>
                                                     </Group>
                                                     <Group gap={12}>
                                                         <Group gap={4}>
-                                                            <Calendar size={12} color="gray" />
-                                                            <Text size="xs" color="dimmed">
+                                                            <Calendar size={12} color="rgba(255,255,255,0.3)" />
+                                                            <Text size="xs" style={{ color: 'rgba(255,255,255,0.4)' }}>
                                                                 {new Date(rental.start_date).toLocaleDateString()} - {new Date(rental.end_date).toLocaleDateString()}
                                                             </Text>
                                                         </Group>
                                                         <Group gap={4}>
-                                                            <Navigation size={12} color="gray" />
-                                                            <Text size="xs" color="dimmed">{rental.distance_km} km</Text>
+                                                            <Navigation size={12} color="rgba(255,255,255,0.3)" />
+                                                            <Text size="xs" style={{ color: 'rgba(255,255,255,0.4)' }}>
+                                                                {rental.distance_km} km
+                                                            </Text>
                                                         </Group>
                                                     </Group>
                                                 </Stack>
@@ -198,14 +248,33 @@ export default function CarRentals({ title, car_rentals }: CarRentalsProps) {
                                             <Table.Td>
                                                 <Stack gap={4}>
                                                     <Group gap={4}>
-                                                        <IndianRupee size={14} />
-                                                        <Text size="sm" fw={700}>{parseFloat(rental.total_price.toString()).toLocaleString()}</Text>
+                                                        <IndianRupee size={14} color="#fbbf24" />
+                                                        <Text size="sm" fw={700} style={{ color: 'rgba(255,255,255,0.9)' }}>
+                                                            {parseFloat(rental.total_price.toString()).toLocaleString()}
+                                                        </Text>
                                                     </Group>
                                                     <Group gap={4}>
-                                                        <Badge variant="light" color={statusProps.color} size="xs" radius="sm">
+                                                        <Badge 
+                                                            variant="light" 
+                                                            style={{ 
+                                                                background: `${statusProps.color}20`,
+                                                                color: statusProps.color,
+                                                                border: `1px solid ${statusProps.color}40`,
+                                                            }} 
+                                                            size="xs" 
+                                                            radius="sm"
+                                                        >
                                                             {statusProps.label}
                                                         </Badge>
-                                                        <Badge variant="outline" color={rental.payment_status === 'paid' ? 'green' : 'gray'} size="xs" radius="sm">
+                                                        <Badge 
+                                                            variant="outline" 
+                                                            style={{
+                                                                color: rental.payment_status === 'paid' ? '#22c55e' : 'rgba(255,255,255,0.4)',
+                                                                borderColor: rental.payment_status === 'paid' ? 'rgba(34,197,94,0.3)' : 'rgba(255,255,255,0.15)',
+                                                            }} 
+                                                            size="xs" 
+                                                            radius="sm"
+                                                        >
                                                             {rental.payment_status}
                                                         </Badge>
                                                     </Group>
@@ -216,7 +285,11 @@ export default function CarRentals({ title, car_rentals }: CarRentalsProps) {
                                                     <Tooltip label="View Details">
                                                         <ActionIcon 
                                                             variant="light" 
-                                                            color="blue" 
+                                                            style={{
+                                                                background: 'rgba(59,130,246,0.1)',
+                                                                color: '#3b82f6',
+                                                                border: '1px solid rgba(59,130,246,0.2)',
+                                                            }}
                                                             component={Link} 
                                                             href={`/admin/car-rentals/${rental.id}`}
                                                         >
@@ -226,23 +299,35 @@ export default function CarRentals({ title, car_rentals }: CarRentalsProps) {
                                                     <Tooltip label="Edit Rental">
                                                         <ActionIcon 
                                                             variant="light" 
-                                                            color="yellow" 
+                                                            style={{
+                                                                background: 'rgba(251,191,36,0.1)',
+                                                                color: '#fbbf24',
+                                                                border: '1px solid rgba(251,191,36,0.2)',
+                                                            }}
                                                             component={Link} 
                                                             href={`/admin/car-rentals/${rental.id}/edit`}
                                                         >
                                                             <Pencil size={16} />
                                                         </ActionIcon>
                                                     </Tooltip>
-                                                    <Menu shadow="md" width={180} position="bottom-end">
+                                                    <Menu shadow="md" width={180} position="bottom-end" transitionProps={{ transition: 'pop-top-right' }}>
                                                         <Menu.Target>
-                                                            <ActionIcon variant="subtle" color="gray">
+                                                            <ActionIcon variant="subtle" style={{ color: 'rgba(255,255,255,0.4)' }}>
                                                                 <MoreVertical size={16} />
                                                             </ActionIcon>
                                                         </Menu.Target>
-                                                        <Menu.Dropdown>
-                                                            <Menu.Label>Danger Zone</Menu.Label>
+                                                        <Menu.Dropdown 
+                                                            style={{
+                                                                background: '#111',
+                                                                border: '1px solid rgba(255,255,255,0.08)',
+                                                                borderRadius: 10,
+                                                            }}
+                                                        >
+                                                            <Menu.Label style={{ color: 'rgba(255,255,255,0.3)', fontSize: 11, letterSpacing: '0.08em' }}>
+                                                                Danger Zone
+                                                            </Menu.Label>
                                                             <Menu.Item 
-                                                                color="red" 
+                                                                style={{ color: '#ef4444', borderRadius: 8 }}
                                                                 leftSection={<Trash size={14} />}
                                                                 onClick={() => handleDelete(rental.id)}
                                                             >
@@ -255,18 +340,20 @@ export default function CarRentals({ title, car_rentals }: CarRentalsProps) {
                                         </Table.Tr>
                                     );
                                 })}
-                            </Table.Tbody>
+</Table.Tbody>
                         </Table>
                     </Table.ScrollContainer>
 
                     {car_rentals.data.length === 0 ? (
                         <Stack align="center" py={60}>
-                            <Car size={48} strokeWidth={1} color="gray" />
-                            <Text color="dimmed" mt="md">No car rentals found. Expand your search or add a new booking.</Text>
+                            <Car size={48} strokeWidth={1} color="rgba(255,255,255,0.2)" />
+                            <Text mt="md" style={{ color: 'rgba(255,255,255,0.4)' }}>
+                                No car rentals found. Expand your search or add a new booking.
+                            </Text>
                         </Stack>
                     ) : (
                         <Group justify="space-between" mt="xl">
-                            <Text size="sm" color="dimmed">
+                            <Text size="sm" style={{ color: 'rgba(255,255,255,0.4)' }}>
                                 Showing {car_rentals.data.length} of {car_rentals.total} rentals
                             </Text>
                             <Pagination 
@@ -274,7 +361,14 @@ export default function CarRentals({ title, car_rentals }: CarRentalsProps) {
                                 value={car_rentals.current_page} 
                                 onChange={(page) => router.get(`${url}?page=${page}`)}
                                 radius="md"
-                                color="blue"
+                                color="yellow"
+                                styles={{
+                                    control: {
+                                        background: 'rgba(255,255,255,0.03)',
+                                        border: '1px solid rgba(255,255,255,0.08)',
+                                        color: 'rgba(255,255,255,0.7)',
+                                    }
+                                }}
                             />
                         </Group>
                     )}

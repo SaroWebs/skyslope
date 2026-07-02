@@ -1,38 +1,29 @@
 import React, { useState } from 'react';
 import { Head, Link, router } from '@inertiajs/react';
 import AdminLayout from '../../layouts/AdminLayout';
-import { 
-    Table, 
-    Badge, 
-    Text, 
-    Group, 
-    ActionIcon, 
-    TextInput, 
-    Button, 
-    Paper, 
-    Pagination, 
-    Select, 
+import {
+    Table,
+    Badge,
+    Text,
+    Group,
+    ActionIcon,
+    TextInput,
+    Button,
+    Paper,
+    Pagination,
+    Select,
     Avatar,
     Menu,
-    rem,
-    Tooltip,
     Stack,
-    Box
+    Tooltip,
 } from '@mantine/core';
-import { 
-    Search, 
-    Filter, 
-    MoreVertical, 
-    Eye, 
-    Check, 
-    X, 
-    Ban, 
-    UserCheck,
+import {
+    Search,
+    MoreVertical,
+    Eye,
     MessageSquare,
     ExternalLink,
-    ChevronRight
 } from 'lucide-react';
-import { useDebouncedValue } from '@mantine/hooks';
 
 interface Customer {
     id: number;
@@ -79,20 +70,27 @@ export default function Customers({ title, customers, filters }: CustomersProps)
     };
 
     const toggleStatus = (customer: Customer) => {
-         router.post(`/admin/customers/${customer.id}/toggle-status`, {}, {
-             preserveScroll: true,
-             onSuccess: () => {
-                 // Component re-renders with fresh data automatically
-             }
-         });
+        router.post(`/admin/customers/${customer.id}/toggle-status`, {}, {
+            preserveScroll: true,
+            onSuccess: () => {
+            }
+        });
     };
 
     return (
         <AdminLayout title={title}>
             <Head title="Customers" />
 
-            <Stack gap="lg">
-                <Paper p="xl" radius="md" withBorder>
+            <Stack gap="xl">
+                <Paper
+                    p="xl"
+                    radius="md"
+                    style={{
+                        background: 'rgba(17,17,17,0.6)',
+                        border: '1px solid rgba(255,255,255,0.06)',
+                        backdropFilter: 'blur(12px)',
+                    }}
+                >
                     <Group justify="space-between" mb="xl">
                         <Group gap="md" style={{ flex: 1 }}>
                             <TextInput
@@ -102,6 +100,13 @@ export default function Customers({ title, customers, filters }: CustomersProps)
                                 onChange={(e) => handleSearch(e.currentTarget.value)}
                                 style={{ flex: 1, maxWidth: 400 }}
                                 radius="md"
+                                styles={{
+                                    input: {
+                                        background: 'rgba(255,255,255,0.03)',
+                                        border: '1px solid rgba(255,255,255,0.08)',
+                                        color: 'rgba(255,255,255,0.85)',
+                                    }
+                                }}
                             />
                             <Select
                                 placeholder="Status"
@@ -114,15 +119,39 @@ export default function Customers({ title, customers, filters }: CustomersProps)
                                 clearable
                                 radius="md"
                                 style={{ width: 150 }}
+                                styles={{
+                                    input: {
+                                        background: 'rgba(255,255,255,0.03)',
+                                        border: '1px solid rgba(255,255,255,0.08)',
+                                        color: 'rgba(255,255,255,0.85)',
+                                    }
+                                }}
                             />
                         </Group>
-                        <Button color="blue" radius="md" leftSection={<UserCheck size={16} />}>
+                        <Button
+                            color="blue"
+                            radius="md"
+                            leftSection={<ExternalLink size={16} />}
+                        >
                             Add Customer
                         </Button>
                     </Group>
 
                     <Table.ScrollContainer minWidth={800}>
-                        <Table verticalSpacing="md" highlightOnHover>
+                        <Table
+                            verticalSpacing="md"
+                            highlightOnHover
+                            styles={{
+                                table: { background: 'transparent' },
+                                th: {
+                                    color: 'rgba(255,255,255,0.4)',
+                                    textTransform: 'uppercase',
+                                    letterSpacing: '0.08em',
+                                    fontSize: 11,
+                                    borderBottom: '1px solid rgba(255,255,255,0.06)',
+                                },
+                            }}
+                        >
                             <Table.Thead>
                                 <Table.Tr>
                                     <Table.Th>Customer</Table.Th>
@@ -138,83 +167,111 @@ export default function Customers({ title, customers, filters }: CustomersProps)
                                     <Table.Tr key={customer.id}>
                                         <Table.Td>
                                             <Group gap="sm">
-                                                <Avatar color="blue" radius="xl">{customer.name.charAt(0)}</Avatar>
+                                                <Avatar
+                                                    radius="xl"
+                                                    style={{
+                                                        background: 'rgba(59,130,246,0.15)',
+                                                        border: '1px solid rgba(59,130,246,0.2)',
+                                                        color: '#3b82f6',
+                                                    }}
+                                                >
+                                                    {customer.name.charAt(0)}
+                                                </Avatar>
                                                 <Stack gap={0}>
-                                                    <Text size="sm" fw={600}>{customer.name}</Text>
-                                                    <Text size="xs" color="dimmed">{customer.email}</Text>
+                                                    <Text size="sm" fw={600} style={{ color: 'rgba(255,255,255,0.9)' }}>
+                                                        {customer.name}
+                                                    </Text>
+                                                    <Text size="xs" style={{ color: 'rgba(255,255,255,0.4)' }}>
+                                                        {customer.email}
+                                                    </Text>
                                                 </Stack>
                                             </Group>
                                         </Table.Td>
                                         <Table.Td>
-                                            <Text size="sm">{customer.phone}</Text>
+                                            <Text size="sm" style={{ color: 'rgba(255,255,255,0.85)' }}>
+                                                {customer.phone}
+                                            </Text>
                                         </Table.Td>
                                         <Table.Td>
                                             <Group gap={4}>
-                                                <Tooltip label="Rides">
-                                                    <Badge variant="dot" color="blue" size="sm">{customer.ride_bookings_count}</Badge>
-                                                </Tooltip>
-                                                <Tooltip label="Rentals">
-                                                    <Badge variant="dot" color="teal" size="sm">{customer.car_rentals_count}</Badge>
-                                                </Tooltip>
-                                                <Tooltip label="Tours">
-                                                    <Badge variant="dot" color="grape" size="sm">{customer.bookings_count}</Badge>
-                                                </Tooltip>
+                                                <Badge variant="dot" color="blue" size="sm">
+                                                    {customer.ride_bookings_count} Rides
+                                                </Badge>
+                                                <Badge variant="dot" color="teal" size="sm">
+                                                    {customer.car_rentals_count} Rentals
+                                                </Badge>
+                                                <Badge variant="dot" color="grape" size="sm">
+                                                    {customer.bookings_count} Tours
+                                                </Badge>
                                             </Group>
                                         </Table.Td>
                                         <Table.Td>
-                                            <Badge 
-                                                variant="light" 
-                                                color={customer.status === 'active' ? 'green' : 'red'}
+                                            <Badge
+                                                variant="light"
                                                 radius="sm"
+                                                style={{
+                                                    background: customer.status === 'active' ? 'rgba(34,197,94,0.15)' : 'rgba(239,68,68,0.15)',
+                                                    color: customer.status === 'active' ? '#22c55e' : '#ef4444',
+                                                    border: `1px solid ${customer.status === 'active' ? 'rgba(34,197,94,0.4)' : 'rgba(239,68,68,0.4)'}`,
+                                                }}
                                             >
                                                 {customer.status}
                                             </Badge>
                                         </Table.Td>
                                         <Table.Td>
-                                            <Text size="xs" color="dimmed">
+                                            <Text size="xs" style={{ color: 'rgba(255,255,255,0.4)' }}>
                                                 {new Date(customer.created_at).toLocaleDateString()}
                                             </Text>
                                         </Table.Td>
                                         <Table.Td>
                                             <Group gap={4} justify="flex-end">
                                                 <Tooltip label="View Details">
-                                                    <ActionIcon 
-                                                        variant="light" 
-                                                        color="blue" 
-                                                        component={Link} 
+                                                    <ActionIcon
+                                                        variant="light"
+                                                        style={{
+                                                            background: 'rgba(59,130,246,0.1)',
+                                                            color: '#3b82f6',
+                                                            border: '1px solid rgba(59,130,246,0.2)',
+                                                        }}
+                                                        component={Link}
                                                         href={`/admin/customers/${customer.id}`}
                                                     >
                                                         <Eye size={16} />
                                                     </ActionIcon>
                                                 </Tooltip>
-                                                
-                                                <Menu shadow="md" width={200} position="bottom-end">
+                                                <Menu shadow="md" width={200} position="bottom-end" transitionProps={{ transition: 'pop-top-right' }}>
                                                     <Menu.Target>
-                                                        <ActionIcon variant="subtle" color="gray">
+                                                        <ActionIcon variant="subtle" style={{ color: 'rgba(255,255,255,0.4)' }}>
                                                             <MoreVertical size={16} />
                                                         </ActionIcon>
                                                     </Menu.Target>
 
-                                                    <Menu.Dropdown>
-                                                        <Menu.Item 
+                                                    <Menu.Dropdown
+                                                        style={{
+                                                            background: '#111',
+                                                            border: '1px solid rgba(255,255,255,0.08)',
+                                                            borderRadius: 10,
+                                                        }}
+                                                    >
+                                                        <Menu.Label style={{ color: 'rgba(255,255,255,0.3)', fontSize: 11, letterSpacing: '0.08em' }}>
+                                                            Actions
+                                                        </Menu.Label>
+                                                        <Menu.Item
                                                             leftSection={<MessageSquare size={14} />}
                                                             onClick={() => window.open(`https://wa.me/${customer.phone.replace(/\D/g,'')}`, '_blank')}
                                                         >
                                                             WhatsApp Contact
                                                         </Menu.Item>
-                                                        <Menu.Divider />
                                                         {customer.status === 'suspended' ? (
-                                                            <Menu.Item 
-                                                                color="green" 
-                                                                leftSection={<Check size={14} />}
+                                                            <Menu.Item
+                                                                color="green"
                                                                 onClick={() => toggleStatus(customer)}
                                                             >
                                                                 Activate Customer
                                                             </Menu.Item>
                                                         ) : (
-                                                            <Menu.Item 
-                                                                color="red" 
-                                                                leftSection={<Ban size={14} />}
+                                                            <Menu.Item
+                                                                color="red"
                                                                 onClick={() => toggleStatus(customer)}
                                                             >
                                                                 Suspend Customer
@@ -231,15 +288,22 @@ export default function Customers({ title, customers, filters }: CustomersProps)
                     </Table.ScrollContainer>
 
                     <Group justify="space-between" mt="xl">
-                        <Text size="sm" color="dimmed">
+                        <Text size="sm" style={{ color: 'rgba(255,255,255,0.4)' }}>
                             Showing {customers.data.length} of {customers.total} customers
                         </Text>
-                        <Pagination 
-                            total={customers.last_page} 
-                            value={customers.current_page} 
+                        <Pagination
+                            total={customers.last_page}
+                            value={customers.current_page}
                             onChange={handlePageChange}
-                            color="blue"
                             radius="md"
+                            color="yellow"
+                            styles={{
+                                control: {
+                                    background: 'rgba(255,255,255,0.03)',
+                                    border: '1px solid rgba(255,255,255,0.08)',
+                                    color: 'rgba(255,255,255,0.7)',
+                                }
+                            }}
                         />
                     </Group>
                 </Paper>

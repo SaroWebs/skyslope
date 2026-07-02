@@ -39,24 +39,24 @@ interface Tour {
     id: number;
     title: string;
     description: string;
-    price: number;
+    price?: number;
+    price_per_person?: number;
     available_from: string;
     available_to: string;
     itineraries_count?: number;
-    guides: Array<{
+    guides?: Array<{
         id: number;
-        user: {
-            id: number;
-            name: string;
-        };
     }>;
-    drivers: Array<{
+    drivers?: Array<{
         id: number;
-        driver: {
-            id: number;
-            name: string;
-        };
     }>;
+    schedules?: Array<{
+        id: number;
+        driver_assignments?: Array<{
+            id: number;
+        }>;
+    }>;
+    is_active?: boolean;
 }
 
 interface ToursProps {
@@ -72,6 +72,18 @@ interface ToursProps {
 
 export default function Tours({ title, tours }: ToursProps) {
     const { url } = usePage();
+    const getTourPrice = (tour: Tour) => Number(tour.price_per_person ?? tour.price ?? 0);
+    const getDriverCount = (tour: Tour) => {
+        if (Array.isArray(tour.drivers)) {
+            return tour.drivers.length;
+        }
+
+        return (tour.schedules ?? []).reduce((count, schedule) => (
+            count + (schedule.driver_assignments?.length ?? 0)
+        ), 0);
+    };
+    const formatDate = (value?: string) => value ? new Date(value).toLocaleDateString() : 'Not scheduled';
+
     return (
         <AdminLayout title={title}>
             <Head title="Tour Management" />
@@ -134,7 +146,7 @@ export default function Tours({ title, tours }: ToursProps) {
                                         <Table.Td>
                                             <Group gap={4}>
                                                 <IndianRupee size={14} />
-                                                <Text size="sm" fw={700}>{Number(tour.price).toLocaleString()}</Text>
+                                                <Text size="sm" fw={700}>{getTourPrice(tour).toLocaleString()}</Text>
                                             </Group>
                                         </Table.Td>
                                         <Table.Td>
@@ -144,22 +156,24 @@ export default function Tours({ title, tours }: ToursProps) {
                                                     <Text size="xs" fw={500}>{tour.itineraries_count || 0} Day(s)</Text>
                                                 </Group>
                                                 <Text size="xs" color="dimmed">
-                                                    {new Date(tour.available_from).toLocaleDateString()} - {new Date(tour.available_to).toLocaleDateString()}
+                                                    {formatDate(tour.available_from)} - {formatDate(tour.available_to)}
                                                 </Text>
                                             </Stack>
                                         </Table.Td>
                                         <Table.Td>
                                             <Group gap="xs">
                                                 <Tooltip label="Assigned Guides">
-                                                    <Badge variant="light" leftSection={<Users size={12} />}>{tour.guides.length}</Badge>
+                                                    <Badge variant="light" leftSection={<Users size={12} />}>{tour.guides?.length ?? 0}</Badge>
                                                 </Tooltip>
                                                 <Tooltip label="Assigned Drivers">
-                                                    <Badge variant="light" color="teal" leftSection={<CarIcon size={12} />}>{tour.drivers.length}</Badge>
+                                                    <Badge variant="light" color="teal" leftSection={<CarIcon size={12} />}>{getDriverCount(tour)}</Badge>
                                                 </Tooltip>
                                             </Group>
                                         </Table.Td>
                                         <Table.Td>
-                                            <Badge color="green" variant="dot">Active</Badge>
+                                            <Badge color={tour.is_active === false ? 'gray' : 'green'} variant="dot">
+                                                {tour.is_active === false ? 'Inactive' : 'Active'}
+                                            </Badge>
                                         </Table.Td>
                                         <Table.Td>
                                             <Group gap={4} justify="flex-end">

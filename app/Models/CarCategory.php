@@ -91,6 +91,18 @@ class CarCategory extends Model
             + ($extraKm * $this->extra_km_charge);
     }
 
+    public function calculatePrice(int $days, float $distanceKm = 0): array
+    {
+        $basePrice = (float) $this->base_price_per_day * max(1, $days);
+        $distancePrice = max(0, $distanceKm) * (float) $this->extra_km_charge;
+
+        return [
+            'base_price' => round($basePrice, 2),
+            'distance_price' => round($distancePrice, 2),
+            'subtotal' => round($basePrice + $distancePrice, 2),
+        ];
+    }
+
     /**
      * Scope a query to only include active categories.
      */

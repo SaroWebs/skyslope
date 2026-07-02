@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\MorphMany;
 use Illuminate\Support\Str;
 
 class TourBooking extends Model
@@ -28,32 +29,50 @@ class TourBooking extends Model
         'subtotal',
         'discount_amount',
         'total_price',
+        'commission_amount',
+        'driver_share',
         'status',
         'payment_status',
         'payment_method',
+        'coupon_code',
         'assigned_guide_id',
         'assigned_driver_id',
         'assigned_vehicle_id',
         'special_requests',
         'internal_notes',
         'cancellation_reason',
+        'cancellation_fee',
+        'refund_amount',
+        'refunded_at',
         'cancelled_at',
+        'current_lat',
+        'current_lng',
+        'last_location_update',
+        'current_stop_index',
         'whatsapp_notification',
         'email_notification',
         'sms_notification',
     ];
 
     protected $casts = [
-        'travel_date'            => 'date',
-        'cancelled_at'           => 'datetime',
-        'whatsapp_notification'  => 'boolean',
-        'email_notification'     => 'boolean',
-        'sms_notification'       => 'boolean',
-        'price_per_adult'        => 'decimal:2',
-        'price_per_child'        => 'decimal:2',
-        'subtotal'               => 'decimal:2',
-        'discount_amount'        => 'decimal:2',
-        'total_price'            => 'decimal:2',
+        'travel_date' => 'date',
+        'cancelled_at' => 'datetime',
+        'refunded_at' => 'datetime',
+        'last_location_update' => 'datetime',
+        'whatsapp_notification' => 'boolean',
+        'email_notification' => 'boolean',
+        'sms_notification' => 'boolean',
+        'price_per_adult' => 'decimal:2',
+        'price_per_child' => 'decimal:2',
+        'subtotal' => 'decimal:2',
+        'discount_amount' => 'decimal:2',
+        'total_price' => 'decimal:2',
+        'commission_amount' => 'decimal:2',
+        'driver_share' => 'decimal:2',
+        'cancellation_fee' => 'decimal:2',
+        'refund_amount' => 'decimal:2',
+        'current_lat' => 'decimal:8',
+        'current_lng' => 'decimal:8',
     ];
 
     protected static function boot()
@@ -69,8 +88,9 @@ class TourBooking extends Model
     public static function generateBookingNumber(): string
     {
         do {
-            $num = 'TOUR' . date('Ymd') . strtoupper(Str::random(4));
+            $num = 'TOUR'.date('Ymd').strtoupper(Str::random(4));
         } while (static::where('booking_number', $num)->exists());
+
         return $num;
     }
 
@@ -111,13 +131,62 @@ class TourBooking extends Model
         return $this->hasMany(TravelStatus::class, 'tour_booking_id');
     }
 
+    public function driverAssignments(): HasMany
+    {
+        return $this->hasMany(TourDriverAssignment::class, 'tour_schedule_id', 'tour_schedule_id');
+    }
+
+    public function refunds(): MorphMany
+    {
+        return $this->morphMany(BookingRefund::class, 'refundable');
+    }
+
+    public function incidents(): MorphMany
+    {
+        return $this->morphMany(BookingIncident::class, 'incidentable');
+    }
+
+    public function auditLogs(): MorphMany
+    {
+        return $this->morphMany(BookingAuditLog::class, 'auditable');
+    }
+
+    public function reviews(): HasMany
+    {
+        return $this->hasMany(TourBookingReview::class, 'tour_booking_id');
+    }
+
+    public function couponRedemptions(): MorphMany
+    {
+        return $this->morphMany(CustomerCouponRedemption::class, 'redeemable');
+    }
+
     // ── Status Helpers ─────────────────────────────────────────────
 
-    public function isPending(): bool    { return $this->status === 'pending'; }
-    public function isConfirmed(): bool  { return $this->status === 'confirmed'; }
-    public function isCompleted(): bool  { return $this->status === 'completed'; }
-    public function isCancelled(): bool  { return $this->status === 'cancelled'; }
-    public function isPaid(): bool       { return $this->payment_status === 'paid'; }
+    public function isPending(): bool
+    {
+        return $this->status === 'pending';
+    }
+
+    public function isConfirmed(): bool
+    {
+        return $this->status === 'confirmed';
+    }
+
+    public function isCompleted(): bool
+    {
+        return $this->status === 'completed';
+    }
+
+    public function isCancelled(): bool
+    {
+        return $this->status === 'cancelled';
+    }
+
+    public function isPaid(): bool
+    {
+        return $this->payment_status === 'paid';
+    }
 
     public function getTotalPax(): int
     {

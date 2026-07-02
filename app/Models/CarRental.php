@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\MorphMany;
 use Illuminate\Support\Str;
 
 class CarRental extends Model
@@ -47,35 +48,44 @@ class CarRental extends Model
         'status',
         'payment_status',
         'payment_method',
+        'coupon_code',
         'special_requests',
         'internal_notes',
         'cancellation_reason',
+        'cancelled_at',
+        'cancellation_fee',
+        'refund_amount',
+        'refunded_at',
         'whatsapp_notification',
         'email_notification',
         'sms_notification',
     ];
 
     protected $casts = [
-        'start_date'            => 'date',
-        'end_date'              => 'date',
-        'last_location_update'  => 'datetime',
-        'base_price'            => 'decimal:2',
-        'distance_km'           => 'decimal:2',
-        'distance_price'        => 'decimal:2',
-        'extras_price'          => 'decimal:2',
-        'discount_amount'       => 'decimal:2',
-        'total_price'           => 'decimal:2',
-        'commission_amount'     => 'decimal:2',
-        'driver_share'          => 'decimal:2',
-        'pickup_lat'            => 'decimal:8',
-        'pickup_lng'            => 'decimal:8',
-        'dropoff_lat'           => 'decimal:8',
-        'dropoff_lng'           => 'decimal:8',
-        'current_lat'           => 'decimal:8',
-        'current_lng'           => 'decimal:8',
+        'start_date' => 'date',
+        'end_date' => 'date',
+        'cancelled_at' => 'datetime',
+        'refunded_at' => 'datetime',
+        'last_location_update' => 'datetime',
+        'base_price' => 'decimal:2',
+        'distance_km' => 'decimal:2',
+        'distance_price' => 'decimal:2',
+        'extras_price' => 'decimal:2',
+        'discount_amount' => 'decimal:2',
+        'total_price' => 'decimal:2',
+        'commission_amount' => 'decimal:2',
+        'driver_share' => 'decimal:2',
+        'cancellation_fee' => 'decimal:2',
+        'refund_amount' => 'decimal:2',
+        'pickup_lat' => 'decimal:8',
+        'pickup_lng' => 'decimal:8',
+        'dropoff_lat' => 'decimal:8',
+        'dropoff_lng' => 'decimal:8',
+        'current_lat' => 'decimal:8',
+        'current_lng' => 'decimal:8',
         'whatsapp_notification' => 'boolean',
-        'email_notification'    => 'boolean',
-        'sms_notification'      => 'boolean',
+        'email_notification' => 'boolean',
+        'sms_notification' => 'boolean',
     ];
 
     protected static function boot()
@@ -91,8 +101,9 @@ class CarRental extends Model
     public static function generateBookingNumber(): string
     {
         do {
-            $num = 'CAR' . date('Ymd') . strtoupper(Str::random(4));
+            $num = 'CAR'.date('Ymd').strtoupper(Str::random(4));
         } while (static::where('booking_number', $num)->exists());
+
         return $num;
     }
 
@@ -123,19 +134,72 @@ class CarRental extends Model
         return $this->hasMany(CarRentalExtra::class, 'car_rental_id');
     }
 
+    public function refunds(): MorphMany
+    {
+        return $this->morphMany(BookingRefund::class, 'refundable');
+    }
+
+    public function incidents(): MorphMany
+    {
+        return $this->morphMany(BookingIncident::class, 'incidentable');
+    }
+
+    public function auditLogs(): MorphMany
+    {
+        return $this->morphMany(BookingAuditLog::class, 'auditable');
+    }
+
+    public function reviews(): HasMany
+    {
+        return $this->hasMany(CarRentalReview::class, 'car_rental_id');
+    }
+
+    public function couponRedemptions(): MorphMany
+    {
+        return $this->morphMany(CustomerCouponRedemption::class, 'redeemable');
+    }
+
     // ── Status Helpers ─────────────────────────────────────────────
 
-    public function isPending(): bool       { return $this->status === 'pending'; }
-    public function isConfirmed(): bool     { return $this->status === 'confirmed'; }
-    public function isDriverAssigned(): bool{ return $this->status === 'driver_assigned'; }
-    public function isInProgress(): bool    { return $this->status === 'in_progress'; }
-    public function isCompleted(): bool     { return $this->status === 'completed'; }
-    public function isCancelled(): bool     { return $this->status === 'cancelled'; }
-    public function isPaid(): bool          { return $this->payment_status === 'paid'; }
+    public function isPending(): bool
+    {
+        return $this->status === 'pending';
+    }
+
+    public function isConfirmed(): bool
+    {
+        return $this->status === 'confirmed';
+    }
+
+    public function isDriverAssigned(): bool
+    {
+        return $this->status === 'driver_assigned';
+    }
+
+    public function isInProgress(): bool
+    {
+        return $this->status === 'in_progress';
+    }
+
+    public function isCompleted(): bool
+    {
+        return $this->status === 'completed';
+    }
+
+    public function isCancelled(): bool
+    {
+        return $this->status === 'cancelled';
+    }
+
+    public function isPaid(): bool
+    {
+        return $this->payment_status === 'paid';
+    }
 
     public function calculateTotalPrice(): float
     {
         $extrasTotal = $this->extras->sum('total_price');
+
         return max(0, ($this->base_price + $this->distance_price + $extrasTotal) - $this->discount_amount);
     }
 }

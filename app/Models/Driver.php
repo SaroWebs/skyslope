@@ -41,6 +41,14 @@ class Driver extends Authenticatable
         'rating',
         'total_rides',
         'total_tours',
+        'can_short_ride',
+        'can_long_ride',
+        'can_tour_lead',
+        'can_tour_transport',
+        'can_rental_delivery',
+        'languages',
+        'expertise_tags',
+        'certification_notes',
         'bank_account_number',
         'bank_account_name',
         'bank_name',
@@ -67,6 +75,13 @@ class Driver extends Authenticatable
             'is_active'          => 'boolean',
             'is_approved'        => 'boolean',
             'rating'             => 'decimal:2',
+            'can_short_ride'      => 'boolean',
+            'can_long_ride'       => 'boolean',
+            'can_tour_lead'       => 'boolean',
+            'can_tour_transport'  => 'boolean',
+            'can_rental_delivery' => 'boolean',
+            'languages'           => 'array',
+            'expertise_tags'      => 'array',
             'password'           => 'hashed',
         ];
     }
@@ -91,6 +106,11 @@ class Driver extends Authenticatable
     public function rideBookings(): HasMany
     {
         return $this->hasMany(RideBooking::class, 'driver_id');
+    }
+
+    public function rideDispatchAttempts(): HasMany
+    {
+        return $this->hasMany(RideDispatchAttempt::class, 'driver_id');
     }
 
     public function assignedRideBookings(): HasMany
@@ -126,4 +146,17 @@ class Driver extends Authenticatable
     public function isDriver(): bool   { return true; }
     public function isCustomer(): bool { return false; }
     public function isGuide(): bool    { return false; }
+
+    public function canHandleService(string $serviceType, ?string $role = null): bool
+    {
+        return match ($serviceType) {
+            'short_ride' => (bool) $this->can_short_ride,
+            'long_ride' => (bool) $this->can_long_ride,
+            'tour' => $role === 'lead'
+                ? (bool) $this->can_tour_lead
+                : ((bool) $this->can_tour_transport || (bool) $this->can_tour_lead),
+            'rental' => (bool) $this->can_rental_delivery,
+            default => false,
+        };
+    }
 }

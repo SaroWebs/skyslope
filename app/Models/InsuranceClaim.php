@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Support\Str;
 
 class InsuranceClaim extends Model
 {
@@ -35,6 +36,15 @@ class InsuranceClaim extends Model
     public function customer(): BelongsTo
     {
         return $this->belongsTo(Customer::class, 'customer_id');
+    }
+
+    public static function generateClaimNumber(): string
+    {
+        do {
+            $number = 'CLM' . date('Ymd') . strtoupper(Str::random(4));
+        } while (static::where('claim_number', $number)->exists());
+
+        return $number;
     }
 
     public function isPending(): bool    { return $this->status === 'pending'; }

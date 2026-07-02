@@ -5,28 +5,38 @@ import AdminLayout from '@/layouts/AdminLayout';
 interface Place {
     id: number;
     name: string;
-    description: string;
-    lng: number | null;
-    lat: number | null;
-    status: string;
+    description: string | null;
+    short_description: string | null;
+    location: string | null;
+    city: string | null;
+    state: string | null;
+    country: string | null;
+    longitude: number | string | null;
+    latitude: number | string | null;
+    tags: string[] | null;
+    google_place_id: string | null;
+    google_rating: number | string | null;
+    google_review_count: number | null;
+    google_synced_at: string | null;
+    is_active: boolean;
+    is_featured: boolean;
     media: Array<{
         id: number;
-        file_path: string;
-        file_type: string;
-        description: string | null;
+        path: string;
+        type: string;
+        caption: string | null;
     }>;
 }
 
 interface ShowPlaceProps {
     title: string;
-    user: any;
     place: Place;
 }
 
-export default function Show({ title, user, place }: ShowPlaceProps) {
+export default function Show({ title, place }: ShowPlaceProps) {
     const { data, setData, post, processing, errors, reset } = useForm({
         file: null as File | null,
-        description: '',
+        caption: '',
     });
 
     const handleSubmit = (e: React.FormEvent) => {
@@ -79,19 +89,47 @@ export default function Show({ title, user, place }: ShowPlaceProps) {
                                 </div>
                                 <div>
                                     <dt className="text-sm font-medium text-gray-500">Description</dt>
-                                    <dd className="text-sm text-gray-900">{place.description}</dd>
+                                    <dd className="text-sm text-gray-900">{place.description || 'N/A'}</dd>
                                 </div>
                                 <div>
-                                    <dt className="text-sm font-medium text-gray-500">Longitude</dt>
-                                    <dd className="text-sm text-gray-900">{place.lng || 'N/A'}</dd>
+                                    <dt className="text-sm font-medium text-gray-500">Short Description</dt>
+                                    <dd className="text-sm text-gray-900">{place.short_description || 'N/A'}</dd>
                                 </div>
                                 <div>
-                                    <dt className="text-sm font-medium text-gray-500">Latitude</dt>
-                                    <dd className="text-sm text-gray-900">{place.lat || 'N/A'}</dd>
+                                    <dt className="text-sm font-medium text-gray-500">Location</dt>
+                                    <dd className="text-sm text-gray-900">{place.location || 'N/A'}</dd>
                                 </div>
                                 <div>
-                                    <dt className="text-sm font-medium text-gray-500">Status</dt>
-                                    <dd className="text-sm text-gray-900 capitalize">{place.status}</dd>
+                                    <dt className="text-sm font-medium text-gray-500">Coordinates</dt>
+                                    <dd className="text-sm text-gray-900">
+                                        {place.latitude && place.longitude ? `${place.latitude}, ${place.longitude}` : 'N/A'}
+                                    </dd>
+                                </div>
+                                <div>
+                                    <dt className="text-sm font-medium text-gray-500">Google Place ID</dt>
+                                    <dd className="text-sm text-gray-900">{place.google_place_id || 'N/A'}</dd>
+                                </div>
+                                <div>
+                                    <dt className="text-sm font-medium text-gray-500">Google Rating Cache</dt>
+                                    <dd className="text-sm text-gray-900">
+                                        {place.google_rating || 'N/A'} ({place.google_review_count || 0} reviews)
+                                    </dd>
+                                </div>
+                                <div>
+                                    <dt className="text-sm font-medium text-gray-500">Last Google Sync</dt>
+                                    <dd className="text-sm text-gray-900">
+                                        {place.google_synced_at ? new Date(place.google_synced_at).toLocaleString() : 'Never'}
+                                    </dd>
+                                </div>
+                                <div>
+                                    <dt className="text-sm font-medium text-gray-500">Tags</dt>
+                                    <dd className="text-sm text-gray-900">{place.tags?.join(', ') || 'N/A'}</dd>
+                                </div>
+                                <div>
+                                    <dt className="text-sm font-medium text-gray-500">Catalog Status</dt>
+                                    <dd className="text-sm text-gray-900">
+                                        {place.is_active ? 'Active' : 'Inactive'}{place.is_featured ? ' / Featured' : ''}
+                                    </dd>
                                 </div>
                             </dl>
                         </div>
@@ -115,17 +153,17 @@ export default function Show({ title, user, place }: ShowPlaceProps) {
                                 </div>
 
                                 <div>
-                                    <label htmlFor="description" className="block text-sm font-medium text-gray-700">
-                                        Description (Optional)
+                                    <label htmlFor="caption" className="block text-sm font-medium text-gray-700">
+                                        Caption (Optional)
                                     </label>
                                     <input
                                         type="text"
-                                        id="description"
-                                        value={data.description}
-                                        onChange={(e) => setData('description', e.target.value)}
+                                        id="caption"
+                                        value={data.caption}
+                                        onChange={(e) => setData('caption', e.target.value)}
                                         className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
                                     />
-                                    {errors.description && <div className="text-red-600 text-sm mt-1">{errors.description}</div>}
+                                    {errors.caption && <div className="text-red-600 text-sm mt-1">{errors.caption}</div>}
                                 </div>
 
                                 <button
@@ -145,20 +183,20 @@ export default function Show({ title, user, place }: ShowPlaceProps) {
                             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                                 {place.media.map((media) => (
                                     <div key={media.id} className="border border-gray-200 rounded-lg p-4">
-                                        {media.file_type === 'image' ? (
+                                        {media.type === 'image' ? (
                                             <img
-                                                src={`/storage/${media.file_path}`}
-                                                alt={media.description || 'Media'}
+                                                src={`/storage/${media.path}`}
+                                                alt={media.caption || 'Media'}
                                                 className="w-full h-32 object-cover rounded-md mb-2"
                                             />
                                         ) : (
                                             <video
-                                                src={`/storage/${media.file_path}`}
+                                                src={`/storage/${media.path}`}
                                                 className="w-full h-32 object-cover rounded-md mb-2"
                                                 controls
                                             />
                                         )}
-                                        <p className="text-sm text-gray-600">{media.description || 'No description'}</p>
+                                        <p className="text-sm text-gray-600">{media.caption || 'No caption'}</p>
                                         <button
                                             onClick={() => handleDeleteMedia(media.id)}
                                             className="mt-2 bg-red-600 text-white px-3 py-1 rounded-md hover:bg-red-700 text-sm font-medium"

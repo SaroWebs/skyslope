@@ -21,10 +21,8 @@ import {
     Plus, 
     Search, 
     MapPin, 
-    Eye, 
     Pencil, 
     Image as ImageIcon,
-    ExternalLink,
     Map as MapIcon,
     Camera,
     Info
@@ -34,14 +32,15 @@ interface Place {
     id: number;
     name: string;
     description: string;
-    lng: number | null;
-    lat: number | null;
-    status: string;
+    longitude: number | string | null;
+    latitude: number | string | null;
+    is_active: boolean;
+    is_featured: boolean;
     media: Array<{
         id: number;
-        file_path: string;
-        file_type: string;
-        description: string | null;
+        path: string;
+        type: string;
+        caption: string | null;
     }>;
 }
 
@@ -89,7 +88,7 @@ export default function Places({ title, places }: PlacesProps) {
                             <Card.Section>
                                 {place.media && place.media.length > 0 ? (
                                     <Image
-                                        src={`/storage/${place.media[0].file_path}`}
+                                        src={`/storage/${place.media[0].path}`}
                                         height={180}
                                         alt={place.name}
                                         fallbackSrc="https://placehold.co/600x400?text=No+Image"
@@ -109,10 +108,11 @@ export default function Places({ title, places }: PlacesProps) {
                             <Stack mt="md" gap="xs">
                                 <Group justify="space-between">
                                     <Text fw={700} size="lg" lineClamp={1}>{place.name}</Text>
-                                    <Badge color={place.status === 'available' ? 'green' : 'gray'}>
-                                        {place.status}
+                                    <Badge color={place.is_active ? 'green' : 'gray'}>
+                                        {place.is_active ? 'active' : 'inactive'}
                                     </Badge>
                                 </Group>
+                                {place.is_featured && <Badge variant="light" color="yellow">Featured</Badge>}
 
                                 <Text size="sm" color="dimmed" lineClamp={2} style={{ height: '40px' }}>
                                     {place.description}
@@ -122,7 +122,7 @@ export default function Places({ title, places }: PlacesProps) {
                                     <Group gap={4}>
                                         <MapPin size={14} color="gray" />
                                         <Text size="xs" color="dimmed">
-                                            {place.lat ? `${parseFloat(place.lat.toString()).toFixed(4)}, ${parseFloat(place.lng?.toString() || '0').toFixed(4)}` : 'No Coordinates'}
+                                            {place.latitude ? `${parseFloat(place.latitude.toString()).toFixed(4)}, ${parseFloat(place.longitude?.toString() || '0').toFixed(4)}` : 'No Coordinates'}
                                         </Text>
                                     </Group>
                                     <Group gap={4}>
