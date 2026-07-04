@@ -1,6 +1,8 @@
 import React, { useMemo, useState } from 'react';
 import { Head, Link, router } from '@inertiajs/react';
 import AdminLayout from '@/layouts/AdminLayout';
+import { useAppNotifications } from '@/app';
+import axios from 'axios';
 import { 
     Grid, 
     Paper, 
@@ -89,9 +91,11 @@ interface Props {
 }
 
 export default function RideBookingDetails({ title = 'Ride Booking Details', booking, drivers, can_undo_last_change = false }: Props) {
+    const addNotification = useAppNotifications();
     const [selectedDriverId, setSelectedDriverId] = useState<string>(booking.driver_id ? String(booking.driver_id) : '');
     const [assigningDriver, setAssigningDriver] = useState(false);
     const [undoing, setUndoing] = useState(false);
+    const [driverError, setDriverError] = useState<string | null>(null);
 
     const canAssignDriver = !['completed', 'cancelled'].includes(booking.status);
     const selectedDriver = useMemo(
@@ -102,11 +106,31 @@ export default function RideBookingDetails({ title = 'Ride Booking Details', boo
     const handleAssignDriver = () => {
         if (!selectedDriverId) return;
         setAssigningDriver(true);
-        router.post(`/admin/ride-bookings/${booking.id}/assign-driver`, {
+        setDriverError(null);
+
+        axios.post(`/admin/ride-bookings/${booking.id}/assign-driver`, {
             driver_id: Number(selectedDriverId)
-        }, {
-            onFinish: () => setAssigningDriver(false),
-            preserveScroll: true
+        })
+        .then((response) => {
+            addNotification(response.data.message || 'Driver assigned successfully.', 'success');
+            router.reload();
+        })
+        .catch((error) => {
+            const errorData = error.response?.data;
+            if (errorData?.errors?.driver_id) {
+                const errMsg = Array.isArray(errorData.errors.driver_id) 
+                    ? errorData.errors.driver_id[0] 
+                    : errorData.errors.driver_id;
+                setDriverError(errMsg);
+                addNotification(errMsg, 'error');
+            } else if (errorData?.message) {
+                addNotification(errorData.message, 'error');
+            } else {
+                addNotification('Failed to assign driver.', 'error');
+            }
+        })
+        .finally(() => {
+            setAssigningDriver(false);
         });
     };
 
@@ -250,7 +274,7 @@ export default function RideBookingDetails({ title = 'Ride Booking Details', boo
 
                                 {booking.special_requests && (
                                     <>
-                                        <Divider my="lg" dashed />
+                                        <Divider my="lg" />
                                         <Alert variant="light" color="indigo" title="Special Requests" icon={<AlertCircle size={16} />}>
                                             <Text size="sm">{booking.special_requests}</Text>
                                         </Alert>
@@ -296,8 +320,12 @@ export default function RideBookingDetails({ title = 'Ride Booking Details', boo
                                             disabled: !d.is_available && d.id !== booking.driver_id
                                         }))}
                                         value={selectedDriverId}
-                                        onChange={(val) => setSelectedDriverId(val || '')}
+                                        onChange={(val) => {
+                                            setSelectedDriverId(val || '');
+                                            setDriverError(null);
+                                        }}
                                         disabled={!canAssignDriver || assigningDriver}
+                                        error={driverError}
                                         searchable
                                         radius="md"
                                     />

@@ -4,6 +4,8 @@ use App\Http\Controllers\AdminController;
 use App\Http\Controllers\AdminCouponController;
 use App\Http\Controllers\AdminCustomerController;
 use App\Http\Controllers\AdminDriverController;
+use App\Http\Controllers\AdminRoleController;
+use App\Http\Controllers\AdminFinancialController;
 use App\Http\Controllers\AdminVehicleController;
 use App\Http\Controllers\AuthController;
 use App\Models\CarRental;
@@ -109,6 +111,11 @@ Route::middleware(['auth', 'role:admin'])->prefix('admin')->name('admin.')->grou
     Route::post('/logout', [AuthController::class, 'logout'])->name('logout');
     Route::get('/dashboard', [AdminController::class, 'dashboard'])->name('dashboard');
 
+    // Profile routes
+    Route::get('/profile', [AdminController::class, 'profile'])->name('profile');
+    Route::put('/profile', [AdminController::class, 'updateProfile'])->name('profile.update');
+    Route::put('/profile/password', [AdminController::class, 'changePassword'])->name('profile.password');
+
     Route::controller(AdminCouponController::class)->group(function () {
         Route::get('/coupons', 'index')->name('coupons');
         Route::post('/coupons', 'store')->name('coupons.store');
@@ -125,10 +132,33 @@ Route::middleware(['auth', 'role:admin'])->prefix('admin')->name('admin.')->grou
     Route::put('/users/{user}', [AdminController::class, 'updateUser'])->name('users.update');
     Route::delete('/users/{user}', [AdminController::class, 'deleteUser'])->name('users.delete');
 
+    // Role & Permission Management
+    Route::controller(AdminRoleController::class)->prefix('roles')->name('roles.')->group(function () {
+        Route::get('/', 'index')->name('index');
+        Route::get('/create', 'create')->name('create');
+        Route::post('/', 'store')->name('store');
+        Route::get('/{role}', 'show')->name('show');
+        Route::get('/{role}/edit', 'edit')->name('edit');
+        Route::put('/{role}', 'update')->name('update');
+        Route::delete('/{role}', 'destroy')->name('destroy');
+    });
+
+    // Financial Management
+    Route::controller(AdminFinancialController::class)->prefix('financials')->name('financials.')->group(function () {
+        Route::get('/wallets', 'wallets')->name('wallets');
+        Route::post('/wallets/{wallet}/adjust', 'adjustWallet')->name('wallets.adjust');
+        Route::get('/withdrawals', 'withdrawals')->name('withdrawals');
+        Route::post('/withdrawals/{withdrawal}/approve', 'approveWithdrawal')->name('withdrawals.approve');
+        Route::post('/withdrawals/{withdrawal}/reject', 'rejectWithdrawal')->name('withdrawals.reject');
+        Route::post('/withdrawals/{withdrawal}/complete', 'completeWithdrawal')->name('withdrawals.complete');
+    });
+
     // Customer Management (New)
     Route::controller(AdminCustomerController::class)->group(function () {
         Route::get('/customers', 'index')->name('customers');
         Route::get('/customers/{customer}', 'show')->name('customers.show');
+        Route::get('/customers/{customer}/edit', 'edit')->name('customers.edit');
+        Route::put('/customers/{customer}', 'update')->name('customers.update');
         Route::post('/customers/{customer}/toggle-status', 'toggleStatus')->name('customers.toggle-status');
     });
 

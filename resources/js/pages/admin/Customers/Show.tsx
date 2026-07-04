@@ -98,7 +98,14 @@ export default function CustomerShow({ title, customer, stats }: CustomerShowPro
                         >
                             {customer.status === 'active' ? 'Suspend' : 'Activate'}
                         </Button>
-                        <Button variant="filled" color="blue">Edit Details</Button>
+                        <Button 
+                            variant="filled" 
+                            color="blue"
+                            component={Link}
+                            href={`/admin/customers/${customer.id}/edit`}
+                        >
+                            Edit Details
+                        </Button>
                     </Group>
                 </Group>
 
@@ -153,6 +160,45 @@ export default function CustomerShow({ title, customer, stats }: CustomerShowPro
                                             <Text size="sm" fw={500}>{new Date(customer.created_at).toLocaleDateString()}</Text>
                                         </div>
                                     </Group>
+
+                                    {customer.date_of_birth && (
+                                        <Group gap="md">
+                                            <ThemeIcon variant="light" color="gray" radius="md">
+                                                <Calendar size={16} />
+                                            </ThemeIcon>
+                                            <div>
+                                                <Text size="xs" color="dimmed">Date of Birth</Text>
+                                                <Text size="sm" fw={500}>{new Date(customer.date_of_birth).toLocaleDateString()}</Text>
+                                            </div>
+                                        </Group>
+                                    )}
+
+                                    {customer.gender && (
+                                        <Group gap="md">
+                                            <ThemeIcon variant="light" color="gray" radius="md">
+                                                <User size={16} />
+                                            </ThemeIcon>
+                                            <div>
+                                                <Text size="xs" color="dimmed">Gender</Text>
+                                                <Text size="sm" fw={500} style={{ textTransform: 'capitalize' }}>{customer.gender}</Text>
+                                            </div>
+                                        </Group>
+                                    )}
+
+                                    {customer.emergency_contact_name && (
+                                        <Group gap="md">
+                                            <ThemeIcon variant="light" color="gray" radius="md">
+                                                <User size={16} />
+                                            </ThemeIcon>
+                                            <div>
+                                                <Text size="xs" color="dimmed">Emergency Contact</Text>
+                                                <Text size="sm" fw={500}>
+                                                    {customer.emergency_contact_name} 
+                                                    {customer.emergency_contact_phone && ` (${customer.emergency_contact_phone})`}
+                                                </Text>
+                                            </div>
+                                        </Group>
+                                    )}
                                 </Stack>
                             </Paper>
 

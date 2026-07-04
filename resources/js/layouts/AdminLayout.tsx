@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Link, usePage } from '@inertiajs/react';
+import { Link, useForm, usePage } from '@inertiajs/react';
 import { Head } from '@inertiajs/react';
 import {
     AppShell,
@@ -10,6 +10,10 @@ import {
     ScrollArea,
     Avatar,
     Menu,
+    Modal,
+    PasswordInput,
+    Button,
+    Stack,
     rem,
     Box,
     Collapse,
@@ -35,6 +39,14 @@ import {
     UserCircle,
     Activity,
     TicketPercent,
+    UserCheck,
+    Truck,
+    ShieldCheck,
+    Lock,
+    Sparkles,
+    Copy,
+    Check,
+    Coins,
 } from 'lucide-react';
 
 /* ─────────────────────────────────────────────
@@ -438,6 +450,60 @@ const AdminLayout = ({ children, title = 'Admin Panel' }: AdminLayoutProps) => {
     const [opened, { toggle }] = useDisclosure();
     const { url, props } = usePage();
     const user = (props.auth as any)?.user || { name: 'Admin', email: 'admin@example.com' };
+    const flash = (props as any)?.flash as { success?: string; error?: string } | undefined;
+
+    const [pwdOpened, { open: openPwd, close: closePwd }] = useDisclosure(false);
+    const { data: pwdData, setData: setPwdData, put: putPwd, processing: pwdProcessing, errors: pwdErrors, reset: resetPwd, wasSuccessful } = useForm({
+        current_password: '',
+        password: '',
+        password_confirmation: '',
+    });
+
+    const [generatedPwd, setGeneratedPwd] = useState('');
+    const [copied, setCopied] = useState(false);
+
+    const generateStrongPassword = () => {
+        const charset = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*()_+~`|}{[]:;?><,./-=';
+        const lower = 'abcdefghijklmnopqrstuvwxyz';
+        const upper = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+        const num   = '0123456789';
+        const spec  = '!@#$%^&*()_+';
+        let pwd = [
+            lower.charAt(Math.floor(Math.random() * lower.length)),
+            upper.charAt(Math.floor(Math.random() * upper.length)),
+            num.charAt(Math.floor(Math.random() * num.length)),
+            spec.charAt(Math.floor(Math.random() * spec.length)),
+        ];
+        for (let i = 4; i < 16; i++) pwd.push(charset.charAt(Math.floor(Math.random() * charset.length)));
+        return pwd.sort(() => 0.5 - Math.random()).join('');
+    };
+
+    const handleGeneratePassword = () => {
+        const pwd = generateStrongPassword();
+        setPwdData(prev => ({ ...prev, password: pwd, password_confirmation: pwd }));
+        setGeneratedPwd(pwd);
+        setCopied(false);
+    };
+
+    const handleCopyPassword = () => {
+        if (generatedPwd) {
+            navigator.clipboard.writeText(generatedPwd);
+            setCopied(true);
+            setTimeout(() => setCopied(false), 2000);
+        }
+    };
+
+    const handlePasswordSubmit = (e: React.FormEvent) => {
+        e.preventDefault();
+        putPwd('/admin/profile/password', {
+            onSuccess: () => {
+                resetPwd();
+                setGeneratedPwd('');
+                setCopied(false);
+                closePwd();
+            },
+        });
+    };
 
     const navigation: NavigationItem[] = [
         {
@@ -450,15 +516,22 @@ const AdminLayout = ({ children, title = 'Admin Panel' }: AdminLayoutProps) => {
             name: 'Management',
             href: '#',
             icon: Users,
-            current:
-                url.startsWith('/admin/users') ||
-                url.startsWith('/admin/customers') ||
-                url.startsWith('/admin/drivers'),
+            current: url.startsWith('/admin/users'),
             children: [
                 { name: 'System Users', href: '/admin/users' },
-                { name: 'Customers', href: '/admin/customers' },
-                { name: 'Drivers', href: '/admin/drivers' },
             ],
+        },
+        {
+            name: 'Customers',
+            href: '/admin/customers',
+            icon: UserCheck,
+            current: url.startsWith('/admin/customers'),
+        },
+        {
+            name: 'Drivers',
+            href: '/admin/drivers',
+            icon: Truck,
+            current: url.startsWith('/admin/drivers'),
         },
         { name: 'Ride Bookings', href: '/admin/ride-bookings', icon: Car, current: url.startsWith('/admin/ride-bookings') },
         { name: 'Tour Packages', href: '/admin/tours', icon: Map, current: url.startsWith('/admin/tours') },
@@ -481,7 +554,28 @@ const AdminLayout = ({ children, title = 'Admin Panel' }: AdminLayoutProps) => {
                 { name: 'Destinations', href: '/admin/destinations' },
             ],
         },
-        { name: 'Settings', href: '/admin/settings', icon: Settings, current: url.startsWith('/admin/settings') },
+        {
+            name: 'Financials',
+            href: '#',
+            icon: Coins,
+            current: url.startsWith('/admin/financials'),
+            children: [
+                { name: 'Driver Wallets', href: '/admin/financials/wallets' },
+                { name: 'Payout Requests', href: '/admin/financials/withdrawals' },
+            ],
+        },
+        {
+            name: 'Configuration',
+            href: '#',
+            icon: ShieldCheck,
+            current:
+                url.startsWith('/admin/roles') ||
+                url.startsWith('/admin/settings'),
+            children: [
+                { name: 'System Settings', href: '/admin/settings' },
+                { name: 'Roles & Permissions', href: '/admin/roles' },
+            ],
+        },
     ];
 
     return (
@@ -629,15 +723,26 @@ const AdminLayout = ({ children, title = 'Admin Panel' }: AdminLayoutProps) => {
                                     </Menu.Label>
                                     <Menu.Item
                                         leftSection={<UserCircle size={rem(14)} color="rgba(255,255,255,0.5)" />}
+                                        component={Link}
+                                        href="/admin/profile"
                                         style={{ color: 'rgba(255,255,255,0.7)', borderRadius: 8 }}
                                     >
-                                        Profile
+                                        My Profile
+                                    </Menu.Item>
+                                    <Menu.Item
+                                        leftSection={<Lock size={rem(14)} color="rgba(255,255,255,0.5)" />}
+                                        style={{ color: 'rgba(255,255,255,0.7)', borderRadius: 8 }}
+                                        onClick={openPwd}
+                                    >
+                                        Change Password
                                     </Menu.Item>
                                     <Menu.Item
                                         leftSection={<Settings size={rem(14)} color="rgba(255,255,255,0.5)" />}
+                                        component={Link}
+                                        href="/admin/settings"
                                         style={{ color: 'rgba(255,255,255,0.7)', borderRadius: 8 }}
                                     >
-                                        Settings
+                                        System Settings
                                     </Menu.Item>
                                     <Menu.Divider style={{ borderColor: 'rgba(255,255,255,0.07)' }} />
                                     <Menu.Item
@@ -774,6 +879,122 @@ const AdminLayout = ({ children, title = 'Admin Panel' }: AdminLayoutProps) => {
                     </Box>
                 </AppShell.Main>
             </AppShell>
+
+            {/* ── Change Password Modal ── */}
+            <Modal
+                opened={pwdOpened}
+                onClose={closePwd}
+                title={
+                    <Group gap="sm">
+                        <Lock size={18} style={{ color: '#fbbf24' }} />
+                        <Text fw={700} style={{ color: 'rgba(255,255,255,0.9)' }}>Change Password</Text>
+                    </Group>
+                }
+                centered
+                radius="md"
+                styles={{
+                    content: { background: '#111', border: '1px solid rgba(255,255,255,0.08)' },
+                    header: { background: '#111', borderBottom: '1px solid rgba(255,255,255,0.06)' },
+                    close: { color: 'rgba(255,255,255,0.4)' },
+                }}
+            >
+                <form onSubmit={handlePasswordSubmit}>
+                    <Stack gap="md" pt="xs">
+                        <PasswordInput
+                            label="Current Password"
+                            placeholder="Your current password"
+                            required
+                            value={pwdData.current_password}
+                            onChange={(e) => setPwdData('current_password', e.currentTarget.value)}
+                            error={pwdErrors.current_password}
+                            radius="md"
+                            styles={{
+                                input: { background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', color: 'rgba(255,255,255,0.85)' },
+                                label: { color: 'rgba(255,255,255,0.6)', marginBottom: 6 },
+                            }}
+                        />
+                        <PasswordInput
+                            label="New Password"
+                            placeholder="At least 8 characters"
+                            required
+                            value={pwdData.password}
+                            onChange={(e) => setPwdData('password', e.currentTarget.value)}
+                            error={pwdErrors.password}
+                            radius="md"
+                            styles={{
+                                input: { background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', color: 'rgba(255,255,255,0.85)' },
+                                label: { color: 'rgba(255,255,255,0.6)', marginBottom: 6 },
+                            }}
+                            rightSection={
+                                <ActionIcon
+                                    variant="subtle"
+                                    size="sm"
+                                    title="Generate strong password"
+                                    onClick={handleGeneratePassword}
+                                    style={{ color: '#fbbf24' }}
+                                >
+                                    <Sparkles size={14} />
+                                </ActionIcon>
+                            }
+                        />
+                        <PasswordInput
+                            label="Confirm New Password"
+                            placeholder="Repeat new password"
+                            required
+                            value={pwdData.password_confirmation}
+                            onChange={(e) => setPwdData('password_confirmation', e.currentTarget.value)}
+                            error={pwdErrors.password_confirmation}
+                            radius="md"
+                            styles={{
+                                input: { background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', color: 'rgba(255,255,255,0.85)' },
+                                label: { color: 'rgba(255,255,255,0.6)', marginBottom: 6 },
+                            }}
+                        />
+
+                        {/* Generated password strip */}
+                        {generatedPwd && (
+                            <div style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'space-between',
+                                gap: 10,
+                                padding: '10px 14px',
+                                borderRadius: 10,
+                                background: 'rgba(251,191,36,0.07)',
+                                border: '1px solid rgba(251,191,36,0.18)',
+                            }}>
+                                <div style={{ flex: 1, minWidth: 0 }}>
+                                    <Text size="10px" style={{ color: 'rgba(255,255,255,0.4)', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 2 }}>
+                                        Generated Password
+                                    </Text>
+                                    <Text size="sm" fw={700} style={{ color: '#fbbf24', fontFamily: 'monospace', wordBreak: 'break-all' }}>
+                                        {generatedPwd}
+                                    </Text>
+                                </div>
+                                <Button
+                                    size="xs"
+                                    variant="subtle"
+                                    color="yellow"
+                                    leftSection={copied ? <Check size={13} /> : <Copy size={13} />}
+                                    onClick={handleCopyPassword}
+                                    style={{ flexShrink: 0, color: copied ? '#10b981' : '#fbbf24' }}
+                                >
+                                    {copied ? 'Copied!' : 'Copy'}
+                                </Button>
+                            </div>
+                        )}
+                        <Button
+                            type="submit"
+                            radius="md"
+                            loading={pwdProcessing}
+                            fullWidth
+                            style={{ background: 'linear-gradient(135deg, #fbbf24, #d97706)', border: 'none', color: '#000', fontWeight: 600 }}
+                        >
+                            Update Password
+                        </Button>
+                    </Stack>
+                </form>
+            </Modal>
         </>
     );
 };

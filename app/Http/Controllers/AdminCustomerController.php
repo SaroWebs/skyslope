@@ -91,4 +91,46 @@ class AdminCustomerController extends Controller
             "Customer {$customer->name} has been " . ($newStatus === 'suspended' ? 'suspended' : 'activated') . "."
         );
     }
+
+    /**
+     * Show edit customer form.
+     */
+    public function edit(Customer $customer)
+    {
+        return inertia('admin/Customers/Edit', [
+            'title' => 'Edit Customer',
+            'user' => Auth::user(),
+            'customer' => $customer,
+        ]);
+    }
+
+    /**
+     * Update customer details.
+     */
+    public function update(Request $request, Customer $customer)
+    {
+        $request->validate([
+            'name' => 'required|string|max:255',
+            'email' => 'nullable|email|unique:customers,email,' . $customer->id,
+            'phone' => 'required|string|unique:customers,phone,' . $customer->id,
+            'status' => 'required|in:active,suspended',
+            'date_of_birth' => 'nullable|date',
+            'gender' => 'nullable|in:male,female,other',
+            'emergency_contact_name' => 'nullable|string|max:255',
+            'emergency_contact_phone' => 'nullable|string|max:255',
+        ]);
+
+        $customer->update([
+            'name' => $request->name,
+            'email' => $request->email,
+            'phone' => $request->phone,
+            'status' => $request->status,
+            'date_of_birth' => $request->date_of_birth,
+            'gender' => $request->gender,
+            'emergency_contact_name' => $request->emergency_contact_name,
+            'emergency_contact_phone' => $request->emergency_contact_phone,
+        ]);
+
+        return redirect()->route('admin.customers.show', $customer->id)->with('success', 'Customer details updated successfully.');
+    }
 }

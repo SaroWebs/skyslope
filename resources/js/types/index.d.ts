@@ -35,6 +35,42 @@ export interface AdminUser {
     }>;
 }
 
+export interface AdminPermission {
+    id: number;
+    name: string;
+    display_name: string;
+    group: string;
+}
+
+export interface AdminRole {
+    id: number;
+    name: string;
+    display_name: string;
+    description?: string;
+    permissions: AdminPermission[];
+    users_count?: number;
+    permissions_count?: number;
+    users?: AdminUser[];
+}
+
+export interface RolesIndexProps {
+    title: string;
+    roles: {
+        data: AdminRole[];
+        current_page: number;
+        last_page: number;
+        per_page: number;
+        total: number;
+    };
+}
+
+export interface RoleFormProps {
+    title: string;
+    permissions: AdminPermission[];
+    grouped_permissions: Record<string, AdminPermission[]>;
+    role?: AdminRole;
+}
+
 export interface User {
     id: number;
     name: string;

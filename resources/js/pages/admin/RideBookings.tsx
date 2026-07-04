@@ -170,11 +170,15 @@ export default function RideBookings({ title, ride_bookings }: RideBookingsProps
                                                 <Stack gap={4}>
                                                     <Group gap={6}>
                                                         <MapPin size={12} color="var(--mantine-color-blue-6)" />
-                                                        <Text size="xs" fw={500} lineClamp={1} maxW={200}>{booking.pickup_location}</Text>
+                                                        <Text size="xs" fw={500} lineClamp={1} className='max-w-[200px]'>
+                                                            {booking.pickup_location}
+                                                        </Text>
                                                     </Group>
                                                     <Group gap={6}>
                                                         <Navigation size={12} color="var(--mantine-color-red-6)" />
-                                                        <Text size="xs" color="dimmed" lineClamp={1} maxW={200}>{booking.dropoff_location || 'Point to Point'}</Text>
+                                                        <Text size="xs" color="dimmed" lineClamp={1} className='max-w-[200px]'>
+                                                            {booking.dropoff_location || 'Point to Point'}
+                                                        </Text>
                                                     </Group>
                                                 </Stack>
                                             </Table.Td>

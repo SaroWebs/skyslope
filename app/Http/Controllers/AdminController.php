@@ -113,6 +113,58 @@ class AdminController extends Controller
     }
 
     /**
+     * Admin profile page
+     */
+    public function profile()
+    {
+        return Inertia::render('admin/Profile', [
+            'title'       => 'My Profile',
+            'user'        => Auth::user(),
+            'target_user' => Auth::user()->load('roles'),
+        ]);
+    }
+
+    /**
+     * Update admin's own profile info
+     */
+    public function updateProfile(Request $request)
+    {
+        $user = Auth::user();
+
+        $request->validate([
+            'name'  => 'required|string|max:255',
+            'email' => 'required|email|unique:users,email,' . $user->id,
+            'phone' => 'required|string|unique:users,phone,' . $user->id,
+        ]);
+
+        $user->update([
+            'name'  => $request->name,
+            'email' => $request->email,
+            'phone' => $request->phone,
+        ]);
+
+        return back()->with('success', 'Profile updated successfully.');
+    }
+
+    /**
+     * Change admin's own password
+     */
+    public function changePassword(Request $request)
+    {
+        $request->validate([
+            'current_password'      => 'required|string|current_password',
+            'password'              => 'required|string|min:8|confirmed',
+            'password_confirmation' => 'required|string',
+        ]);
+
+        Auth::user()->update([
+            'password' => bcrypt($request->password),
+        ]);
+
+        return back()->with('success', 'Password changed successfully.');
+    }
+
+    /**
      * User management
      */
     public function users()
@@ -121,7 +173,7 @@ class AdminController extends Controller
             'title' => 'User Management',
             'user' => Auth::user(),
             'users' => User::with('roles')->paginate(15),
-            'roles' => Role::active()->whereIn('name', ['admin', 'guide'])->get(),
+            'roles' => Role::active()->orderBy('name')->get(),
         ]);
     }
 
@@ -147,7 +199,7 @@ class AdminController extends Controller
         $data = [
             'title' => 'Create User',
             'user' => Auth::user(),
-            'roles' => Role::active()->whereIn('name', ['admin', 'guide'])->get(),
+            'roles' => Role::active()->orderBy('name')->get(),
         ];
 
         return Inertia::render('admin/Users/Create', $data);
@@ -163,7 +215,7 @@ class AdminController extends Controller
             'email' => 'required|email|unique:users',
             'phone' => 'required|string|unique:users',
             'password' => 'required|string|min:8|confirmed',
-            'role' => 'required|in:admin,guide',
+            'role' => 'required|string|exists:roles,name',
         ]);
 
         $user = User::create([
@@ -187,7 +239,7 @@ class AdminController extends Controller
             'title' => 'Edit User',
             'user' => Auth::user(),
             'target_user' => $user->load(['roles']),
-            'roles' => Role::active()->whereIn('name', ['admin', 'guide'])->get(),
+            'roles' => Role::active()->orderBy('name')->get(),
         ];
 
         return Inertia::render('admin/Users/Edit', $data);
@@ -202,7 +254,7 @@ class AdminController extends Controller
             'name' => 'required|string|max:255',
             'email' => 'required|email|unique:users,email,' . $user->id,
             'phone' => 'required|string|unique:users,phone,' . $user->id,
-            'role' => 'required|in:admin,guide',
+            'role' => 'required|string|exists:roles,name',
         ]);
 
         $user->update([
@@ -1817,10 +1869,19 @@ class AdminController extends Controller
      */
     public function assignRideBookingDriver(Request $request, RideBooking $rideBooking)
     {
-        $validated = $request->validate([
+        $validator = \Illuminate\Support\Facades\Validator::make($request->all(), [
             'driver_id' => 'required|exists:drivers,id',
             'vehicle_id' => 'nullable|exists:vehicles,id',
         ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'message' => 'Validation failed.',
+                'errors' => $validator->errors()
+            ], 422);
+        }
+
+        $validated = $validator->validated();
 
         $driver = Driver::findOrFail($validated['driver_id']);
         $dispatchService = app(DriverDispatchService::class);

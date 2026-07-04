@@ -16,6 +16,8 @@ class Customer extends Authenticatable
 
     protected $table = 'customers';
 
+    protected $appends = ['status'];
+
     protected $fillable = [
         'name',
         'email',
@@ -113,5 +115,17 @@ class Customer extends Authenticatable
     public function isGuide(): bool
     {
         return false;
+    }
+
+    // ── Status Accessor/Mutator ─────────────────────────────────────
+
+    public function getStatusAttribute(): string
+    {
+        return $this->is_active ? 'active' : 'suspended';
+    }
+
+    public function setStatusAttribute(string $value): void
+    {
+        $this->attributes['is_active'] = ($value === 'active');
     }
 }
