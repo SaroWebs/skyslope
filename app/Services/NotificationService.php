@@ -187,7 +187,7 @@ class NotificationService
                     if (!empty($user->email) && !empty($content['email'])) {
                         $results['email'] = $this->sendEmail(
                             $user->email,
-                            $content['subject'] ?? 'Notification from SkySlope',
+                            $content['subject'] ?? 'Notification from HappyMiles',
                             $content['email_view'] ?? 'emails.notification',
                             $content['email_data'] ?? ['message' => $content['email']]
                         );
@@ -218,12 +218,12 @@ class NotificationService
      */
     public function sendRideBookingConfirmation(object $user, array $bookingData): array
     {
-        $smsMessage = "SkySlope: Your ride has been booked! Booking #{$bookingData['booking_number']}. " .
+        $smsMessage = "HappyMiles: Your ride has been booked! Booking #{$bookingData['booking_number']}. " .
             "Pickup: {$bookingData['pickup_location']}. " .
             "Scheduled: {$bookingData['scheduled_at']}. " .
             "Fare: ₹{$bookingData['total_fare']}";
 
-        $whatsappMessage = "🚗 *SkySlope Ride Booked!*\n\n" .
+        $whatsappMessage = "🚗 *HappyMiles Ride Booked!*\n\n" .
             "Booking ID: {$bookingData['booking_number']}\n" .
             "Pickup: {$bookingData['pickup_location']}\n" .
             "Drop-off: {$bookingData['dropoff_location']}\n" .
@@ -256,17 +256,17 @@ class NotificationService
             'on_the_way' => 'Your driver is on the way!',
             'arrived' => 'Your driver has arrived at the pickup location.',
             'started' => 'Your ride has started. Have a safe journey!',
-            'completed' => 'Your ride has been completed. Thank you for choosing SkySlope!',
+            'completed' => 'Your ride has been completed. Thank you for choosing HappyMiles!',
             'cancelled' => 'Your ride has been cancelled.',
         ];
 
         $statusMessage = $message ?? ($statusMessages[$status] ?? "Your ride status: {$status}");
 
-        $smsMessage = "SkySlope: {$statusMessage} Booking #{$bookingData['booking_number']}";
+        $smsMessage = "HappyMiles: {$statusMessage} Booking #{$bookingData['booking_number']}";
 
         return $this->notify($user, ['sms', 'whatsapp'], [
             'sms' => $smsMessage,
-            'whatsapp' => "🚗 *SkySlope Update*\n\n{$statusMessage}\n\nBooking: #{$bookingData['booking_number']}",
+            'whatsapp' => "🚗 *HappyMiles Update*\n\n{$statusMessage}\n\nBooking: #{$bookingData['booking_number']}",
         ]);
     }
 
@@ -280,7 +280,7 @@ class NotificationService
      */
     public function sendDriverAssignmentNotification(object $customer, object $driver, array $bookingData): array
     {
-        $smsMessage = "SkySlope: Driver assigned! {$driver->name} will pick you up. " .
+        $smsMessage = "HappyMiles: Driver assigned! {$driver->name} will pick you up. " .
             "Contact: {$driver->phone}. Booking #{$bookingData['booking_number']}";
 
         $whatsappMessage = "🚗 *Driver Assigned!*\n\n" .
@@ -309,13 +309,13 @@ class NotificationService
         $amount = $transactionData['amount'] ?? 0;
         $balance = $transactionData['balance'] ?? 0;
 
-        $smsMessage = "SkySlope Wallet: {$type} of ₹{$amount}. New balance: ₹{$balance}";
+        $smsMessage = "HappyMiles Wallet: {$type} of ₹{$amount}. New balance: ₹{$balance}";
 
-        $whatsappMessage = "💰 *SkySlope Wallet*\n\n" .
+        $whatsappMessage = "💰 *HappyMiles Wallet*\n\n" .
             "Transaction: {$type}\n" .
             "Amount: ₹{$amount}\n" .
             "New Balance: ₹{$balance}\n\n" .
-            "Thank you for using SkySlope!";
+            "Thank you for using HappyMiles!";
 
         return $this->notify($user, ['sms', 'whatsapp'], [
             'sms' => $smsMessage,
@@ -332,7 +332,7 @@ class NotificationService
      */
     public function sendOtp(string $phone, string $otp): bool
     {
-        $message = "SkySlope: Your verification code is {$otp}. Valid for 5 minutes. Do not share with anyone.";
+        $message = "HappyMiles: Your verification code is {$otp}. Valid for 5 minutes. Do not share with anyone.";
         return $this->sendSms($phone, $message);
     }
 
@@ -349,7 +349,7 @@ class NotificationService
         return $this->notify($user, $channels, [
             'sms' => $message,
             'whatsapp' => $message,
-            'subject' => 'Special Offer from SkySlope!',
+            'subject' => 'Special Offer from HappyMiles!',
         ]);
     }
 }

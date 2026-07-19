@@ -25,6 +25,10 @@ interface Place {
         path: string;
         type: string;
         caption: string | null;
+        source: 'admin' | 'customer';
+        approval_status: 'pending' | 'approved' | 'rejected';
+        rejection_reason?: string | null;
+        customer?: { id: number; name: string; phone?: string | null } | null;
     }>;
 }
 
@@ -37,6 +41,7 @@ export default function Show({ title, place }: ShowPlaceProps) {
     const { data, setData, post, processing, errors, reset } = useForm({
         file: null as File | null,
         caption: '',
+        type: 'image',
     });
 
     const handleSubmit = (e: React.FormEvent) => {
@@ -55,6 +60,12 @@ export default function Show({ title, place }: ShowPlaceProps) {
                 },
             });
         }
+    };
+
+    const approveMedia = (mediaId: number) => router.patch(`/admin/media/${mediaId}/approve`, {}, { preserveScroll: true });
+    const rejectMedia = (mediaId: number) => {
+        const reason = prompt('Why is this customer photo being rejected?');
+        if (reason?.trim()) router.patch(`/admin/media/${mediaId}/reject`, { reason: reason.trim() }, { preserveScroll: true });
     };
 
     return (
@@ -153,6 +164,16 @@ export default function Show({ title, place }: ShowPlaceProps) {
                                 </div>
 
                                 <div>
+                                    <label htmlFor="type" className="block text-sm font-medium text-gray-700">Media type</label>
+                                    <select id="type" value={data.type} onChange={(e) => setData('type', e.target.value)} className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                                        <option value="image">Image</option>
+                                        <option value="panorama">360° panorama image</option>
+                                        <option value="video">Video</option>
+                                    </select>
+                                    {errors.type && <div className="text-red-600 text-sm mt-1">{errors.type}</div>}
+                                </div>
+
+                                <div>
                                     <label htmlFor="caption" className="block text-sm font-medium text-gray-700">
                                         Caption (Optional)
                                     </label>
@@ -183,7 +204,7 @@ export default function Show({ title, place }: ShowPlaceProps) {
                             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                                 {place.media.map((media) => (
                                     <div key={media.id} className="border border-gray-200 rounded-lg p-4">
-                                        {media.type === 'image' ? (
+                                        {media.type !== 'video' ? (
                                             <img
                                                 src={`/storage/${media.path}`}
                                                 alt={media.caption || 'Media'}
@@ -196,13 +217,19 @@ export default function Show({ title, place }: ShowPlaceProps) {
                                                 controls
                                             />
                                         )}
+                                        <div className="flex flex-wrap gap-2 mb-2">
+                                            <span className="rounded-full bg-blue-50 px-2 py-1 text-xs font-bold text-blue-700">{media.type === 'panorama' ? '360° panorama' : media.type}</span>
+                                            <span className={`rounded-full px-2 py-1 text-xs font-bold ${media.approval_status === 'approved' ? 'bg-green-50 text-green-700' : media.approval_status === 'pending' ? 'bg-amber-50 text-amber-700' : 'bg-red-50 text-red-700'}`}>{media.approval_status}</span>
+                                            <span className="rounded-full bg-gray-100 px-2 py-1 text-xs font-bold text-gray-700">{media.source}</span>
+                                        </div>
                                         <p className="text-sm text-gray-600">{media.caption || 'No caption'}</p>
-                                        <button
-                                            onClick={() => handleDeleteMedia(media.id)}
-                                            className="mt-2 bg-red-600 text-white px-3 py-1 rounded-md hover:bg-red-700 text-sm font-medium"
-                                        >
-                                            Delete
-                                        </button>
+                                        {media.customer && <p className="mt-1 text-xs text-gray-500">Uploaded by {media.customer.name}{media.customer.phone ? ` · ${media.customer.phone}` : ''}</p>}
+                                        {media.rejection_reason && <p className="mt-1 text-xs text-red-600">Reason: {media.rejection_reason}</p>}
+                                        <div className="mt-3 flex flex-wrap gap-2">
+                                            {media.source === 'customer' && media.approval_status !== 'approved' && <button type="button" onClick={() => approveMedia(media.id)} className="min-h-11 rounded-md bg-green-600 px-3 py-2 text-sm font-bold text-white hover:bg-green-700">Approve</button>}
+                                            {media.source === 'customer' && media.approval_status !== 'rejected' && <button type="button" onClick={() => rejectMedia(media.id)} className="min-h-11 rounded-md bg-amber-600 px-3 py-2 text-sm font-bold text-white hover:bg-amber-700">Reject</button>}
+                                            <button type="button" onClick={() => handleDeleteMedia(media.id)} className="min-h-11 rounded-md bg-red-600 px-3 py-2 text-sm font-bold text-white hover:bg-red-700">Delete</button>
+                                        </div>
                                     </div>
                                 ))}
                             </div>

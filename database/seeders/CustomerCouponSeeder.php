@@ -12,7 +12,7 @@ class CustomerCouponSeeder extends Seeder
         $coupons = [
             [
                 'code' => 'SKY10',
-                'name' => 'Skyslope 10% off',
+                'name' => 'HappyMiles 10% off',
                 'description' => '10% off across tours, rentals, and rides.',
                 'discount_type' => 'percent',
                 'discount_value' => 10,

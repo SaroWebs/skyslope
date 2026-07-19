@@ -95,7 +95,7 @@ export default function Settings({ title, settings = {} }: SettingsProps) {
                                 <Stack gap="lg">
                                     <TextInput
                                         label="Platform Name"
-                                        placeholder="Skyslope Travel"
+                                        placeholder="HappyMiles Tours & Travels"
                                         required
                                         value={data.site_name}
                                         onChange={(e) => setData('site_name', e.currentTarget.value)}

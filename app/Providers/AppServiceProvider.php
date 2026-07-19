@@ -12,8 +12,11 @@ use App\Policies\CarRentalPolicy;
 use App\Policies\PlaceReviewPolicy;
 use App\Policies\RideBookingPolicy;
 use App\Policies\TourBookingPolicy;
+use Illuminate\Cache\RateLimiting\Limit;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\ServiceProvider;
 
@@ -43,5 +46,44 @@ class AppServiceProvider extends ServiceProvider
             BookingLifecycleNotification::class,
             QueueBookingLifecycleNotification::class,
         );
+
+        $this->configureRateLimiters();
+    }
+
+    private function configureRateLimiters(): void
+    {
+        RateLimiter::for('otp-send', function (Request $request) {
+            $phone = (string) $request->input('phone', 'unknown');
+
+            return [
+                Limit::perMinute(5)->by($request->ip()),
+                Limit::perMinute(3)->by($phone.'|'.$request->ip()),
+            ];
+        });
+
+        RateLimiter::for('otp-verify', function (Request $request) {
+            $phone = (string) $request->input('phone', 'unknown');
+
+            return [
+                Limit::perMinute(10)->by($request->ip()),
+                Limit::perMinute(5)->by($phone.'|'.$request->ip()),
+            ];
+        });
+
+        RateLimiter::for('customer-write', fn (Request $request) => Limit::perMinute(30)->by(
+            optional($request->user())->getAuthIdentifier() ?: $request->ip()
+        ));
+
+        RateLimiter::for('payment-write', fn (Request $request) => Limit::perMinute(10)->by(
+            optional($request->user())->getAuthIdentifier() ?: $request->ip()
+        ));
+
+        RateLimiter::for('support-write', fn (Request $request) => Limit::perMinute(8)->by(
+            optional($request->user())->getAuthIdentifier() ?: $request->ip()
+        ));
+
+        RateLimiter::for('admin-financial', fn (Request $request) => Limit::perMinute(20)->by(
+            optional($request->user())->getAuthIdentifier() ?: $request->ip()
+        ));
     }
 }

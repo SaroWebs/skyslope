@@ -37,6 +37,12 @@ jobs:
       - name: Install Dependencies
         run: composer install --no-interaction --prefer-dist --optimize-autoloader
 
+      - name: Audit PHP Dependencies
+        run: composer audit --locked
+
+      - name: Audit Node Dependencies
+        run: npm audit --audit-level=high
+
       - name: Copy Environment File
         run: cp .env.example .env
 

@@ -1,5 +1,5 @@
 import React from 'react';
-import { Head, Link, usePage } from '@inertiajs/react';
+import { Head, Link, router } from '@inertiajs/react';
 import AdminLayout from '../../../layouts/AdminLayout';
 import { 
     Paper, 
@@ -15,12 +15,9 @@ import {
     SimpleGrid,
     ActionIcon,
     Tooltip,
-    Divider,
-    rem
 } from '@mantine/core';
 import { 
     Plus, 
-    MapPin, 
     Clock, 
     ArrowLeft, 
     Pencil, 
@@ -29,7 +26,8 @@ import {
     Calendar,
     Navigation,
     Camera,
-    Mountain
+    Mountain,
+    Trash2
 } from 'lucide-react';
 
 interface Place {
@@ -55,6 +53,8 @@ interface Tour {
     id: number;
     title: string;
     description: string;
+    duration_days: number;
+    duration_nights: number;
 }
 
 interface TourItinerariesProps {
@@ -64,6 +64,11 @@ interface TourItinerariesProps {
 }
 
 export default function TourItineraries({ title, tour, itineraries }: TourItinerariesProps) {
+    const deleteDay = (itinerary: Itinerary) => {
+        if (confirm(`Delete Day ${itinerary.day_index}? Later days will be renumbered and the tour duration will be recalculated.`)) {
+            router.delete(`/admin/tours/${tour.id}/itineraries/${itinerary.id}`);
+        }
+    };
     // Group itineraries by day
     const groupedItineraries = itineraries.reduce((groups: Record<number, Itinerary[]>, itinerary) => {
         const day = itinerary.day_index;
@@ -92,6 +97,7 @@ export default function TourItineraries({ title, tour, itineraries }: TourItiner
                             <Text size="xs" fw={700} color="dimmed" tt="uppercase">Tour Journey Map</Text>
                         </Group>
                         <Text size="h3" fw={800}>{tour.title}</Text>
+                        <Text size="sm" fw={700} c="blue">{tour.duration_days} days / {tour.duration_nights} nights · calculated from {itineraries.length} itinerary days</Text>
                         <Text size="sm" color="dimmed" lineClamp={1}>{tour.description}</Text>
                     </Stack>
                     <Group gap="sm">
@@ -112,7 +118,7 @@ export default function TourItineraries({ title, tour, itineraries }: TourItiner
                             leftSection={<Plus size={16} />}
                             radius="md"
                         >
-                            Add Location
+                            Add Day {itineraries.length + 1}
                         </Button>
                     </Group>
                 </Group>
@@ -197,6 +203,11 @@ export default function TourItineraries({ title, tour, itineraries }: TourItiner
                                                                     color="blue"
                                                                 >
                                                                     <Eye size={14} />
+                                                                </ActionIcon>
+                                                            </Tooltip>
+                                                            <Tooltip label="Delete itinerary day">
+                                                                <ActionIcon onClick={() => deleteDay(itinerary)} variant="light" color="red" aria-label={`Delete Day ${itinerary.day_index}`}>
+                                                                    <Trash2 size={14} />
                                                                 </ActionIcon>
                                                             </Tooltip>
                                                         </Group>

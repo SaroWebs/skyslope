@@ -17,6 +17,7 @@ use App\Models\RideBooking;
 use App\Models\Role;
 use App\Models\Tour;
 use App\Models\TourBooking;
+use App\Models\TourCategory;
 use App\Models\TourItinerary;
 use App\Models\TourSchedule;
 use App\Models\User;
@@ -118,8 +119,8 @@ class AdminController extends Controller
     public function profile()
     {
         return Inertia::render('admin/Profile', [
-            'title'       => 'My Profile',
-            'user'        => Auth::user(),
+            'title' => 'My Profile',
+            'user' => Auth::user(),
             'target_user' => Auth::user()->load('roles'),
         ]);
     }
@@ -132,13 +133,13 @@ class AdminController extends Controller
         $user = Auth::user();
 
         $request->validate([
-            'name'  => 'required|string|max:255',
-            'email' => 'required|email|unique:users,email,' . $user->id,
-            'phone' => 'required|string|unique:users,phone,' . $user->id,
+            'name' => 'required|string|max:255',
+            'email' => 'required|email|unique:users,email,'.$user->id,
+            'phone' => 'required|string|unique:users,phone,'.$user->id,
         ]);
 
         $user->update([
-            'name'  => $request->name,
+            'name' => $request->name,
             'email' => $request->email,
             'phone' => $request->phone,
         ]);
@@ -152,8 +153,8 @@ class AdminController extends Controller
     public function changePassword(Request $request)
     {
         $request->validate([
-            'current_password'      => 'required|string|current_password',
-            'password'              => 'required|string|min:8|confirmed',
+            'current_password' => 'required|string|current_password',
+            'password' => 'required|string|min:8|confirmed',
             'password_confirmation' => 'required|string',
         ]);
 
@@ -252,8 +253,8 @@ class AdminController extends Controller
     {
         $request->validate([
             'name' => 'required|string|max:255',
-            'email' => 'required|email|unique:users,email,' . $user->id,
-            'phone' => 'required|string|unique:users,phone,' . $user->id,
+            'email' => 'required|email|unique:users,email,'.$user->id,
+            'phone' => 'required|string|unique:users,phone,'.$user->id,
             'role' => 'required|string|exists:roles,name',
         ]);
 
@@ -315,6 +316,7 @@ class AdminController extends Controller
         return inertia('admin/Tours/Create', [
             'title' => 'Create Tour',
             'user' => Auth::user(),
+            'categories' => TourCategory::query()->where('is_active', true)->orderBy('sort_order')->orderBy('name')->get(['id', 'name']),
         ]);
     }
 
@@ -323,25 +325,56 @@ class AdminController extends Controller
      */
     public function storeTour(Request $request)
     {
-        $request->validate([
-            'name' => 'required|string|max:255',
-            'description' => 'required|string',
-            'price' => 'required|numeric|min:0',
+        $validated = $request->validate([
+            'tour_category_id' => 'nullable|exists:tour_categories,id',
+            'title' => 'required|string|max:255',
+            'short_description' => 'required|string|max:500',
+            'description' => 'required|string|max:10000',
+            'highlights' => 'nullable|array|max:20',
+            'highlights.*' => 'string|max:255',
+            'inclusions' => 'nullable|array|max:30',
+            'inclusions.*' => 'string|max:255',
+            'exclusions' => 'nullable|array|max:30',
+            'exclusions.*' => 'string|max:255',
+            'min_group_size' => 'required|integer|min:1',
+            'max_group_size' => 'required|integer|gte:min_group_size|max:200',
+            'price_per_person' => 'required|numeric|min:0',
+            'child_price' => 'required|numeric|min:0',
             'discount' => 'nullable|numeric|min:0|max:100',
-            'available_from' => 'required|date|after_or_equal:today',
+            'start_location' => 'required|string|max:255',
+            'end_location' => 'required|string|max:255',
+            'region' => 'required|string|max:120',
+            'difficulty' => 'required|in:easy,moderate,challenging,extreme',
+            'cover_image' => 'nullable|url|max:2048',
+            'available_from' => 'required|date',
             'available_to' => 'required|date|after:available_from',
+            'is_active' => 'required|boolean',
+            'is_featured' => 'required|boolean',
         ]);
 
-        $tour = Tour::create([
-            'title' => $request->name,
-            'description' => $request->description,
-            'price' => $request->price,
-            'discount' => $request->discount ?? 0,
-            'available_from' => $request->available_from,
-            'available_to' => $request->available_to,
-        ]);
+        $tour = DB::transaction(function () use ($validated) {
+            $slugBase = Str::slug($validated['title']) ?: 'tour';
+            $slug = $slugBase;
+            $suffix = 2;
+            while (Tour::where('slug', $slug)->exists()) {
+                $slug = $slugBase.'-'.$suffix++;
+            }
 
-        return redirect()->route('admin.tours')->with('success', 'Tour created successfully');
+            $tour = Tour::create(array_merge($validated, [
+                'slug' => $slug,
+                'discount' => $validated['discount'] ?? 0,
+                'highlights' => $validated['highlights'] ?? [],
+                'inclusions' => $validated['inclusions'] ?? [],
+                'exclusions' => $validated['exclusions'] ?? [],
+                'duration_days' => 0,
+                'duration_nights' => 0,
+            ]));
+
+            return $tour;
+        });
+
+        return redirect()->route('admin.tours.itineraries.create', $tour)
+            ->with('success', 'Tour package created. Add Day 1 to build its itinerary and duration.');
     }
 
     /**
@@ -349,8 +382,8 @@ class AdminController extends Controller
      */
     public function showTour(Tour $tour)
     {
-        $tour->load(['schedules.driverAssignments.driver', 'itineraries', 'bookings.customer']);
-        
+        $tour->load(['category', 'schedules.driverAssignments.driver', 'schedules.driverAssignments.vehicle', 'itineraries.place', 'bookings.customer']);
+
         return inertia('admin/Tours/Show', [
             'title' => 'Tour Details',
             'user' => Auth::user(),
@@ -364,11 +397,12 @@ class AdminController extends Controller
     public function editTour(Tour $tour)
     {
         $tour->load(['schedules.driverAssignments.driver']);
-        
+
         return inertia('admin/Tours/Edit', [
             'title' => 'Edit Tour',
             'user' => Auth::user(),
             'tour' => $tour,
+            'categories' => TourCategory::query()->where('is_active', true)->orderBy('name')->get(['id', 'name']),
         ]);
     }
 
@@ -377,23 +411,28 @@ class AdminController extends Controller
      */
     public function updateTour(Request $request, Tour $tour)
     {
-        $request->validate([
-            'name' => 'required|string|max:255',
-            'description' => 'required|string',
-            'price' => 'required|numeric|min:0',
+        $validated = $request->validate([
+            'tour_category_id' => 'nullable|exists:tour_categories,id',
+            'title' => 'required|string|max:255',
+            'short_description' => 'nullable|string|max:500',
+            'description' => 'required|string|max:10000',
+            'min_group_size' => 'required|integer|min:1',
+            'max_group_size' => 'required|integer|gte:min_group_size|max:200',
+            'price_per_person' => 'required|numeric|min:0',
+            'child_price' => 'required|numeric|min:0',
             'discount' => 'nullable|numeric|min:0|max:100',
+            'start_location' => 'required|string|max:255',
+            'end_location' => 'required|string|max:255',
+            'region' => 'required|string|max:120',
+            'difficulty' => 'required|in:easy,moderate,challenging,extreme',
+            'cover_image' => 'nullable|url|max:2048',
             'available_from' => 'required|date',
             'available_to' => 'required|date|after:available_from',
+            'is_active' => 'required|boolean',
+            'is_featured' => 'required|boolean',
         ]);
 
-        $tour->update([
-            'title' => $request->name,
-            'description' => $request->description,
-            'price' => $request->price,
-            'discount' => $request->discount ?? 0,
-            'available_from' => $request->available_from,
-            'available_to' => $request->available_to,
-        ]);
+        $tour->update(array_merge($validated, ['discount' => $validated['discount'] ?? 0]));
 
         return redirect()->route('admin.tours')->with('success', 'Tour updated successfully');
     }
@@ -439,6 +478,7 @@ class AdminController extends Controller
             'user' => Auth::user(),
             'tour' => $tour,
             'places' => $places,
+            'nextDay' => ((int) $tour->itineraries()->max('day_number')) + 1,
         ]);
     }
 
@@ -448,34 +488,37 @@ class AdminController extends Controller
     public function storeTourItinerary(Request $request, Tour $tour)
     {
         $validated = $request->validate([
-            'day_index' => 'required|integer|min:1',
             'time' => 'nullable|date_format:H:i',
             'place_id' => 'required|exists:places,id',
-            'details' => 'nullable|string',
+            'title' => 'nullable|string|max:255',
+            'details' => 'required|string|max:5000',
+            'activities' => 'nullable|array|max:20',
+            'activities.*' => 'string|max:255',
+            'accommodation' => 'nullable|string|max:255',
+            'meals_included' => 'nullable|array',
+            'meals_included.*' => 'in:breakfast,lunch,dinner',
+            'distance_km' => 'nullable|string|max:50',
         ]);
         $place = Place::findOrFail($validated['place_id']);
-
-        // Check for duplicate day_index and time
-        $existingItinerary = TourItinerary::where('tour_id', $tour->id)
-            ->where('day_index', $validated['day_index'])
-            ->where('time', $validated['time'] ?? null)
-            ->first();
-
-        if ($existingItinerary) {
-            return back()->with('error', 'An itinerary already exists for this day and time');
-        }
+        $dayNumber = ((int) $tour->itineraries()->max('day_number')) + 1;
 
         $tour->itineraries()->create([
             'place_id' => $place->id,
-            'day_index' => $validated['day_index'],
-            'day_number' => $validated['day_index'],
+            'day_index' => $dayNumber,
+            'day_number' => $dayNumber,
             'time' => $validated['time'] ?? null,
-            'title' => $place->name,
-            'description' => $validated['details'] ?? $place->short_description ?? $place->description,
-            'details' => $validated['details'] ?? null,
+            'title' => $validated['title'] ?? $place->name,
+            'description' => $validated['details'],
+            'details' => $validated['details'],
+            'activities' => $validated['activities'] ?? [],
+            'accommodation' => $validated['accommodation'] ?? null,
+            'meals_included' => $validated['meals_included'] ?? [],
+            'distance_km' => $validated['distance_km'] ?? null,
         ]);
+        $this->syncTourDurationFromItineraries($tour);
 
-        return redirect()->route('admin.tours.itineraries', $tour->id)->with('success', 'Itinerary created successfully');
+        return redirect()->route('admin.tours.itineraries', $tour->id)
+            ->with('success', "Day {$dayNumber} added. Tour duration updated automatically.");
     }
 
     /**
@@ -525,39 +568,34 @@ class AdminController extends Controller
         }
 
         $validated = $request->validate([
-            'day_index' => 'sometimes|required|integer|min:1',
             'time' => 'nullable|date_format:H:i',
             'place_id' => 'sometimes|required|exists:places,id',
-            'details' => 'nullable|string',
+            'title' => 'nullable|string|max:255',
+            'details' => 'required|string|max:5000',
+            'activities' => 'nullable|array|max:20',
+            'activities.*' => 'string|max:255',
+            'accommodation' => 'nullable|string|max:255',
+            'meals_included' => 'nullable|array',
+            'meals_included.*' => 'in:breakfast,lunch,dinner',
+            'distance_km' => 'nullable|string|max:50',
         ]);
-
-        // Check for duplicate day_index and time (excluding current)
-        if (array_key_exists('day_index', $validated) || array_key_exists('time', $validated)) {
-            $dayIndex = $validated['day_index'] ?? $itinerary->day_index;
-            $time = $validated['time'] ?? $itinerary->time;
-
-            $existingItinerary = TourItinerary::where('tour_id', $tour->id)
-                ->where('day_index', $dayIndex)
-                ->where('time', $time)
-                ->where('id', '!=', $itinerary->id)
-                ->first();
-
-            if ($existingItinerary) {
-                return back()->with('error', 'An itinerary already exists for this day and time');
-            }
-        }
 
         $place = isset($validated['place_id']) ? Place::findOrFail($validated['place_id']) : $itinerary->place;
 
         $itinerary->update([
             'place_id' => $place?->id,
-            'day_index' => $validated['day_index'] ?? $itinerary->day_index,
-            'day_number' => $validated['day_index'] ?? $itinerary->day_number,
+            'day_index' => $itinerary->day_index,
+            'day_number' => $itinerary->day_number,
             'time' => $validated['time'] ?? null,
-            'title' => $place?->name ?? $itinerary->title,
-            'description' => $validated['details'] ?? $itinerary->description,
-            'details' => $validated['details'] ?? null,
+            'title' => $validated['title'] ?? $place?->name ?? $itinerary->title,
+            'description' => $validated['details'],
+            'details' => $validated['details'],
+            'activities' => $validated['activities'] ?? [],
+            'accommodation' => $validated['accommodation'] ?? null,
+            'meals_included' => $validated['meals_included'] ?? [],
+            'distance_km' => $validated['distance_km'] ?? null,
         ]);
+        $this->syncTourDurationFromItineraries($tour);
 
         return redirect()->route('admin.tours.itineraries', $tour->id)->with('success', 'Itinerary updated successfully');
     }
@@ -572,6 +610,13 @@ class AdminController extends Controller
         }
 
         $itinerary->delete();
+        $tour->itineraries()->orderBy('day_number')->get()->values()->each(function (TourItinerary $day, int $index) {
+            $dayNumber = $index + 1;
+            if ($day->day_number !== $dayNumber || $day->day_index !== $dayNumber) {
+                $day->update(['day_number' => $dayNumber, 'day_index' => $dayNumber]);
+            }
+        });
+        $this->syncTourDurationFromItineraries($tour);
 
         return redirect()->route('admin.tours.itineraries', $tour->id)->with('success', 'Itinerary deleted successfully');
     }
@@ -579,13 +624,66 @@ class AdminController extends Controller
     /**
      * Tour Bookings management
      */
-    public function tourBookings()
+    public function bookings(Request $request)
     {
-        return inertia('admin/TourBookings/Index', [
-            'title' => 'Tour Booking Management',
-            'user' => Auth::user(),
-            'bookings' => TourBooking::with(['customer', 'schedule.tour', 'driverAssignments.driver'])->latest()->paginate(15),
+        $tab = in_array($request->input('tab'), ['ride', 'tour', 'rental'], true)
+            ? $request->input('tab')
+            : 'ride';
+        $search = trim((string) $request->input('search', ''));
+        $status = trim((string) $request->input('status', ''));
+
+        $rides = RideBooking::with(['customer:id,name,email,phone', 'driver:id,name'])
+            ->when($tab === 'ride' && $search !== '', function ($query) use ($search) {
+                $query->where(function ($query) use ($search) {
+                    $query->where('booking_number', 'like', "%{$search}%")
+                        ->orWhere('customer_name', 'like', "%{$search}%")
+                        ->orWhere('customer_phone', 'like', "%{$search}%");
+                });
+            })
+            ->when($tab === 'ride' && $status !== '', fn ($query) => $query->where('status', $status))
+            ->latest()
+            ->paginate(12, ['*'], 'ride_page')
+            ->withQueryString();
+
+        $tours = TourBooking::with(['customer:id,name,email,phone', 'schedule.tour:id,title'])
+            ->when($tab === 'tour' && $search !== '', function ($query) use ($search) {
+                $query->where(function ($query) use ($search) {
+                    $query->where('booking_number', 'like', "%{$search}%")
+                        ->orWhereHas('customer', fn ($customer) => $customer
+                            ->where('name', 'like', "%{$search}%")
+                            ->orWhere('phone', 'like', "%{$search}%"));
+                });
+            })
+            ->when($tab === 'tour' && $status !== '', fn ($query) => $query->where('status', $status))
+            ->latest()
+            ->paginate(12, ['*'], 'tour_page')
+            ->withQueryString();
+
+        $rentals = CarRental::with(['customer:id,name,email,phone', 'carCategory:id,name,vehicle_type', 'driver:id,name'])
+            ->when($tab === 'rental' && $search !== '', function ($query) use ($search) {
+                $query->where(function ($query) use ($search) {
+                    $query->where('booking_number', 'like', "%{$search}%")
+                        ->orWhere('customer_name', 'like', "%{$search}%")
+                        ->orWhere('customer_phone', 'like', "%{$search}%");
+                });
+            })
+            ->when($tab === 'rental' && $status !== '', fn ($query) => $query->where('status', $status))
+            ->latest()
+            ->paginate(12, ['*'], 'rental_page')
+            ->withQueryString();
+
+        return inertia('admin/Bookings', [
+            'title' => 'Bookings',
+            'rides' => $rides,
+            'tours' => $tours,
+            'rentals' => $rentals,
+            'filters' => compact('tab', 'search', 'status'),
         ]);
+    }
+
+    public function tourBookings(Request $request)
+    {
+        return redirect()->route('admin.bookings', array_merge($request->query(), ['tab' => 'tour']));
     }
 
     public function showTourBooking(TourBooking $tourBooking)
@@ -654,10 +752,14 @@ class AdminController extends Controller
     {
         $validated = $request->validate([
             'departure_date' => 'required|date',
-            'return_date' => 'nullable|date|after_or_equal:departure_date',
+            'return_date' => 'required|date|after_or_equal:departure_date',
+            'departure_time' => 'required|date_format:H:i',
+            'departure_point' => 'required|string|max:255',
             'total_seats' => 'required|integer|min:1',
             'price_override' => 'nullable|numeric|min:0',
+            'child_price_override' => 'nullable|numeric|min:0',
             'status' => 'required|in:open,sold_out,closed,cancelled,completed',
+            'notes' => 'nullable|string|max:2000',
         ]);
 
         $tour->schedules()->create($validated);
@@ -669,10 +771,14 @@ class AdminController extends Controller
     {
         $validated = $request->validate([
             'departure_date' => 'required|date',
-            'return_date' => 'nullable|date|after_or_equal:departure_date',
+            'return_date' => 'required|date|after_or_equal:departure_date',
+            'departure_time' => 'required|date_format:H:i',
+            'departure_point' => 'required|string|max:255',
             'total_seats' => 'required|integer|min:1',
             'price_override' => 'nullable|numeric|min:0',
+            'child_price_override' => 'nullable|numeric|min:0',
             'status' => 'required|in:open,sold_out,closed,cancelled,completed',
+            'notes' => 'nullable|string|max:2000',
         ]);
 
         $schedule->update($validated);
@@ -683,6 +789,7 @@ class AdminController extends Controller
     public function deleteTourSchedule(Tour $tour, TourSchedule $schedule)
     {
         $schedule->delete();
+
         return redirect()->back()->with('success', 'Tour schedule deleted.');
     }
 
@@ -722,201 +829,238 @@ class AdminController extends Controller
     }
 
     /**
-      * Places management
-      */
-     public function places()
-     {
-         return inertia('admin/Places', [
-             'title' => 'Place Management',
-             'user' => Auth::user(),
-             'places' => Place::with('media')->paginate(12),
-         ]);
-     }
+     * Places management
+     */
+    public function places()
+    {
+        return inertia('admin/Places', [
+            'title' => 'Place Management',
+            'user' => Auth::user(),
+            'places' => Place::with('media')->paginate(12),
+        ]);
+    }
 
-     /**
-      * Show create place form
-      */
-     public function createPlace()
-     {
-         return inertia('admin/Places/Create', [
-             'title' => 'Create Place',
-             'user' => Auth::user(),
-         ]);
-     }
+    /**
+     * Show create place form
+     */
+    public function createPlace()
+    {
+        return inertia('admin/Places/Create', [
+            'title' => 'Create Place',
+            'user' => Auth::user(),
+        ]);
+    }
 
-     /**
-      * Store new place
-      */
-     public function storePlace(Request $request)
-     {
-         $validated = $request->validate([
-             'name' => 'required|string|max:255',
-             'description' => 'nullable|string',
-             'short_description' => 'nullable|string|max:500',
-             'location' => 'nullable|string|max:255',
-             'city' => 'nullable|string|max:100',
-             'state' => 'nullable|string|max:100',
-             'country' => 'nullable|string|max:100',
-             'latitude' => 'nullable|numeric|between:-90,90',
-             'longitude' => 'nullable|numeric|between:-180,180',
-             'tags' => 'nullable|array',
-             'tags.*' => 'string|max:80',
-             'google_place_id' => 'nullable|string|max:255',
-             'google_rating' => 'nullable|numeric|min:0|max:5',
-             'google_review_count' => 'nullable|integer|min:0',
-             'is_active' => 'required|boolean',
-             'is_featured' => 'required|boolean',
-         ]);
+    /**
+     * Store new place
+     */
+    public function storePlace(Request $request)
+    {
+        $validated = $request->validate([
+            'name' => 'required|string|max:255',
+            'description' => 'nullable|string',
+            'short_description' => 'nullable|string|max:500',
+            'location' => 'nullable|string|max:255',
+            'city' => 'nullable|string|max:100',
+            'state' => 'nullable|string|max:100',
+            'country' => 'nullable|string|max:100',
+            'latitude' => 'nullable|numeric|between:-90,90',
+            'longitude' => 'nullable|numeric|between:-180,180',
+            'tags' => 'nullable|array',
+            'tags.*' => 'string|max:80',
+            'google_place_id' => 'nullable|string|max:255',
+            'google_rating' => 'nullable|numeric|min:0|max:5',
+            'google_review_count' => 'nullable|integer|min:0',
+            'is_active' => 'required|boolean',
+            'is_featured' => 'required|boolean',
+        ]);
 
-         Place::create([
-             ...$validated,
-             'slug' => $this->uniquePlaceSlug($validated['name']),
-             'country' => ($validated['country'] ?? null) ?: 'India',
-             'tags' => $validated['tags'] ?? [],
-             'google_review_count' => $validated['google_review_count'] ?? 0,
-         ]);
+        Place::create([
+            ...$validated,
+            'slug' => $this->uniquePlaceSlug($validated['name']),
+            'country' => ($validated['country'] ?? null) ?: 'India',
+            'tags' => $validated['tags'] ?? [],
+            'google_review_count' => $validated['google_review_count'] ?? 0,
+        ]);
 
-         return redirect()->route('admin.places')->with('success', 'Place created successfully');
-     }
+        return redirect()->route('admin.places')->with('success', 'Place created successfully');
+    }
 
-     /**
-      * Show place details
-      */
-     public function showPlace(Place $place)
-     {
-         return inertia('admin/Places/Show', [
-             'title' => 'Place Details',
-             'user' => Auth::user(),
-             'place' => $place->load(['media', 'reviews.customer:id,name']),
-         ]);
-     }
+    /**
+     * Show place details
+     */
+    public function showPlace(Place $place)
+    {
+        return inertia('admin/Places/Show', [
+            'title' => 'Place Details',
+            'user' => Auth::user(),
+            'place' => $place->load(['media.customer:id,name,phone', 'media.reviewer:id,name', 'reviews.customer:id,name']),
+        ]);
+    }
 
-     public function syncPlaceGoogleData(Place $place, GooglePlaceDetailsService $googlePlaces)
-     {
-         $result = $googlePlaces->sync($place, true);
+    public function syncPlaceGoogleData(Place $place, GooglePlaceDetailsService $googlePlaces)
+    {
+        $result = $googlePlaces->sync($place, true);
 
-         $statusCode = $result['status'] === 'failed' ? 422 : 200;
+        $statusCode = $result['status'] === 'failed' ? 422 : 200;
 
-         if (request()->expectsJson()) {
-             return response()->json([
-                 'success' => $result['status'] !== 'failed',
-                 'status' => $result['status'],
-                 'message' => $result['message'],
-                 'place' => $place->fresh(['media', 'reviews.customer:id,name']),
-             ], $statusCode);
-         }
+        if (request()->expectsJson()) {
+            return response()->json([
+                'success' => $result['status'] !== 'failed',
+                'status' => $result['status'],
+                'message' => $result['message'],
+                'place' => $place->fresh(['media', 'reviews.customer:id,name']),
+            ], $statusCode);
+        }
 
-         return redirect()->route('admin.places.show', $place)
-             ->with($result['status'] === 'failed' ? 'error' : 'success', $result['message']);
-     }
+        return redirect()->route('admin.places.show', $place)
+            ->with($result['status'] === 'failed' ? 'error' : 'success', $result['message']);
+    }
 
-     /**
-      * Show edit place form
-      */
-     public function editPlace(Place $place)
-     {
-         return inertia('admin/Places/Edit', [
-             'title' => 'Edit Place',
-             'user' => Auth::user(),
-             'place' => $place,
-         ]);
-     }
+    /**
+     * Show edit place form
+     */
+    public function editPlace(Place $place)
+    {
+        return inertia('admin/Places/Edit', [
+            'title' => 'Edit Place',
+            'user' => Auth::user(),
+            'place' => $place,
+        ]);
+    }
 
-     /**
-      * Update place
-      */
-     public function updatePlace(Request $request, Place $place)
-     {
-         $validated = $request->validate([
-             'name' => 'required|string|max:255',
-             'description' => 'nullable|string',
-             'short_description' => 'nullable|string|max:500',
-             'location' => 'nullable|string|max:255',
-             'city' => 'nullable|string|max:100',
-             'state' => 'nullable|string|max:100',
-             'country' => 'nullable|string|max:100',
-             'latitude' => 'nullable|numeric|between:-90,90',
-             'longitude' => 'nullable|numeric|between:-180,180',
-             'tags' => 'nullable|array',
-             'tags.*' => 'string|max:80',
-             'google_place_id' => 'nullable|string|max:255',
-             'google_rating' => 'nullable|numeric|min:0|max:5',
-             'google_review_count' => 'nullable|integer|min:0',
-             'is_active' => 'required|boolean',
-             'is_featured' => 'required|boolean',
-         ]);
+    /**
+     * Update place
+     */
+    public function updatePlace(Request $request, Place $place)
+    {
+        $validated = $request->validate([
+            'name' => 'required|string|max:255',
+            'description' => 'nullable|string',
+            'short_description' => 'nullable|string|max:500',
+            'location' => 'nullable|string|max:255',
+            'city' => 'nullable|string|max:100',
+            'state' => 'nullable|string|max:100',
+            'country' => 'nullable|string|max:100',
+            'latitude' => 'nullable|numeric|between:-90,90',
+            'longitude' => 'nullable|numeric|between:-180,180',
+            'tags' => 'nullable|array',
+            'tags.*' => 'string|max:80',
+            'google_place_id' => 'nullable|string|max:255',
+            'google_rating' => 'nullable|numeric|min:0|max:5',
+            'google_review_count' => 'nullable|integer|min:0',
+            'is_active' => 'required|boolean',
+            'is_featured' => 'required|boolean',
+        ]);
 
-         $place->update([
-             ...$validated,
-             'slug' => $place->name !== $validated['name']
-                 ? $this->uniquePlaceSlug($validated['name'], $place->id)
-                 : $place->slug,
-             'country' => ($validated['country'] ?? null) ?: 'India',
-             'tags' => $validated['tags'] ?? [],
-             'google_review_count' => $validated['google_review_count'] ?? 0,
-         ]);
+        $place->update([
+            ...$validated,
+            'slug' => $place->name !== $validated['name']
+                ? $this->uniquePlaceSlug($validated['name'], $place->id)
+                : $place->slug,
+            'country' => ($validated['country'] ?? null) ?: 'India',
+            'tags' => $validated['tags'] ?? [],
+            'google_review_count' => $validated['google_review_count'] ?? 0,
+        ]);
 
-         return redirect()->route('admin.places')->with('success', 'Place updated successfully');
-     }
+        return redirect()->route('admin.places')->with('success', 'Place updated successfully');
+    }
 
-     /**
-      * Delete place
-      */
-     public function deletePlace(Place $place)
-     {
-         $place->delete();
+    /**
+     * Delete place
+     */
+    public function deletePlace(Place $place)
+    {
+        $place->delete();
 
-         return redirect()->route('admin.places')->with('success', 'Place deleted successfully');
-     }
+        return redirect()->route('admin.places')->with('success', 'Place deleted successfully');
+    }
 
-     /**
-      * Store new media for a place
-      */
-     public function storeMedia(Request $request, Place $place)
-     {
-         $request->validate([
-             'file' => 'required|file|mimes:jpeg,png,jpg,gif,svg,mp4,avi,mov|max:20480',
-             'caption' => 'nullable|string',
-         ]);
+    /**
+     * Store new media for a place
+     */
+    public function storeMedia(Request $request, Place $place)
+    {
+        $validated = $request->validate([
+            'file' => 'required|file|mimes:jpeg,png,jpg,gif,svg,mp4,avi,mov|max:20480',
+            'type' => 'required|in:image,panorama,video',
+            'caption' => 'nullable|string|max:500',
+        ]);
 
-         $filePath = $request->file('file')->store('place_media', 'public');
+        $isVideo = str_starts_with($request->file('file')->getMimeType(), 'video/');
+        if (($validated['type'] === 'video') !== $isVideo) {
+            return back()->withErrors(['type' => $isVideo
+                ? 'Video files must use the Video media type.'
+                : 'Image files must use Image or 360° panorama.'])->withInput();
+        }
 
-         PlaceMedia::create([
-             'place_id' => $place->id,
-             'path' => $filePath,
-             'type' => str_starts_with($request->file('file')->getMimeType(), 'image/') ? 'image' : 'video',
-             'caption' => $request->caption,
-         ]);
+        $filePath = $request->file('file')->store('place_media', 'public');
 
-         return redirect()->route('admin.places.show', $place->id)->with('success', 'Media added successfully');
-     }
+        PlaceMedia::create([
+            'place_id' => $place->id,
+            'path' => $filePath,
+            'type' => $validated['type'],
+            'source' => 'admin',
+            'approval_status' => 'approved',
+            'reviewed_by' => Auth::id(),
+            'reviewed_at' => now(),
+            'caption' => $validated['caption'] ?? null,
+        ]);
 
-     /**
-      * Delete media
-      */
-     public function deleteMedia(PlaceMedia $media)
-     {
-         Storage::disk('public')->delete($media->path);
-         $media->delete();
+        return redirect()->route('admin.places.show', $place->id)->with('success', 'Media added successfully');
+    }
 
-         return redirect()->route('admin.places.show', $media->place_id)->with('success', 'Media deleted successfully');
-     }
+    /**
+     * Delete media
+     */
+    public function deleteMedia(PlaceMedia $media)
+    {
+        Storage::disk('public')->delete($media->path);
+        $media->delete();
 
-     private function uniquePlaceSlug(string $name, ?int $ignoreId = null): string
-     {
-         $base = Str::slug($name) ?: 'place';
-         $slug = $base;
-         $counter = 2;
+        return redirect()->route('admin.places.show', $media->place_id)->with('success', 'Media deleted successfully');
+    }
 
-         while (Place::where('slug', $slug)
-             ->when($ignoreId, fn ($query) => $query->where('id', '!=', $ignoreId))
-             ->exists()) {
-             $slug = "{$base}-{$counter}";
-             $counter++;
-         }
+    public function approveMedia(PlaceMedia $media)
+    {
+        $media->update([
+            'approval_status' => 'approved',
+            'reviewed_by' => Auth::id(),
+            'reviewed_at' => now(),
+            'rejection_reason' => null,
+        ]);
 
-         return $slug;
-     }
+        return back()->with('success', 'Customer photo approved and published.');
+    }
+
+    public function rejectMedia(Request $request, PlaceMedia $media)
+    {
+        $validated = $request->validate(['reason' => 'required|string|max:1000']);
+        $media->update([
+            'approval_status' => 'rejected',
+            'reviewed_by' => Auth::id(),
+            'reviewed_at' => now(),
+            'rejection_reason' => $validated['reason'],
+        ]);
+
+        return back()->with('success', 'Customer photo rejected and kept out of public galleries.');
+    }
+
+    private function uniquePlaceSlug(string $name, ?int $ignoreId = null): string
+    {
+        $base = Str::slug($name) ?: 'place';
+        $slug = $base;
+        $counter = 2;
+
+        while (Place::where('slug', $slug)
+            ->when($ignoreId, fn ($query) => $query->where('id', '!=', $ignoreId))
+            ->exists()) {
+            $slug = "{$base}-{$counter}";
+            $counter++;
+        }
+
+        return $slug;
+    }
 
     /**
      * System settings
@@ -949,11 +1093,11 @@ class AdminController extends Controller
         $query = CarRental::with(['carCategory', 'customer', 'driver', 'vehicle']);
 
         // Filter by status if provided
-        if ($request->has('status') && !empty($request->status)) {
+        if ($request->has('status') && ! empty($request->status)) {
             $query->where('status', $request->status);
         }
 
-        if ($request->has('dispatch_status') && !empty($request->dispatch_status)) {
+        if ($request->has('dispatch_status') && ! empty($request->dispatch_status)) {
             $query->where('dispatch_status', $request->dispatch_status);
         }
 
@@ -968,11 +1112,7 @@ class AdminController extends Controller
             return response()->json($carRentals);
         }
 
-        return inertia('admin/CarRentals', [
-            'title' => 'Car Rentals Management',
-            'user' => Auth::user(),
-            'car_rentals' => $carRentals,
-        ]);
+        return redirect()->route('admin.bookings', array_merge($request->query(), ['tab' => 'rental']));
     }
 
     /**
@@ -1089,7 +1229,7 @@ class AdminController extends Controller
             'sms_notification' => $request->boolean('sms_notification', false),
         ]);
 
-        if (!empty($validated['driver_id'])) {
+        if (! empty($validated['driver_id'])) {
             DriverAvailability::where('driver_id', $validated['driver_id'])->update([
                 'status' => 'on_ride',
                 'is_available' => false,
@@ -1097,7 +1237,7 @@ class AdminController extends Controller
             ]);
         }
 
-        return redirect()->route('admin.car-rentals')->with('success', 'Car rental created successfully');
+        return redirect()->route('admin.bookings', ['tab' => 'rental'])->with('success', 'Car rental created successfully');
     }
 
     /**
@@ -1253,7 +1393,7 @@ class AdminController extends Controller
 
         $this->syncDriverAvailabilityForRental($carRental, $previousDriverId);
 
-        return redirect()->route('admin.car-rentals')->with('success', 'Car rental updated successfully');
+        return redirect()->route('admin.bookings', ['tab' => 'rental'])->with('success', 'Car rental updated successfully');
     }
 
     /**
@@ -1263,7 +1403,7 @@ class AdminController extends Controller
     {
         $carRental->delete();
 
-        return redirect()->route('admin.car-rentals')->with('success', 'Car rental deleted successfully');
+        return redirect()->route('admin.bookings', ['tab' => 'rental'])->with('success', 'Car rental deleted successfully');
     }
 
     public function assignCarRentalDriver(Request $request, CarRental $carRental)
@@ -1322,7 +1462,7 @@ class AdminController extends Controller
             'cancellation_reason' => 'nullable|string|max:1000',
         ]);
 
-        if (!isset($validated['status']) && !isset($validated['payment_status'])) {
+        if (! isset($validated['status']) && ! isset($validated['payment_status'])) {
             return response()->json(['message' => 'No changes requested.'], 422);
         }
 
@@ -1334,7 +1474,7 @@ class AdminController extends Controller
         $updates = [];
         if (isset($validated['status'])) {
             $requestedStatus = $statusService->normalize(BookingStatusService::RENTAL, $validated['status']);
-            if (!$requestedStatus || !$statusService->canTransition(BookingStatusService::RENTAL, $carRental->status, $requestedStatus, 'admin')) {
+            if (! $requestedStatus || ! $statusService->canTransition(BookingStatusService::RENTAL, $carRental->status, $requestedStatus, 'admin')) {
                 return response()->json([
                     'message' => 'Invalid rental status transition.',
                     'allowed_transitions' => $statusService->allowedTransitions(BookingStatusService::RENTAL, $carRental->status, 'admin'),
@@ -1394,7 +1534,7 @@ class AdminController extends Controller
             'cancellation_reason' => 'nullable|string|max:1000',
         ]);
 
-        if (!isset($validated['status']) && !isset($validated['payment_status'])) {
+        if (! isset($validated['status']) && ! isset($validated['payment_status'])) {
             return response()->json(['message' => 'No changes requested.'], 422);
         }
 
@@ -1410,7 +1550,7 @@ class AdminController extends Controller
             if (isset($validated['status'])) {
                 $statusService = app(BookingStatusService::class);
                 $requestedStatus = $statusService->normalize(BookingStatusService::TOUR, $validated['status']);
-                if (!$requestedStatus || !$statusService->canTransition(BookingStatusService::TOUR, $tourBooking->status, $requestedStatus, 'admin')) {
+                if (! $requestedStatus || ! $statusService->canTransition(BookingStatusService::TOUR, $tourBooking->status, $requestedStatus, 'admin')) {
                     abort(response()->json([
                         'message' => 'Invalid tour booking status transition.',
                         'allowed_transitions' => $statusService->allowedTransitions(BookingStatusService::TOUR, $tourBooking->status, 'admin'),
@@ -1470,7 +1610,7 @@ class AdminController extends Controller
             ]);
         }
 
-        if (!$carRental->driver_id) {
+        if (! $carRental->driver_id) {
             return;
         }
 
@@ -1478,7 +1618,7 @@ class AdminController extends Controller
 
         DriverAvailability::where('driver_id', $carRental->driver_id)->update([
             'status' => $isActiveRental ? 'on_ride' : 'online',
-            'is_available' => !$isActiveRental,
+            'is_available' => ! $isActiveRental,
             'last_updated' => now(),
         ]);
     }
@@ -1486,7 +1626,7 @@ class AdminController extends Controller
     private function syncTourSeatInventory(TourBooking $booking, string $previousStatus, string $previousPaymentStatus): void
     {
         $schedule = $booking->schedule()->lockForUpdate()->first();
-        if (!$schedule) {
+        if (! $schedule) {
             return;
         }
 
@@ -1495,14 +1635,16 @@ class AdminController extends Controller
         $isConfirmed = $booking->status === 'confirmed' || $booking->payment_status === 'paid';
         $isCancelled = $booking->status === 'cancelled';
 
-        if (!$wasConfirmed && $isConfirmed && !$isCancelled) {
+        if (! $wasConfirmed && $isConfirmed && ! $isCancelled) {
             $schedule->decrement('reserved_seats', min($schedule->reserved_seats, $seats));
             $schedule->increment('booked_seats', $seats);
+
             return;
         }
 
         if ($previousStatus === 'pending' && $isCancelled) {
             $schedule->decrement('reserved_seats', min($schedule->reserved_seats, $seats));
+
             return;
         }
 
@@ -1519,14 +1661,14 @@ class AdminController extends Controller
         $query = CarCategory::query();
 
         // Filter by vehicle type if provided
-        if ($request->has('type') && !empty($request->type)) {
+        if ($request->has('type') && ! empty($request->type)) {
             $query->where('vehicle_type', $request->type);
         }
 
         // Filter by active status
         if ($request->has('active') && $request->boolean('active')) {
             $query->where('is_active', true);
-        } elseif ($request->has('active') && !$request->boolean('active')) {
+        } elseif ($request->has('active') && ! $request->boolean('active')) {
             $query->where('is_active', false);
         }
 
@@ -1569,7 +1711,7 @@ class AdminController extends Controller
             'images' => 'nullable|array',
             'images.*' => 'string',
             'fuel_type' => 'nullable|string|in:petrol,diesel,electric,hybrid',
-            'year' => 'nullable|integer|min:1900|max:' . (date('Y') + 1),
+            'year' => 'nullable|integer|min:1900|max:'.(date('Y') + 1),
             'is_active' => 'boolean',
             'sort_order' => 'nullable|integer|min:0',
         ]);
@@ -1609,7 +1751,7 @@ class AdminController extends Controller
     public function updateCarCategory(Request $request, CarCategory $carCategory)
     {
         $validated = $request->validate([
-            'name' => 'required|string|max:255|unique:car_categories,name,' . $carCategory->id,
+            'name' => 'required|string|max:255|unique:car_categories,name,'.$carCategory->id,
             'description' => 'nullable|string',
             'vehicle_type' => 'required|string|in:sedan,suv,hatchback,convertible,van,truck',
             'seats' => 'required|integer|min:1|max:20',
@@ -1622,7 +1764,7 @@ class AdminController extends Controller
             'images' => 'nullable|array',
             'images.*' => 'string',
             'fuel_type' => 'nullable|string|in:petrol,diesel,electric,hybrid',
-            'year' => 'nullable|integer|min:1900|max:' . (date('Y') + 1),
+            'year' => 'nullable|integer|min:1900|max:'.(date('Y') + 1),
             'is_active' => 'boolean',
             'sort_order' => 'nullable|integer|min:0',
         ]);
@@ -1655,24 +1797,24 @@ class AdminController extends Controller
         $query = Destination::query();
 
         // Filter by state if provided
-        if ($request->has('state') && !empty($request->state)) {
+        if ($request->has('state') && ! empty($request->state)) {
             $query->where('state', $request->state);
         }
 
         // Filter by type if provided
-        if ($request->has('type') && !empty($request->type)) {
+        if ($request->has('type') && ! empty($request->type)) {
             $query->where('type', $request->type);
         }
 
         // Filter by region if provided
-        if ($request->has('region') && !empty($request->region)) {
+        if ($request->has('region') && ! empty($request->region)) {
             $query->where('region', $request->region);
         }
 
         // Filter by active status
         if ($request->has('active') && $request->boolean('active')) {
             $query->where('is_active', true);
-        } elseif ($request->has('active') && !$request->boolean('active')) {
+        } elseif ($request->has('active') && ! $request->boolean('active')) {
             $query->where('is_active', false);
         }
 
@@ -1758,7 +1900,7 @@ class AdminController extends Controller
     public function updateDestination(Request $request, Destination $destination)
     {
         $validated = $request->validate([
-            'name' => 'required|string|max:255|unique:destinations,name,' . $destination->id,
+            'name' => 'required|string|max:255|unique:destinations,name,'.$destination->id,
             'description' => 'nullable|string',
             'state' => 'required|string|max:100',
             'region' => 'nullable|string|max:100',
@@ -1807,7 +1949,7 @@ class AdminController extends Controller
         $query = RideBooking::with(['customer', 'driver']);
 
         // Filter by status if provided
-        if ($request->has('status') && !empty($request->status)) {
+        if ($request->has('status') && ! empty($request->status)) {
             $query->where('status', $request->status);
         }
 
@@ -1818,11 +1960,7 @@ class AdminController extends Controller
             return response()->json($rideBookings);
         }
 
-        return inertia('admin/RideBookings', [
-            'title' => 'Ride Bookings Management',
-            'user' => Auth::user(),
-            'ride_bookings' => $rideBookings,
-        ]);
+        return redirect()->route('admin.bookings', array_merge($request->query(), ['tab' => 'ride']));
     }
 
     /**
@@ -1850,6 +1988,8 @@ class AdminController extends Controller
                     'phone' => $driver->phone,
                     'is_online' => ($availability?->status ?? 'offline') !== 'offline',
                     'is_available' => (bool) ($availability?->is_available ?? false),
+                    'sharing_enabled' => (bool) ($availability?->sharing_enabled ?? false),
+                    'sharing_seat_capacity' => (int) ($availability?->sharing_seat_capacity ?? 3),
                     'rating' => $driver->rating,
                     'vehicle_number' => $driver->vehicle_number,
                 ];
@@ -1877,7 +2017,7 @@ class AdminController extends Controller
         if ($validator->fails()) {
             return response()->json([
                 'message' => 'Validation failed.',
-                'errors' => $validator->errors()
+                'errors' => $validator->errors(),
             ], 422);
         }
 
@@ -1949,7 +2089,7 @@ class AdminController extends Controller
             'cancellation_reason' => 'nullable|string|max:1000',
         ]);
 
-        if (!isset($validated['status']) && !isset($validated['payment_status'])) {
+        if (! isset($validated['status']) && ! isset($validated['payment_status'])) {
             return response()->json([
                 'message' => 'No changes requested.',
             ], 422);
@@ -1966,7 +2106,7 @@ class AdminController extends Controller
 
         if (isset($validated['status'])) {
             $requestedStatus = $statusService->normalize(BookingStatusService::RIDE, $validated['status']);
-            if (!$requestedStatus || !$statusService->canTransition(BookingStatusService::RIDE, $rideBooking->status, $requestedStatus, 'admin')) {
+            if (! $requestedStatus || ! $statusService->canTransition(BookingStatusService::RIDE, $rideBooking->status, $requestedStatus, 'admin')) {
                 return response()->json([
                     'message' => 'Invalid ride booking status transition.',
                     'allowed_transitions' => $statusService->allowedTransitions(BookingStatusService::RIDE, $rideBooking->status, 'admin'),
@@ -2230,14 +2370,14 @@ class AdminController extends Controller
 
     public function undoLastRideBookingChange(RideBooking $rideBooking)
     {
-        if (!$this->canUndoLastChange($rideBooking)) {
+        if (! $this->canUndoLastChange($rideBooking)) {
             return response()->json([
                 'message' => 'Undo window has expired or there is no change to undo.',
             ], 422);
         }
 
         $snapshot = $rideBooking->last_admin_change_snapshot ?? [];
-        if (!is_array($snapshot) || empty($snapshot)) {
+        if (! is_array($snapshot) || empty($snapshot)) {
             return response()->json([
                 'message' => 'No undo snapshot available.',
             ], 422);
@@ -2285,10 +2425,19 @@ class AdminController extends Controller
 
     private function canUndoLastChange(RideBooking $rideBooking): bool
     {
-        if (!$rideBooking->last_admin_changed_at || empty($rideBooking->last_admin_change_snapshot)) {
+        if (! $rideBooking->last_admin_changed_at || empty($rideBooking->last_admin_change_snapshot)) {
             return false;
         }
 
         return $rideBooking->last_admin_changed_at->greaterThan(now()->subMinutes(10));
+    }
+
+    private function syncTourDurationFromItineraries(Tour $tour): void
+    {
+        $days = (int) $tour->itineraries()->max('day_number');
+        $tour->update([
+            'duration_days' => $days,
+            'duration_nights' => max(0, $days - 1),
+        ]);
     }
 }

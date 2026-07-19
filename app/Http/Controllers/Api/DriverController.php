@@ -74,7 +74,7 @@ class DriverController extends Controller
         if ($availability?->current_lat && $availability?->current_lng) {
             $lat = (float) $availability->current_lat;
             $lng = (float) $availability->current_lng;
-            $radiusKm = 15.0;
+            $radiusKm = DriverDispatchService::DEFAULT_PICKUP_RADIUS_KM;
 
             $latDelta = $radiusKm / 111.32;
             $lngDelta = $radiusKm / (111.32 * cos(deg2rad($lat)));
@@ -83,7 +83,22 @@ class DriverController extends Controller
                 ->whereBetween('pickup_lng', [$lng - $lngDelta, $lng + $lngDelta]);
         }
 
-        $rides = $query->get()->map(fn (RideBooking $ride) => $this->mapRide($ride))->values();
+        $dispatch = app(DriverDispatchService::class);
+        $vehicle = $user->vehicle()->first();
+        $rides = $query->get()
+            ->filter(function (RideBooking $ride) use ($dispatch, $user, $vehicle) {
+                return $dispatch->eligibilityFailures(
+                    $user,
+                    $dispatch->rideServiceType($ride),
+                    null,
+                    $ride->car_category_id,
+                    $vehicle?->id,
+                    $ride->pickup_lat !== null ? (float) $ride->pickup_lat : null,
+                    $ride->pickup_lng !== null ? (float) $ride->pickup_lng : null
+                ) === [];
+            })
+            ->map(fn (RideBooking $ride) => $this->mapRide($ride))
+            ->values();
 
         return response()->json([
             'success' => true,
@@ -120,9 +135,29 @@ class DriverController extends Controller
             ], 409);
         }
 
+        $vehicle = $user->vehicle()->first();
+        $dispatch = app(DriverDispatchService::class);
+        $eligibilityFailures = $dispatch->eligibilityFailures(
+            $user,
+            $dispatch->rideServiceType($booking),
+            null,
+            $booking->car_category_id,
+            $vehicle?->id,
+            $booking->pickup_lat !== null ? (float) $booking->pickup_lat : null,
+            $booking->pickup_lng !== null ? (float) $booking->pickup_lng : null
+        );
+
+        if ($eligibilityFailures !== []) {
+            return response()->json([
+                'success' => false,
+                'message' => $eligibilityFailures[0],
+                'errors' => ['eligibility' => $eligibilityFailures],
+            ], 422);
+        }
+
         $accepted = false;
 
-        DB::transaction(function () use ($booking, $user, &$accepted) {
+        DB::transaction(function () use ($booking, $user, $vehicle, &$accepted) {
             $locked = RideBooking::whereKey($booking->id)->lockForUpdate()->first();
 
             if (!$locked || $locked->driver_id || !in_array($locked->status, ['pending', 'confirmed'], true)) {
@@ -131,6 +166,7 @@ class DriverController extends Controller
 
             $locked->update([
                 'driver_id' => $user->id,
+                'vehicle_id' => $vehicle->id,
                 'status' => 'driver_assigned',
                 'dispatch_status' => 'assigned',
                 'admin_assignable' => false,

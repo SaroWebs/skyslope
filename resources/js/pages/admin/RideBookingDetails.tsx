@@ -12,12 +12,10 @@ import {
     Avatar, 
     Badge, 
     Button, 
-    ActionIcon, 
     Divider,
     SimpleGrid,
     Box,
     Card,
-    Tooltip,
     Select,
     Timeline,
     ThemeIcon,
@@ -28,7 +26,6 @@ import {
     Navigation, 
     MapPin, 
     Car, 
-    User, 
     Phone, 
     Mail, 
     Calendar, 
@@ -39,8 +36,8 @@ import {
     AlertCircle,
     RotateCcw,
     Map,
-    ExternalLink,
-    CheckCircle2
+    CheckCircle2,
+    UsersRound
 } from 'lucide-react';
 
 interface DriverOption {
@@ -52,6 +49,8 @@ interface DriverOption {
     is_available: boolean;
     rating?: number | null;
     vehicle_number?: string | null;
+    sharing_enabled: boolean;
+    sharing_seat_capacity: number;
 }
 
 interface RideBooking {
@@ -67,6 +66,13 @@ interface RideBooking {
     status: string;
     payment_status: string;
     service_type: string;
+    ride_mode: 'private' | 'shared';
+    sharing_requested: boolean;
+    sharing_enabled_by?: 'driver' | 'customer' | 'admin' | null;
+    reserved_seats: number;
+    full_car_fare: number;
+    sharing_discount_percent: number;
+    sharing_savings: number;
     special_requests?: string;
     driver_id?: number | null;
     customer?: {
@@ -231,6 +237,23 @@ export default function RideBookingDetails({ title = 'Ride Booking Details', boo
                                     </Box>
                                 </SimpleGrid>
 
+                                <Alert
+                                    mt="xl"
+                                    variant="light"
+                                    color={booking.ride_mode === 'shared' ? 'teal' : 'gray'}
+                                    title={booking.ride_mode === 'shared' ? 'Shared point-to-point ride' : 'Full car booking'}
+                                    icon={booking.ride_mode === 'shared' ? <UsersRound size={18} /> : <Car size={18} />}
+                                >
+                                    {booking.ride_mode === 'shared' ? (
+                                        <Stack gap={4}>
+                                            <Text size="sm">{booking.reserved_seats} {booking.reserved_seats === 1 ? 'seat' : 'seats'} reserved · Enabled by {booking.sharing_enabled_by ?? 'customer'}.</Text>
+                                            <Text size="sm" fw={700}>Full car ₹{booking.full_car_fare} · Shared saving ₹{booking.sharing_savings} ({booking.sharing_discount_percent}%)</Text>
+                                        </Stack>
+                                    ) : (
+                                        <Text size="sm">The customer reserved the complete vehicle; no other customer may share this ride.</Text>
+                                    )}
+                                </Alert>
+
                                 <Divider my="xl" label="Route Information" labelPosition="center" />
 
                                 <Timeline active={1} bulletSize={30} lineWidth={2}>
@@ -316,7 +339,7 @@ export default function RideBookingDetails({ title = 'Ride Booking Details', boo
                                         placeholder="Pick a driver from the fleet"
                                         data={drivers.map(d => ({
                                             value: String(d.id),
-                                            label: `${d.name} (${d.is_online ? 'Online' : 'Offline'})${d.vehicle_number ? ` - ${d.vehicle_number}` : ''}`,
+                                            label: `${d.name} (${d.is_online ? 'Online' : 'Offline'})${d.sharing_enabled ? ` · Sharing ${d.sharing_seat_capacity} seats` : ''}${d.vehicle_number ? ` - ${d.vehicle_number}` : ''}`,
                                             disabled: !d.is_available && d.id !== booking.driver_id
                                         }))}
                                         value={selectedDriverId}
@@ -335,6 +358,7 @@ export default function RideBookingDetails({ title = 'Ride Booking Details', boo
                                             <Text size="xs" fw={700} color="blue.9">Selected Driver Info:</Text>
                                             <Text size="xs">Rating: {selectedDriver.rating ? `${selectedDriver.rating}/5` : 'New'}</Text>
                                             <Text size="xs">Vehicle: {selectedDriver.vehicle_number || 'N/A'}</Text>
+                                            <Text size="xs">Sharing: {selectedDriver.sharing_enabled ? `Enabled · ${selectedDriver.sharing_seat_capacity} seats` : 'Driver preference off'}</Text>
                                         </Paper>
                                     )}
 
@@ -368,7 +392,7 @@ export default function RideBookingDetails({ title = 'Ride Booking Details', boo
     );
 }
 
-const XCircle = ({ size, color }: any) => (
+const XCircle = ({ size, color }: { size: number; color?: string }) => (
     <Box style={{ color }}>
          {/* Simple X icon */}
          <svg 

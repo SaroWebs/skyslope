@@ -5,6 +5,8 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
+use Illuminate\Support\Str;
 
 class Vehicle extends Model
 {
@@ -30,6 +32,10 @@ class Vehicle extends Model
         'is_active',
         'condition',
         'notes',
+        'approval_status',
+        'reviewed_at',
+        'reviewed_by',
+        'rejection_reason',
     ];
 
     protected $casts = [
@@ -42,7 +48,18 @@ class Vehicle extends Model
         'year'             => 'integer',
         'seats'            => 'integer',
         'odometer_km'      => 'integer',
+        'reviewed_at'      => 'datetime',
     ];
+
+    protected static function booted(): void
+    {
+        static::created(function (Vehicle $vehicle) {
+            $vehicle->tracker()->firstOrCreate([], [
+                'device_uid' => 'SKY-'.str_pad((string) $vehicle->id, 6, '0', STR_PAD_LEFT).'-'.Str::upper(Str::random(6)),
+                'status' => 'unprovisioned',
+            ]);
+        });
+    }
 
     public function category(): BelongsTo
     {
@@ -52,6 +69,19 @@ class Vehicle extends Model
     public function driver(): BelongsTo
     {
         return $this->belongsTo(Driver::class, 'driver_id');
+    }
+
+    public function reviewer(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'reviewed_by');
+    }
+
+    public function isApprovedForService(): bool
+    {
+        return $this->is_active
+            && $this->approval_status === 'approved'
+            && $this->condition !== 'under_maintenance'
+            && $this->isDocumentValid();
     }
 
     public function rideBookings(): HasMany
@@ -67,6 +97,16 @@ class Vehicle extends Model
     public function tourDriverAssignments(): HasMany
     {
         return $this->hasMany(TourDriverAssignment::class, 'vehicle_id');
+    }
+
+    public function tracker(): HasOne
+    {
+        return $this->hasOne(VehicleTracker::class);
+    }
+
+    public function locations(): HasMany
+    {
+        return $this->hasMany(VehicleLocation::class);
     }
 
     // ── Helpers ────────────────────────────────────────────────────

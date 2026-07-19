@@ -210,7 +210,7 @@ class RazorpayService
                     'purpose' => $purpose,
                     'queue_if_low_balance' => true,
                     'reference_id' => $referenceId,
-                    'narration' => 'SkySlope Driver Payout',
+                    'narration' => 'HappyMiles Driver Payout',
                 ]);
 
             if (!$response->successful()) {
@@ -314,7 +314,7 @@ class RazorpayService
         return [
             'key' => $this->apiKey,
             'currency' => 'INR',
-            'name' => config('app.name', 'SkySlope'),
+            'name' => config('app.name', 'HappyMiles Tours & Travels'),
             'image' => asset('logo.svg'),
             'prefill' => [
                 'name' => auth()->user()?->name ?? '',

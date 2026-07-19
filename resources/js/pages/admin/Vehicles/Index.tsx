@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Head, router } from '@inertiajs/react';
 import {
     Table,
@@ -14,14 +14,18 @@ import {
     Badge,
     Tooltip,
     Modal,
-    NumberInput,
-    Checkbox
+    NumberInput
 } from '@mantine/core';
 import {
     Search,
     Trash,
     Plus,
-    Edit
+    Edit,
+    MapPinned,
+    Radio,
+    KeyRound,
+    Copy,
+    Check
 } from 'lucide-react';
 import { useDisclosure } from '@mantine/hooks';
 import AdminLayout from '@/layouts/AdminLayout';
@@ -37,6 +41,14 @@ interface Vehicle {
     color: string;
     seats: number;
     is_active: boolean;
+    approval_status: 'pending' | 'approved' | 'rejected';
+    rejection_reason?: string | null;
+    tracker?: {
+        id: number;
+        device_uid: string;
+        status: 'unprovisioned' | 'active' | 'suspended' | 'faulty';
+        last_ping_at?: string | null;
+    } | null;
     condition: string;
     driver?: {
         id: number;
@@ -57,16 +69,29 @@ interface VehiclesProps {
         total: number;
     };
     categories: { id: number, name: string }[];
-    drivers: { id: number, name: string }[];
+    drivers: { id: number, name: string, vehicle?: { id: number, registration_number: string } | null }[];
     filters: {
         search: string;
     };
+    tracker_credentials?: {
+        vehicle_id: number;
+        registration_number: string;
+        device_uid: string;
+        api_token: string;
+        endpoint: string;
+    } | null;
 }
 
-export default function Vehicles({ title, vehicles, categories, drivers, filters }: VehiclesProps) {
+export default function Vehicles({ title, vehicles, categories, drivers, filters, tracker_credentials }: VehiclesProps) {
     const [search, setSearch] = useState(filters.search || '');
     const [opened, { open, close }] = useDisclosure(false);
     const [editingVehicle, setEditingVehicle] = useState<Vehicle | null>(null);
+    const [credentialsOpen, setCredentialsOpen] = useState(Boolean(tracker_credentials));
+    const [copied, setCopied] = useState(false);
+
+    useEffect(() => {
+        if (tracker_credentials) setCredentialsOpen(true);
+    }, [tracker_credentials]);
 
     // Form states
     const [formData, setFormData] = useState({
@@ -81,7 +106,9 @@ export default function Vehicles({ title, vehicles, categories, drivers, filters
         seats: 4,
         is_ac: true,
         condition: 'good',
-        is_active: true
+        is_active: true,
+        approval_status: 'approved' as 'pending' | 'approved' | 'rejected',
+        rejection_reason: ''
     });
 
     const handleSearch = (value: string) => {
@@ -107,7 +134,9 @@ export default function Vehicles({ title, vehicles, categories, drivers, filters
             seats: vehicle.seats,
             is_ac: true,
             condition: vehicle.condition,
-            is_active: vehicle.is_active
+            is_active: vehicle.is_active,
+            approval_status: vehicle.approval_status,
+            rejection_reason: vehicle.rejection_reason || ''
         });
         open();
     };
@@ -145,9 +174,24 @@ export default function Vehicles({ title, vehicles, categories, drivers, filters
             seats: 4,
             is_ac: true,
             condition: 'good',
-            is_active: true
+            is_active: true,
+            approval_status: 'approved',
+            rejection_reason: ''
         });
         open();
+    };
+
+    const provisionTracker = (vehicle: Vehicle) => {
+        router.post(`/admin/vehicles/${vehicle.id}/tracker/provision`, {}, { preserveScroll: true });
+    };
+
+    const copyCredentials = async () => {
+        if (!tracker_credentials) return;
+        await navigator.clipboard.writeText(
+            `Device: ${tracker_credentials.device_uid}\nEndpoint: ${tracker_credentials.endpoint}\nBearer token: ${tracker_credentials.api_token}`
+        );
+        setCopied(true);
+        window.setTimeout(() => setCopied(false), 2000);
     };
 
     return (
@@ -179,6 +223,7 @@ export default function Vehicles({ title, vehicles, categories, drivers, filters
                                     <Table.Th>Category</Table.Th>
                                     <Table.Th>Assigned Driver</Table.Th>
                                     <Table.Th>Status</Table.Th>
+                                    <Table.Th>GPS tracker</Table.Th>
                                     <Table.Th />
                                 </Table.Tr>
                             </Table.Thead>
@@ -205,12 +250,31 @@ export default function Vehicles({ title, vehicles, categories, drivers, filters
                                             )}
                                         </Table.Td>
                                         <Table.Td>
-                                            <Badge color={vehicle.is_active ? 'green' : 'red'}>
-                                                {vehicle.is_active ? 'Active' : 'Inactive'}
+                                            <Badge color={vehicle.approval_status === 'approved' ? 'green' : vehicle.approval_status === 'rejected' ? 'red' : 'yellow'}>
+                                                {vehicle.approval_status === 'approved' ? 'Approved' : vehicle.approval_status === 'rejected' ? 'Rejected' : 'Pending review'}
                                             </Badge>
                                         </Table.Td>
                                         <Table.Td>
+                                            <Group gap={6} wrap="nowrap">
+                                                <Radio size={15} color={vehicle.tracker?.status === 'active' ? '#16a34a' : '#d97706'} />
+                                                <div>
+                                                    <Text size="xs" fw={700}>{vehicle.tracker?.status === 'active' ? 'Provisioned' : 'Setup required'}</Text>
+                                                    <Text size="xs" c="dimmed">{vehicle.tracker?.device_uid || 'No device ID'}</Text>
+                                                </div>
+                                            </Group>
+                                        </Table.Td>
+                                        <Table.Td>
                                             <Group gap={8} justify="flex-end">
+                                                <Tooltip label="Track vehicle">
+                                                    <ActionIcon component="a" href={`/admin/vehicles/${vehicle.id}/tracking`} color="teal" variant="light" aria-label={`Track ${vehicle.registration_number}`}>
+                                                        <MapPinned size={16} />
+                                                    </ActionIcon>
+                                                </Tooltip>
+                                                <Tooltip label={vehicle.tracker?.status === 'active' ? 'Rotate tracker token' : 'Provision tracker'}>
+                                                    <ActionIcon onClick={() => provisionTracker(vehicle)} color="orange" variant="light" aria-label={`Provision tracker for ${vehicle.registration_number}`}>
+                                                        <KeyRound size={16} />
+                                                    </ActionIcon>
+                                                </Tooltip>
                                                 <ActionIcon onClick={() => handleEdit(vehicle)} color="blue" variant="light">
                                                     <Edit size={16} />
                                                 </ActionIcon>
@@ -296,7 +360,13 @@ export default function Vehicles({ title, vehicles, categories, drivers, filters
                             <Select
                                 label="Assign Driver (Optional)"
                                 placeholder="Select driver"
-                                data={drivers.map(d => ({ value: d.id.toString(), label: d.name }))}
+                                data={drivers.map(d => ({
+                                    value: d.id.toString(),
+                                    label: d.vehicle && d.vehicle.id !== editingVehicle?.id
+                                        ? `${d.name} — already has ${d.vehicle.registration_number}`
+                                        : d.name,
+                                    disabled: Boolean(d.vehicle && d.vehicle.id !== editingVehicle?.id),
+                                }))}
                                 value={formData.driver_id}
                                 onChange={(val) => setFormData({ ...formData, driver_id: val || '' })}
                                 clearable
@@ -304,11 +374,31 @@ export default function Vehicles({ title, vehicles, categories, drivers, filters
                         </Group>
 
                         {editingVehicle && (
-                            <Checkbox
-                                label="Vehicle is active"
-                                checked={formData.is_active}
-                                onChange={(e) => setFormData({ ...formData, is_active: e.currentTarget.checked })}
-                            />
+                            <>
+                                <Select
+                                    label="Approval status"
+                                    description="Only approved cars can receive ride requests."
+                                    data={[
+                                        { value: 'pending', label: 'Pending review' },
+                                        { value: 'approved', label: 'Approved' },
+                                        { value: 'rejected', label: 'Rejected' },
+                                    ]}
+                                    value={formData.approval_status}
+                                    onChange={(value) => setFormData({
+                                        ...formData,
+                                        approval_status: (value || 'pending') as 'pending' | 'approved' | 'rejected',
+                                    })}
+                                />
+                                {formData.approval_status === 'rejected' && (
+                                    <TextInput
+                                        label="Rejection reason"
+                                        placeholder="Tell the driver what must be corrected"
+                                        value={formData.rejection_reason}
+                                        onChange={(event) => setFormData({ ...formData, rejection_reason: event.currentTarget.value })}
+                                        required
+                                    />
+                                )}
+                            </>
                         )}
 
                         <Button type="submit" fullWidth mt="md">
@@ -316,6 +406,35 @@ export default function Vehicles({ title, vehicles, categories, drivers, filters
                         </Button>
                     </Stack>
                 </form>
+            </Modal>
+
+            <Modal
+                opened={credentialsOpen}
+                onClose={() => setCredentialsOpen(false)}
+                title="GPS tracker credentials"
+                size="lg"
+                closeOnClickOutside={false}
+            >
+                {tracker_credentials && (
+                    <Stack gap="md">
+                        <Text size="sm" c="dimmed">
+                            Configure the hardware unit for {tracker_credentials.registration_number}. The bearer token is shown only once.
+                        </Text>
+                        <Paper p="md" radius="md" withBorder bg="gray.0">
+                            <Stack gap="xs">
+                                <Text size="xs" fw={700} tt="uppercase" c="dimmed">Device ID</Text>
+                                <Text ff="monospace" fw={700}>{tracker_credentials.device_uid}</Text>
+                                <Text size="xs" fw={700} tt="uppercase" c="dimmed" mt="sm">Location endpoint</Text>
+                                <Text ff="monospace" size="sm" style={{ wordBreak: 'break-all' }}>{tracker_credentials.endpoint}</Text>
+                                <Text size="xs" fw={700} tt="uppercase" c="dimmed" mt="sm">Bearer token</Text>
+                                <Text ff="monospace" size="sm" style={{ wordBreak: 'break-all' }}>{tracker_credentials.api_token}</Text>
+                            </Stack>
+                        </Paper>
+                        <Button onClick={copyCredentials} leftSection={copied ? <Check size={16} /> : <Copy size={16} />} color={copied ? 'green' : 'blue'}>
+                            {copied ? 'Copied' : 'Copy setup credentials'}
+                        </Button>
+                    </Stack>
+                )}
             </Modal>
         </AdminLayout>
     );

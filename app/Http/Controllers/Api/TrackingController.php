@@ -272,6 +272,13 @@ class TrackingController extends Controller
                     'longitude' => $booking->current_lng,
                     'last_update' => $booking->last_location_update,
                 ] : null,
+                'tracking' => $this->trackingState(
+                    $booking->status,
+                    $booking->current_lat,
+                    $booking->current_lng,
+                    $booking->last_location_update,
+                    (bool) $booking->driver_id
+                ),
                 'pickup' => [
                     'latitude' => $booking->pickup_lat,
                     'longitude' => $booking->pickup_lng,
@@ -513,6 +520,13 @@ class TrackingController extends Controller
                     'last_update' => $booking->last_location_update,
                     'current_stop_index' => $booking->current_stop_index,
                 ] : null,
+                'tracking' => $this->trackingState(
+                    $booking->status,
+                    $booking->current_lat,
+                    $booking->current_lng,
+                    $booking->last_location_update,
+                    $booking->driverAssignments->isNotEmpty()
+                ),
                 'service_type' => 'tour',
                 'eta_minutes' => null,
                 'weather' => app(WeatherProviderService::class)->snapshot($booking->current_lat, $booking->current_lng),
@@ -542,6 +556,13 @@ class TrackingController extends Controller
                     'longitude' => $rental->current_lng,
                     'last_update' => $rental->last_location_update,
                 ] : null,
+                'tracking' => $this->trackingState(
+                    $rental->status,
+                    $rental->current_lat,
+                    $rental->current_lng,
+                    $rental->last_location_update,
+                    (bool) $rental->driver_id
+                ),
                 'pickup' => [
                     'latitude' => $rental->pickup_lat,
                     'longitude' => $rental->pickup_lng,
@@ -633,6 +654,39 @@ class TrackingController extends Controller
         return [
             'status' => $activePolicy ? 'active' : 'optional',
             'label' => $activePolicy ? $activePolicy->policy_type.' active' : 'Optional',
+        ];
+    }
+
+    private function trackingState(
+        string $status,
+        mixed $latitude,
+        mixed $longitude,
+        mixed $lastLocationUpdate,
+        bool $driverAssigned
+    ): array {
+        $terminal = in_array($status, ['completed', 'cancelled'], true);
+        $hasLocation = filled($latitude) && filled($longitude) && filled($lastLocationUpdate);
+        $lastUpdate = $lastLocationUpdate ? \Illuminate\Support\Carbon::parse($lastLocationUpdate) : null;
+        $staleAfterSeconds = 120;
+        $ageSeconds = $lastUpdate ? now()->diffInSeconds($lastUpdate, true) : null;
+
+        $state = match (true) {
+            $terminal => 'terminal',
+            ! $driverAssigned => 'no_driver_yet',
+            ! $hasLocation => 'driver_assigned_no_location',
+            $ageSeconds !== null && $ageSeconds > $staleAfterSeconds => 'stale',
+            default => 'live',
+        };
+
+        return [
+            'state' => $state,
+            'driver_assigned' => $driverAssigned,
+            'has_location' => $hasLocation,
+            'last_update' => $lastUpdate?->toIso8601String(),
+            'age_seconds' => $ageSeconds,
+            'stale_after_seconds' => $staleAfterSeconds,
+            'poll_after_seconds' => $state === 'live' ? 10 : 30,
+            'terminal' => $terminal,
         ];
     }
 

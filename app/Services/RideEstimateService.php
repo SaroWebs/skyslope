@@ -24,6 +24,15 @@ class RideEstimateService
 
     public const SHORT_RIDE_THRESHOLD_KM = 80;
 
+    /** Shared point-to-point fare is 65% for one seat, then +15% per extra seat. */
+    public const SHARED_BASE_MULTIPLIER = 0.65;
+
+    public const SHARED_EXTRA_SEAT_MULTIPLIER = 0.15;
+
+    public const MAX_SHARED_SEATS_PER_BOOKING = 3;
+
+    public const VEHICLE_MULTIPLIERS = ['mini' => 0.85, 'comfort' => 1.0, 'xl' => 1.45];
+
     /**
      * Calculate the Haversine great-circle distance in kilometres between two coordinates.
      */
@@ -43,10 +52,23 @@ class RideEstimateService
     /**
      * Count active drivers within $radiusKm of the given pickup point.
      */
-    public function nearbyDriverCount(float $lat, float $lng, float $radiusKm = 5): int
+    public function nearbyDriverCount(float $lat, float $lng, float $radiusKm = DriverDispatchService::DEFAULT_PICKUP_RADIUS_KM): int
     {
+        return $this->nearbyAvailabilityCount($lat, $lng, $radiusKm);
+    }
+
+    public function nearbySharingDriverCount(float $lat, float $lng, float $radiusKm = DriverDispatchService::DEFAULT_PICKUP_RADIUS_KM): int
+    {
+        return $this->nearbyAvailabilityCount($lat, $lng, $radiusKm, true);
+    }
+
+    private function nearbyAvailabilityCount(float $lat, float $lng, float $radiusKm = 5, bool $sharingOnly = false): int
+    {
+        $query = DriverAvailability::active()
+            ->when($sharingOnly, fn ($builder) => $builder->sharing());
+
         if (DB::connection()->getDriverName() === 'sqlite') {
-            return DriverAvailability::active()
+            return $query
                 ->whereNotNull('current_lat')
                 ->whereNotNull('current_lng')
                 ->get()
@@ -59,7 +81,7 @@ class RideEstimateService
                 ->count();
         }
 
-        return DriverAvailability::active()
+        return $query
             ->nearLocation($lat, $lng, $radiusKm)
             ->count();
     }
@@ -67,10 +89,7 @@ class RideEstimateService
     /**
      * Compute the full ride estimate.
      *
-     * @param  float       $pickupLat
-     * @param  float       $pickupLng
-     * @param  float|null  $dropoffLat   null for hourly/open-ended rides
-     * @param  float|null  $dropoffLng
+     * @param  float|null  $dropoffLat  null for hourly/open-ended rides
      * @return array{
      *   distance_km: float,
      *   estimated_duration: int,
@@ -88,35 +107,71 @@ class RideEstimateService
         float $pickupLng,
         ?float $dropoffLat = null,
         ?float $dropoffLng = null,
-        string $serviceType = 'point_to_point'
+        string $serviceType = 'point_to_point',
+        bool $sharingRequested = false,
+        int $reservedSeats = 1,
+        string $vehicleClass = 'comfort'
     ): array {
         $serviceType = $this->normalizeServiceType($serviceType);
+        $sharingEligible = $serviceType === 'point_to_point';
+        $sharingRequested = $sharingEligible && $sharingRequested;
+        $reservedSeats = max(1, min(self::MAX_SHARED_SEATS_PER_BOOKING, $reservedSeats));
         $distance = ($dropoffLat !== null && $dropoffLng !== null)
             ? $this->distanceKm($pickupLat, $pickupLng, (float) $dropoffLat, (float) $dropoffLng)
             : 0.0;
 
-        $nearbyDrivers   = $this->nearbyDriverCount($pickupLat, $pickupLng);
+        $nearbyDrivers = $this->nearbyDriverCount($pickupLat, $pickupLng);
+        $nearbySharingDrivers = $sharingEligible
+            ? $this->nearbySharingDriverCount($pickupLat, $pickupLng)
+            : 0;
         $surgeMultiplier = $nearbyDrivers < self::SURGE_DRIVER_THRESHOLD
             ? self::SURGE_MULTIPLIER
             : 1.0;
 
+        $vehicleClass = array_key_exists($vehicleClass, self::VEHICLE_MULTIPLIERS) ? $vehicleClass : 'comfort';
+        $vehicleMultiplier = self::VEHICLE_MULTIPLIERS[$vehicleClass];
         $distanceFare = $distance * self::PER_KM_RATE;
-        $subtotal     = (self::BASE_FARE + $distanceFare) * $surgeMultiplier;
+        $privateSubtotal = round((self::BASE_FARE + $distanceFare) * $surgeMultiplier * $vehicleMultiplier, 2);
+        $sharedMultiplier = min(
+            0.95,
+            self::SHARED_BASE_MULTIPLIER + (($reservedSeats - 1) * self::SHARED_EXTRA_SEAT_MULTIPLIER)
+        );
+        $subtotal = $sharingRequested
+            ? round($privateSubtotal * $sharedMultiplier, 2)
+            : $privateSubtotal;
+        $sharingSavings = $sharingRequested ? round($privateSubtotal - $subtotal, 2) : 0.0;
+        $sharingDiscountPercent = $sharingRequested ? round((1 - $sharedMultiplier) * 100, 2) : 0.0;
 
         return [
-            'distance_km'        => round($distance, 2),
+            'distance_km' => round($distance, 2),
             'estimated_distance_km' => round($distance, 2),
             'estimated_duration' => $distance > 0
                 ? (int) ceil($distance / self::AVERAGE_SPEED_KMH * 60)
                 : 30,
-            'service_type'       => $serviceType,
+            'service_type' => $serviceType,
             'ride_classification' => $this->classify($serviceType, $distance),
-            'nearby_drivers'     => $nearbyDrivers,
-            'pricing'            => [
-                'base_fare'        => (float) self::BASE_FARE,
-                'distance_fare'    => round($distanceFare, 2),
+            'vehicle_class' => $vehicleClass,
+            'nearby_drivers' => $nearbyDrivers,
+            'sharing' => [
+                'eligible' => $sharingEligible,
+                'requested' => $sharingRequested,
+                'reserved_seats' => $reservedSeats,
+                'nearby_sharing_drivers' => $nearbySharingDrivers,
+                'can_customer_enable' => $sharingEligible,
+                'enabled_by' => $sharingRequested
+                    ? ($nearbySharingDrivers > 0 ? 'driver' : 'customer')
+                    : null,
+            ],
+            'pricing' => [
+                'base_fare' => (float) self::BASE_FARE,
+                'distance_fare' => round($distanceFare, 2),
                 'surge_multiplier' => $surgeMultiplier,
-                'subtotal'         => round($subtotal, 2),
+                'vehicle_multiplier' => $vehicleMultiplier,
+                'private_subtotal' => $privateSubtotal,
+                'sharing_discount_percent' => $sharingDiscountPercent,
+                'sharing_savings' => $sharingSavings,
+                'subtotal' => $subtotal,
+                'total' => $subtotal,
             ],
         ];
     }

@@ -52,6 +52,12 @@ return [
         'api_key' => env('WEATHER_API_KEY'),
     ],
 
+    'otp' => [
+        'allow_dev_delivery' => env('OTP_DEV_DELIVERY', env('APP_ENV') !== 'production'),
+        'mock_code' => env('OTP_MOCK_CODE', '123456'),
+        'token_expiration_minutes' => env('OTP_TOKEN_EXPIRATION_MINUTES', 60 * 24 * 30),
+    ],
+
     'razorpay' => [
         'key' => env('RAZORPAY_KEY'),
         'secret' => env('RAZORPAY_SECRET'),

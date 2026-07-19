@@ -21,7 +21,9 @@ import {
     Progress,
     Switch,
     TagsInput,
-    Textarea
+    Textarea,
+    Rating,
+    NumberInput,
 } from '@mantine/core';
 import { 
     Phone, 
@@ -39,7 +41,10 @@ import {
     Clock,
     Save,
     Languages,
-    BadgeCheck
+    BadgeCheck,
+    Star,
+    MessageSquareText,
+    UsersRound,
 } from 'lucide-react';
 
 interface DriverRideBooking {
@@ -87,11 +92,23 @@ interface Driver {
         current_lat: number;
         current_lng: number;
         last_ping: string;
+        sharing_enabled: boolean;
+        sharing_seat_capacity: number;
     };
     wallet?: {
         balance: number;
     };
     tour_driver_assignments: DriverTourAssignment[];
+    vehicle?: {
+        id: number;
+        registration_number: string;
+        make: string;
+        model: string;
+        tracker?: {
+            status: string;
+            last_ping_at?: string | null;
+        } | null;
+    } | null;
 }
 
 interface DriverShowProps {
@@ -104,10 +121,25 @@ interface DriverShowProps {
         wallet_balance: number;
         is_online: boolean;
         is_available: boolean;
+        average_rating: number | null;
+        ratings_count: number;
+        sharing_enabled: boolean;
+        sharing_seat_capacity: number;
     };
+    reviews: DriverReview[];
 }
 
-export default function DriverShow({ title, driver, stats }: DriverShowProps) {
+interface DriverReview {
+    id: string;
+    service: 'Ride' | 'Rental' | 'Tour';
+    booking_number: string | null;
+    customer_name: string;
+    rating: number | null;
+    feedback: string | null;
+    created_at: string | null;
+}
+
+export default function DriverShow({ title, driver, stats, reviews }: DriverShowProps) {
     const { data, setData, put, processing, errors } = useForm({
         can_short_ride: Boolean(driver.can_short_ride),
         can_long_ride: Boolean(driver.can_long_ride),
@@ -118,6 +150,10 @@ export default function DriverShow({ title, driver, stats }: DriverShowProps) {
         expertise_tags: driver.expertise_tags ?? [],
         certification_notes: driver.certification_notes ?? '',
     });
+    const sharingForm = useForm({
+        sharing_enabled: Boolean(driver.driver_availability?.sharing_enabled),
+        sharing_seat_capacity: driver.driver_availability?.sharing_seat_capacity ?? 3,
+    });
 
     const handleApprove = () => router.post(`/admin/drivers/${driver.id}/approve`, {}, { preserveScroll: true });
     const handleSuspend = () => router.post(`/admin/drivers/${driver.id}/suspend`, {}, { preserveScroll: true });
@@ -125,6 +161,10 @@ export default function DriverShow({ title, driver, stats }: DriverShowProps) {
     const handleCapabilitiesSubmit = (event: React.FormEvent) => {
         event.preventDefault();
         put(`/admin/drivers/${driver.id}/capabilities`, { preserveScroll: true });
+    };
+    const handleSharingSubmit = (event: React.FormEvent) => {
+        event.preventDefault();
+        sharingForm.put(`/admin/drivers/${driver.id}/sharing`, { preserveScroll: true });
     };
 
     return (
@@ -325,13 +365,48 @@ export default function DriverShow({ title, driver, stats }: DriverShowProps) {
                                     </Stack>
                                 </form>
                             </Paper>
+
+                            <Paper p="xl" radius="md" withBorder>
+                                <form onSubmit={handleSharingSubmit}>
+                                    <Stack gap="lg">
+                                        <Group gap="sm">
+                                            <ThemeIcon variant="light" color="teal" radius="md">
+                                                <UsersRound size={18} />
+                                            </ThemeIcon>
+                                            <div>
+                                                <Text fw={700}>Point-to-point sharing</Text>
+                                                <Text size="xs" c="dimmed">Allow customers to reserve seats instead of the full car.</Text>
+                                            </div>
+                                        </Group>
+                                        <Switch
+                                            label="Driver accepts shared rides"
+                                            description="Customers see a reduced shared fare. The first customer can also open a shared ride when this is off."
+                                            checked={sharingForm.data.sharing_enabled}
+                                            onChange={(event) => sharingForm.setData('sharing_enabled', event.currentTarget.checked)}
+                                        />
+                                        <NumberInput
+                                            label="Shareable passenger seats"
+                                            description="Maximum passenger seats offered for shared point-to-point rides."
+                                            min={2}
+                                            max={6}
+                                            clampBehavior="strict"
+                                            value={sharingForm.data.sharing_seat_capacity}
+                                            onChange={(value) => sharingForm.setData('sharing_seat_capacity', Number(value) || 3)}
+                                            error={sharingForm.errors.sharing_seat_capacity}
+                                        />
+                                        <Button type="submit" color="teal" leftSection={<Save size={16} />} loading={sharingForm.processing}>
+                                            Save Sharing Preference
+                                        </Button>
+                                    </Stack>
+                                </form>
+                            </Paper>
                         </Stack>
                     </Grid.Col>
 
                     {/* Driver Stats and Activity */}
                     <Grid.Col span={{ base: 12, md: 8 }}>
                         <Stack gap="lg">
-                            <SimpleGrid cols={{ base: 1, sm: 3 }} spacing="lg">
+                            <SimpleGrid cols={{ base: 1, sm: 2, xl: 4 }} spacing="lg">
                                 <Card padding="lg" radius="md" withBorder>
                                     <Stack gap={4}>
                                         <Text size="xs" color="dimmed" fw={700} tt="uppercase">Successful Rides</Text>
@@ -343,6 +418,17 @@ export default function DriverShow({ title, driver, stats }: DriverShowProps) {
                                             <Text size="xs" color="green" fw={600}>{stats.total_rides > 0 ? Math.round((stats.completed_rides / stats.total_rides) * 100) : 0}% success</Text>
                                         </Group>
                                         <Progress value={stats.total_rides > 0 ? (stats.completed_rides / stats.total_rides) * 100 : 0} size="xs" color="green" mt="sm" />
+                                    </Stack>
+                                </Card>
+                                <Card padding="lg" radius="md" withBorder>
+                                    <Stack gap={4}>
+                                        <Text size="xs" color="dimmed" fw={700} tt="uppercase">Customer Rating</Text>
+                                        <Group gap="xs">
+                                            <Star size={18} fill="var(--mantine-color-yellow-5)" color="var(--mantine-color-yellow-6)" />
+                                            <Text size="xl" fw={700}>{stats.average_rating !== null ? stats.average_rating.toFixed(1) : '—'}</Text>
+                                            <Text size="xs" c="dimmed">/ 5</Text>
+                                        </Group>
+                                        <Text size="xs" c="dimmed">Based on {stats.ratings_count} {stats.ratings_count === 1 ? 'rating' : 'ratings'}</Text>
                                     </Stack>
                                 </Card>
                                 <Card padding="lg" radius="md" withBorder>
@@ -374,6 +460,7 @@ export default function DriverShow({ title, driver, stats }: DriverShowProps) {
                                     <Tabs.List px="md" pt="md">
                                         <Tabs.Tab value="rides" leftSection={<Navigation size={14} />}>Recent Rides</Tabs.Tab>
                                         <Tabs.Tab value="tours" leftSection={<Map size={14} />}>Assigned Tours</Tabs.Tab>
+                                        <Tabs.Tab value="reviews" leftSection={<MessageSquareText size={14} />}>Customer Feedback ({stats.ratings_count})</Tabs.Tab>
                                         <Tabs.Tab value="location" leftSection={<MapPin size={14} />}>Live Tracker</Tabs.Tab>
                                     </Tabs.List>
 
@@ -434,12 +521,67 @@ export default function DriverShow({ title, driver, stats }: DriverShowProps) {
                                         </Table>
                                     </Tabs.Panel>
 
+                                    <Tabs.Panel value="reviews" p="md">
+                                        {reviews.length > 0 ? (
+                                            <Stack gap="sm">
+                                                {reviews.map((review) => (
+                                                    <Paper key={review.id} p="md" radius="md" withBorder>
+                                                        <Group justify="space-between" align="flex-start" wrap="nowrap">
+                                                            <Group align="flex-start" wrap="nowrap">
+                                                                <Avatar color="blue" radius="xl">{review.customer_name.charAt(0).toUpperCase()}</Avatar>
+                                                                <div>
+                                                                    <Group gap="xs">
+                                                                        <Text size="sm" fw={700}>{review.customer_name}</Text>
+                                                                        <Badge size="xs" variant="light">{review.service}</Badge>
+                                                                    </Group>
+                                                                    <Group gap="xs" mt={4}>
+                                                                        <Rating value={review.rating ?? 0} fractions={2} readOnly size="sm" aria-label={`${review.rating ?? 0} out of 5`} />
+                                                                        {review.booking_number && <Text size="xs" c="dimmed">#{review.booking_number}</Text>}
+                                                                    </Group>
+                                                                </div>
+                                                            </Group>
+                                                            {review.created_at && <Text size="xs" c="dimmed">{new Date(review.created_at).toLocaleDateString()}</Text>}
+                                                        </Group>
+                                                        <Text mt="md" size="sm" lh={1.6} c={review.feedback ? undefined : 'dimmed'} fs={review.feedback ? undefined : 'italic'}>
+                                                            {review.feedback || 'Rating submitted without written feedback.'}
+                                                        </Text>
+                                                    </Paper>
+                                                ))}
+                                            </Stack>
+                                        ) : (
+                                            <Stack align="center" py="xl" gap="xs">
+                                                <MessageSquareText size={40} strokeWidth={1.2} color="var(--mantine-color-gray-5)" />
+                                                <Text fw={600}>No customer feedback yet</Text>
+                                                <Text size="sm" c="dimmed">Ratings from completed rides, rentals and tours will appear here.</Text>
+                                            </Stack>
+                                        )}
+                                    </Tabs.Panel>
+
                                     <Tabs.Panel value="location" p="xl">
-                                        <Stack align="center" py="xl">
-                                            <MapPin size={48} strokeWidth={1} color="var(--mantine-color-gray-4)" />
-                                            <Text color="dimmed" size="sm">Google Maps interactive tracker integration pending.</Text>
-                                            <Text size="xs" ta="center">Last Coordinates: {driver.driver_availability?.current_lat || 'N/A'}, {driver.driver_availability?.current_lng || 'N/A'}</Text>
-                                        </Stack>
+                                        {driver.vehicle ? (
+                                            <Group justify="space-between" align="center" py="md">
+                                                <Group>
+                                                    <ThemeIcon size={52} radius="lg" variant="light" color="teal"><MapPin size={24} /></ThemeIcon>
+                                                    <div>
+                                                        <Group gap="xs">
+                                                            <Text fw={700}>{driver.vehicle.registration_number}</Text>
+                                                            <Badge size="sm" color={driver.vehicle.tracker?.status === 'active' ? 'green' : 'orange'}>
+                                                                {driver.vehicle.tracker?.status === 'active' ? 'GPS provisioned' : 'GPS setup required'}
+                                                            </Badge>
+                                                        </Group>
+                                                        <Text size="sm" c="dimmed">{driver.vehicle.make} {driver.vehicle.model} · hardware vehicle tracking</Text>
+                                                    </div>
+                                                </Group>
+                                                <Button component={Link} href={`/admin/vehicles/${driver.vehicle.id}/tracking`} leftSection={<Navigation size={16} />}>
+                                                    Open live tracker
+                                                </Button>
+                                            </Group>
+                                        ) : (
+                                            <Stack align="center" py="xl">
+                                                <MapPin size={48} strokeWidth={1} color="var(--mantine-color-gray-4)" />
+                                                <Text color="dimmed" size="sm">Assign the driver’s car before vehicle GPS tracking is available.</Text>
+                                            </Stack>
+                                        )}
                                     </Tabs.Panel>
                                 </Tabs>
                             </Paper>

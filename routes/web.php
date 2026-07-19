@@ -4,20 +4,12 @@ use App\Http\Controllers\AdminController;
 use App\Http\Controllers\AdminCouponController;
 use App\Http\Controllers\AdminCustomerController;
 use App\Http\Controllers\AdminDriverController;
-use App\Http\Controllers\AdminRoleController;
 use App\Http\Controllers\AdminFinancialController;
+use App\Http\Controllers\AdminRoleController;
 use App\Http\Controllers\AdminVehicleController;
 use App\Http\Controllers\AuthController;
-use App\Models\CarRental;
-use App\Models\Customer;
-use App\Models\Driver;
-use App\Models\Place;
-use App\Models\RideBooking;
-use App\Models\Tour;
-use App\Models\TourBooking;
-use App\Models\User;
-use App\Models\Vehicle;
 use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 
@@ -32,66 +24,22 @@ if (app()->isLocal()) {
     Route::get('/link', function () {
         try {
             $output = Artisan::call('storage:link');
-            return 'Command output: ' . $output;
+
+            return 'Command output: '.$output;
         } catch (\Exception $e) {
-            return 'Error: ' . $e->getMessage();
+            return 'Error: '.$e->getMessage();
         }
     });
 }
 
 Route::get('/', function () {
-    $today = now()->startOfDay();
+    if (Auth::check()) {
+        return redirect()->route('admin.dashboard');
+    }
 
-    $activeRideStatuses = ['driver_assigned', 'driver_arriving', 'pickup', 'in_transit'];
-    $activeRentalStatuses = ['confirmed', 'driver_assigned', 'in_progress'];
-    $activeTourStatuses = ['confirmed', 'in_progress'];
-
-    $todayRevenue =
-        (float) CarRental::where('payment_status', 'paid')->where('created_at', '>=', $today)->sum('total_price')
-        + (float) RideBooking::where('payment_status', 'paid')->where('created_at', '>=', $today)->sum('total_fare')
-        + (float) TourBooking::where('payment_status', 'paid')->where('created_at', '>=', $today)->sum('total_price');
-
-    $recentBookings = collect()
-        ->merge(CarRental::latest()->take(3)->get()->map(fn (CarRental $rental) => [
-            'type' => 'Car rental',
-            'title' => $rental->booking_number,
-            'detail' => $rental->customer_name ?: $rental->pickup_location,
-            'status' => $rental->status,
-            'created_at' => optional($rental->created_at)->toISOString(),
-        ]))
-        ->merge(RideBooking::latest()->take(3)->get()->map(fn (RideBooking $booking) => [
-            'type' => 'Ride',
-            'title' => $booking->booking_number,
-            'detail' => $booking->customer_name ?: $booking->pickup_location,
-            'status' => $booking->status,
-            'created_at' => optional($booking->created_at)->toISOString(),
-        ]))
-        ->merge(TourBooking::latest()->take(3)->get()->map(fn (TourBooking $booking) => [
-            'type' => 'Tour',
-            'title' => $booking->booking_number,
-            'detail' => $booking->customer_name,
-            'status' => $booking->status,
-            'created_at' => optional($booking->created_at)->toISOString(),
-        ]))
-        ->sortByDesc('created_at')
-        ->take(4)
-        ->values();
-
-    return Inertia::render('welcome', [
-        'landing' => [
-            'stats' => [
-                'active_bookings' => CarRental::whereIn('status', $activeRentalStatuses)->count()
-                    + RideBooking::whereIn('status', $activeRideStatuses)->count()
-                    + TourBooking::whereIn('status', $activeTourStatuses)->count(),
-                'today_revenue' => round($todayRevenue, 2),
-                'registered_accounts' => User::count() + Customer::count() + Driver::count(),
-                'pickup_locations' => Place::count(),
-                'vehicles' => Vehicle::where('is_active', true)->count(),
-                'tours' => Tour::count(),
-            ],
-            'recent_bookings' => $recentBookings,
-        ],
-    ]);
+    // Keep the unauthenticated entry point deliberately static. Operational data
+    // belongs behind the authenticated, role-protected admin routes below.
+    return Inertia::render('welcome');
 });
 
 /*
@@ -165,11 +113,14 @@ Route::middleware(['auth', 'role:admin'])->prefix('admin')->name('admin.')->grou
     // Driver Management (New)
     Route::controller(AdminDriverController::class)->group(function () {
         Route::get('/drivers', 'index')->name('drivers');
+        Route::post('/drivers', 'store')->name('drivers.store');
         Route::get('/drivers/{driver}', 'show')->name('drivers.show');
+        Route::put('/drivers/{driver}', 'update')->name('drivers.update');
         Route::post('/drivers/{driver}/approve', 'approve')->name('drivers.approve');
         Route::post('/drivers/{driver}/suspend', 'suspend')->name('drivers.suspend');
         Route::post('/drivers/{driver}/activate', 'activate')->name('drivers.activate');
         Route::put('/drivers/{driver}/capabilities', 'updateCapabilities')->name('drivers.capabilities');
+        Route::put('/drivers/{driver}/sharing', 'updateSharing')->name('drivers.sharing');
     });
 
     Route::match(['get', 'post'], '/guides/{any?}', function () {
@@ -182,6 +133,10 @@ Route::middleware(['auth', 'role:admin'])->prefix('admin')->name('admin.')->grou
         Route::get('/vehicles', 'index')->name('vehicles');
         Route::post('/vehicles', 'store')->name('vehicles.store');
         Route::put('/vehicles/{vehicle}', 'update')->name('vehicles.update');
+        Route::get('/vehicles/{vehicle}/tracking', 'tracking')->name('vehicles.tracking');
+        Route::get('/vehicles/{vehicle}/tracking-data', 'trackingData')->name('vehicles.tracking-data');
+        Route::post('/vehicles/{vehicle}/tracker/provision', 'provisionTracker')->name('vehicles.tracker.provision');
+        Route::post('/vehicles/{vehicle}/tracker/suspend', 'suspendTracker')->name('vehicles.tracker.suspend');
         Route::delete('/vehicles/{vehicle}', 'destroy')->name('vehicles.destroy');
     });
 
@@ -193,7 +148,7 @@ Route::middleware(['auth', 'role:admin'])->prefix('admin')->name('admin.')->grou
     Route::get('/tours/{tour}/edit', [AdminController::class, 'editTour'])->name('tours.edit');
     Route::put('/tours/{tour}', [AdminController::class, 'updateTour'])->name('tours.update');
     Route::delete('/tours/{tour}', [AdminController::class, 'deleteTour'])->name('tours.delete');
-    
+
     // Itinerary Management Routes
     Route::get('/tours/{tour}/itineraries', [AdminController::class, 'tourItineraries'])->name('tours.itineraries');
     Route::get('/tours/{tour}/itineraries/create', [AdminController::class, 'createTourItinerary'])->name('tours.itineraries.create');
@@ -213,6 +168,7 @@ Route::middleware(['auth', 'role:admin'])->prefix('admin')->name('admin.')->grou
 
     // Other Management Routes
     Route::get('/wallet-reconciliation', [AdminController::class, 'walletReconciliation'])->name('wallet-reconciliation');
+    Route::get('/bookings', [AdminController::class, 'bookings'])->name('bookings');
     Route::get('/tour-bookings', [AdminController::class, 'tourBookings'])->name('tour-bookings');
     Route::get('/tour-bookings/{tourBooking}', [AdminController::class, 'showTourBooking'])->name('tour-bookings.show');
     Route::post('/tour-bookings/{tourBooking}/update-status', [AdminController::class, 'updateTourBookingStatus'])->name('tour-bookings.update-status');
@@ -226,7 +182,7 @@ Route::middleware(['auth', 'role:admin'])->prefix('admin')->name('admin.')->grou
     Route::post('/ride-bookings/{rideBooking}/incidents', [AdminController::class, 'storeRideBookingIncident'])->name('ride-bookings.incidents.store');
     Route::post('/booking-refunds/{bookingRefund}/process', [AdminController::class, 'processBookingRefund'])->name('booking-refunds.process');
     Route::patch('/booking-incidents/{bookingIncident}', [AdminController::class, 'updateBookingIncident'])->name('booking-incidents.update');
-    
+
     // Car Rentals Management Routes
     Route::get('/car-rentals', [AdminController::class, 'carRentals'])->name('car-rentals');
     Route::get('/car-rentals/create', [AdminController::class, 'createCarRental'])->name('car-rentals.create');
@@ -239,7 +195,7 @@ Route::middleware(['auth', 'role:admin'])->prefix('admin')->name('admin.')->grou
     Route::post('/car-rentals/{carRental}/confirm-payment', [AdminController::class, 'confirmCarRentalPayment'])->name('car-rentals.confirm-payment');
     Route::post('/car-rentals/{carRental}/incidents', [AdminController::class, 'storeCarRentalIncident'])->name('car-rentals.incidents.store');
     Route::delete('/car-rentals/{carRental}', [AdminController::class, 'deleteCarRental'])->name('car-rentals.delete');
-    
+
     // Car Categories Management Routes
     Route::get('/car-categories', [AdminController::class, 'carCategories'])->name('car-categories');
     Route::get('/car-categories/create', [AdminController::class, 'createCarCategory'])->name('car-categories.create');
@@ -266,6 +222,8 @@ Route::middleware(['auth', 'role:admin'])->prefix('admin')->name('admin.')->grou
     Route::post('/places/{place}/sync-google', [AdminController::class, 'syncPlaceGoogleData'])->name('places.sync-google');
     Route::delete('/places/{place}', [AdminController::class, 'deletePlace'])->name('places.delete');
     Route::post('/places/{place}/media', [AdminController::class, 'storeMedia'])->name('places.media.store');
+    Route::patch('/media/{media}/approve', [AdminController::class, 'approveMedia'])->name('media.approve');
+    Route::patch('/media/{media}/reject', [AdminController::class, 'rejectMedia'])->name('media.reject');
     Route::delete('/media/{media}', [AdminController::class, 'deleteMedia'])->name('media.delete');
     Route::get('/settings', [AdminController::class, 'settings'])->name('settings');
 });

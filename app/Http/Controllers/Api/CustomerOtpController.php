@@ -32,7 +32,7 @@ class CustomerOtpController extends Controller
         $result['customer_exists'] = (bool) $customer;
         $result['next_step'] = $customer ? 'verify_login' : 'verify_registration';
 
-        return response()->json($result, $result['success'] ? 200 : 429);
+        return response()->json($result, $result['success'] ? 200 : ($result['status_code'] ?? 429));
     }
 
     /**
@@ -54,13 +54,13 @@ class CustomerOtpController extends Controller
 
         $result = $this->otpService->verify($phone, $code, 'customer');
 
-        if (!$result['success']) {
+        if (! $result['success']) {
             return response()->json($result, 422);
         }
 
         $customer = Customer::where('phone', $phone)->first();
 
-        if (!$customer) {
+        if (! $customer) {
             return response()->json([
                 'success' => true,
                 'message' => 'OTP verified. Complete your customer profile to register.',
@@ -89,7 +89,7 @@ class CustomerOtpController extends Controller
             'email' => 'nullable|email|max:255',
         ]);
 
-        if (!$this->validRegistrationToken($validated['registration_token'], $validated['phone'])) {
+        if (! $this->validRegistrationToken($validated['registration_token'], $validated['phone'])) {
             return response()->json([
                 'success' => false,
                 'message' => 'Registration session expired. Please request a new OTP.',
@@ -107,7 +107,7 @@ class CustomerOtpController extends Controller
             ]
         );
 
-        if (!$customer->wasRecentlyCreated) {
+        if (! $customer->wasRecentlyCreated) {
             $customer->forceFill([
                 'name' => $customer->name ?: $validated['name'],
                 'email' => $customer->email ?: ($validated['email'] ?? null),
@@ -163,7 +163,11 @@ class CustomerOtpController extends Controller
     {
         $customer->tokens()->delete();
 
-        return $customer->createToken('customer-app')->plainTextToken;
+        return $customer->createToken(
+            'customer-app',
+            ['*'],
+            now()->addMinutes((int) config('services.otp.token_expiration_minutes', 60 * 24 * 30))
+        )->plainTextToken;
     }
 
     private function registrationToken(string $phone): string

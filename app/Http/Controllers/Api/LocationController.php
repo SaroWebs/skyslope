@@ -5,8 +5,9 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\Destination;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Validator;
 
 class LocationController extends Controller
 {
@@ -41,7 +42,7 @@ class LocationController extends Controller
                 return [
                     'id' => $destination->id,
                     'name' => $destination->name,
-                    'address' => $destination->name . ', ' . $destination->state,
+                    'address' => $destination->name.', '.$destination->state,
                     'type' => 'destination',
                     'lat' => $destination->latitude ?? null,
                     'lng' => $destination->longitude ?? null,
@@ -57,11 +58,11 @@ class LocationController extends Controller
             try {
                 // Use Autocomplete API — better for partial queries like "Guw", faster and cheaper than Text Search
                 $googleResponse = Http::timeout(5)->withoutVerifying()->get('https://maps.googleapis.com/maps/api/place/autocomplete/json', [
-                    'input'      => $query,
-                    'key'        => $googleApiKey,
+                    'input' => $query,
+                    'key' => $googleApiKey,
                     'components' => 'country:in', // Restrict to India
-                    'language'   => 'en',
-                    'types'      => 'geocode', // cities, regions, addresses
+                    'language' => 'en',
+                    'types' => 'geocode', // cities, regions, addresses
                 ]);
 
                 if ($googleResponse->successful()) {
@@ -74,12 +75,12 @@ class LocationController extends Controller
                             ->take($needed)
                             ->map(function ($prediction) {
                                 return [
-                                    'id'          => $prediction['place_id'],
-                                    'name'        => $prediction['structured_formatting']['main_text'] ?? $prediction['description'],
-                                    'address'     => $prediction['description'] ?? '',
-                                    'type'        => 'google_place',
-                                    'lat'         => null, // Resolve via place-details endpoint if needed
-                                    'lng'         => null,
+                                    'id' => $prediction['place_id'],
+                                    'name' => $prediction['structured_formatting']['main_text'] ?? $prediction['description'],
+                                    'address' => $prediction['description'] ?? '',
+                                    'type' => 'google_place',
+                                    'lat' => null, // Resolve via place-details endpoint if needed
+                                    'lng' => null,
                                 ];
                             });
 
@@ -88,13 +89,13 @@ class LocationController extends Controller
                     } elseif ($status === 'REQUEST_DENIED') {
                         \Log::warning('Google Places API REQUEST_DENIED — billing may not be enabled. Enable billing at https://console.cloud.google.com/billing');
 
-                    } elseif (!in_array($status, ['ZERO_RESULTS', 'OK'])) {
+                    } elseif (! in_array($status, ['ZERO_RESULTS', 'OK'])) {
                         \Log::warning("Google Places API returned status: {$status}");
                     }
                 }
             } catch (\Exception $e) {
                 // Log error but continue with local results — never block the response
-                \Log::warning('Google Places API error: ' . $e->getMessage());
+                \Log::warning('Google Places API error: '.$e->getMessage());
             }
         }
 
@@ -102,7 +103,7 @@ class LocationController extends Controller
         if (count($results) < 5) {
             try {
                 $photonResponse = Http::timeout(5)->withoutVerifying()->get('https://photon.komoot.io/api/', [
-                    'q'     => $query,
+                    'q' => $query,
                     'limit' => 5 - count($results),
                 ]);
 
@@ -113,28 +114,28 @@ class LocationController extends Controller
                             ->map(function ($feature) {
                                 $props = $feature['properties'];
                                 $coords = $feature['geometry']['coordinates'];
-                                
+
                                 // Format name: Name + City/State
                                 $nameParts = array_filter([
                                     $props['name'] ?? null,
-                                    $props['city'] ?? $props['state'] ?? null
+                                    $props['city'] ?? $props['state'] ?? null,
                                 ]);
-                                
+
                                 $addressLine = array_filter([
                                     $props['name'] ?? null,
                                     $props['street'] ?? null,
                                     $props['city'] ?? null,
                                     $props['state'] ?? null,
-                                    $props['country'] ?? null
+                                    $props['country'] ?? null,
                                 ]);
 
                                 return [
-                                    'id'      => 'osm_' . ($props['osm_id'] ?? uniqid()),
-                                    'name'    => implode(', ', $nameParts),
+                                    'id' => 'osm_'.($props['osm_id'] ?? uniqid()),
+                                    'name' => implode(', ', $nameParts),
                                     'address' => implode(', ', $addressLine),
-                                    'type'    => 'osm_place',
-                                    'lat'     => $coords[1] ?? null,
-                                    'lng'     => $coords[0] ?? null,
+                                    'type' => 'osm_place',
+                                    'lat' => $coords[1] ?? null,
+                                    'lng' => $coords[0] ?? null,
                                 ];
                             });
 
@@ -142,7 +143,7 @@ class LocationController extends Controller
                     }
                 }
             } catch (\Exception $e) {
-                \Log::warning('Photon API error: ' . $e->getMessage());
+                \Log::warning('Photon API error: '.$e->getMessage());
             }
         }
 
@@ -163,7 +164,7 @@ class LocationController extends Controller
                 return [
                     'id' => $destination->id,
                     'name' => $destination->name,
-                    'address' => $destination->name . ', ' . $destination->state,
+                    'address' => $destination->name.', '.$destination->state,
                     'type' => 'destination',
                     'lat' => $destination->latitude ?? null,
                     'lng' => $destination->longitude ?? null,
@@ -213,6 +214,7 @@ class LocationController extends Controller
                     $destination->latitude,
                     $destination->longitude
                 );
+
                 return $distance <= 50; // Within 50km of any destination
             })
             ->isNotEmpty();
@@ -242,7 +244,7 @@ class LocationController extends Controller
 
         $googleApiKey = config('services.google_maps.api_key') ?: env('GOOGLE_MAPS_API_KEY');
 
-        if (!$googleApiKey) {
+        if (! $googleApiKey) {
             return response()->json(['error' => 'Google Maps API not configured'], 500);
         }
 
@@ -258,6 +260,7 @@ class LocationController extends Controller
 
                 if (isset($data['result'])) {
                     $place = $data['result'];
+
                     return response()->json([
                         'id' => $place['place_id'],
                         'name' => $place['name'],
@@ -273,6 +276,123 @@ class LocationController extends Controller
         } catch (\Exception $e) {
             return response()->json(['error' => 'Failed to fetch place details'], 500);
         }
+    }
+
+    /**
+     * Return road-following route geometry for the customer map.
+     */
+    public function directions(Request $request)
+    {
+        $validated = $request->validate([
+            'origin_lat' => 'required|numeric|between:-90,90',
+            'origin_lng' => 'required|numeric|between:-180,180',
+            'destination_lat' => 'required|numeric|between:-90,90',
+            'destination_lng' => 'required|numeric|between:-180,180',
+        ]);
+
+        $googleApiKey = config('services.maps.google_api_key')
+            ?: config('services.google_maps.api_key');
+
+        if ($googleApiKey) {
+            try {
+                $http = Http::timeout(10);
+                if (app()->environment('local')) {
+                    $http = $http->withoutVerifying();
+                }
+
+                $response = $http
+                    ->withHeaders([
+                        'X-Goog-Api-Key' => $googleApiKey,
+                        'X-Goog-FieldMask' => 'routes.distanceMeters,routes.duration,routes.polyline.geoJsonLinestring',
+                    ])
+                    ->post('https://routes.googleapis.com/directions/v2:computeRoutes', [
+                        'origin' => ['location' => ['latLng' => [
+                            'latitude' => (float) $validated['origin_lat'],
+                            'longitude' => (float) $validated['origin_lng'],
+                        ]]],
+                        'destination' => ['location' => ['latLng' => [
+                            'latitude' => (float) $validated['destination_lat'],
+                            'longitude' => (float) $validated['destination_lng'],
+                        ]]],
+                        'travelMode' => 'DRIVE',
+                        'routingPreference' => 'TRAFFIC_AWARE',
+                        'polylineQuality' => 'OVERVIEW',
+                        'polylineEncoding' => 'GEO_JSON_LINESTRING',
+                    ]);
+
+                $route = $response->json('routes.0');
+                $coordinates = data_get($route, 'polyline.geoJsonLinestring.coordinates');
+
+                if ($response->successful() && is_array($coordinates) && count($coordinates) >= 2) {
+                    return response()->json($this->formatRouteResponse(
+                        $coordinates,
+                        (int) data_get($route, 'distanceMeters', 0),
+                        $this->durationSeconds((string) data_get($route, 'duration', '0s')),
+                        'google_routes'
+                    ));
+                }
+
+                Log::warning('Google Routes API did not return route geometry.', [
+                    'status' => $response->status(),
+                    'error' => $response->json('error.message'),
+                ]);
+            } catch (\Throwable $error) {
+                Log::warning('Google Routes API request failed.', ['message' => $error->getMessage()]);
+            }
+        }
+
+        // Development fallback when Google Routes is unavailable or not enabled.
+        try {
+            $origin = $validated['origin_lng'].','.$validated['origin_lat'];
+            $destination = $validated['destination_lng'].','.$validated['destination_lat'];
+            $http = Http::timeout(10);
+            if (app()->environment('local')) {
+                $http = $http->withoutVerifying();
+            }
+
+            $response = $http->get(
+                "https://router.project-osrm.org/route/v1/driving/{$origin};{$destination}",
+                ['overview' => 'full', 'geometries' => 'geojson']
+            );
+            $route = $response->json('routes.0');
+            $coordinates = data_get($route, 'geometry.coordinates');
+
+            if ($response->successful() && is_array($coordinates) && count($coordinates) >= 2) {
+                return response()->json($this->formatRouteResponse(
+                    $coordinates,
+                    (int) data_get($route, 'distance', 0),
+                    (int) round((float) data_get($route, 'duration', 0)),
+                    'osrm'
+                ));
+            }
+        } catch (\Throwable $error) {
+            Log::warning('Fallback directions request failed.', ['message' => $error->getMessage()]);
+        }
+
+        return response()->json([
+            'message' => 'Road directions are temporarily unavailable.',
+            'coordinates' => [],
+        ], 503);
+    }
+
+    private function formatRouteResponse(array $coordinates, int $distanceMeters, int $durationSeconds, string $provider): array
+    {
+        return [
+            'coordinates' => collect($coordinates)
+                ->filter(fn ($point) => is_array($point) && count($point) >= 2)
+                ->map(fn ($point) => [
+                    'latitude' => (float) $point[1],
+                    'longitude' => (float) $point[0],
+                ])->values(),
+            'distance_meters' => $distanceMeters,
+            'duration_seconds' => $durationSeconds,
+            'provider' => $provider,
+        ];
+    }
+
+    private function durationSeconds(string $duration): int
+    {
+        return (int) round((float) rtrim($duration, 's'));
     }
 
     /**

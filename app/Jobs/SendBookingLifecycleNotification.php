@@ -139,10 +139,10 @@ class SendBookingLifecycleNotification implements ShouldQueue
         };
 
         return [
-            'sms' => 'SkySlope: '.$message,
-            'whatsapp' => "*SkySlope Update*\n\n".$message,
+            'sms' => 'HappyMiles: '.$message,
+            'whatsapp' => "*HappyMiles Update*\n\n".$message,
             'email' => $message,
-            'subject' => "SkySlope {$label} Booking Update",
+            'subject' => "HappyMiles {$label} Booking Update",
         ];
     }
 

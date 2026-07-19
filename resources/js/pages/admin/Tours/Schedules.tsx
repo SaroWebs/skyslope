@@ -32,9 +32,13 @@ interface TourSchedule {
     id: number;
     departure_date: string;
     return_date: string;
+    departure_time: string;
+    departure_point: string;
     total_seats: number;
     booked_seats: number;
     price_override: number | null;
+    child_price_override: number | null;
+    notes?: string | null;
     status: 'open' | 'sold_out' | 'closed' | 'cancelled' | 'completed';
     guideAssignments: { id: number }[];
     driverAssignments: Array<{
@@ -50,6 +54,8 @@ interface TourSchedule {
             registration_number: string;
         };
     }>;
+    guide_assignments?: { id: number }[];
+    driver_assignments?: TourSchedule['driverAssignments'];
 }
 
 interface DriverOption {
@@ -89,6 +95,8 @@ interface SchedulesProps {
 }
 
 export default function Schedules({ title, tour, schedules, drivers, vehicles }: SchedulesProps) {
+    const guideAssignments = (schedule: TourSchedule) => schedule.guideAssignments ?? schedule.guide_assignments ?? [];
+    const driverAssignments = (schedule: TourSchedule) => schedule.driverAssignments ?? schedule.driver_assignments ?? [];
     const [opened, { open, close }] = useDisclosure(false);
     const [assignmentOpened, { open: openAssignment, close: closeAssignment }] = useDisclosure(false);
     const [editingSchedule, setEditingSchedule] = useState<TourSchedule | null>(null);
@@ -97,8 +105,12 @@ export default function Schedules({ title, tour, schedules, drivers, vehicles }:
     const [formData, setFormData] = useState({
         departure_date: '',
         return_date: '',
+        departure_time: '06:00',
+        departure_point: '',
         total_seats: 20,
         price_override: '',
+        child_price_override: '',
+        notes: '',
         status: 'open'
     });
     const [assignmentData, setAssignmentData] = useState({
@@ -116,8 +128,12 @@ export default function Schedules({ title, tour, schedules, drivers, vehicles }:
         setFormData({
             departure_date: schedule.departure_date,
             return_date: schedule.return_date,
+            departure_time: schedule.departure_time?.slice(0, 5) || '06:00',
+            departure_point: schedule.departure_point || '',
             total_seats: schedule.total_seats,
             price_override: schedule.price_override?.toString() || '',
+            child_price_override: schedule.child_price_override?.toString() || '',
+            notes: schedule.notes || '',
             status: schedule.status
         });
         open();
@@ -134,8 +150,12 @@ export default function Schedules({ title, tour, schedules, drivers, vehicles }:
         setFormData({
             departure_date: '',
             return_date: '',
+            departure_time: '06:00',
+            departure_point: '',
             total_seats: 20,
             price_override: '',
+            child_price_override: '',
+            notes: '',
             status: 'open'
         });
         open();
@@ -155,7 +175,8 @@ export default function Schedules({ title, tour, schedules, drivers, vehicles }:
         e.preventDefault();
         const payload = {
             ...formData,
-            price_override: formData.price_override ? Number(formData.price_override) : null
+            price_override: formData.price_override ? Number(formData.price_override) : null,
+            child_price_override: formData.child_price_override ? Number(formData.child_price_override) : null,
         };
 
         if (editingSchedule) {
@@ -233,20 +254,20 @@ export default function Schedules({ title, tour, schedules, drivers, vehicles }:
                                         </Table.Td>
                                         <Table.Td>
                                             <Group gap="xs">
-                                                <Tooltip label={`${schedule.guideAssignments.length} Guides Assigned`}>
+                                                <Tooltip label={`${guideAssignments(schedule).length} Guides Assigned`}>
                                                     <Badge variant="dot" color="violet" leftSection={<UserCircle size={10} />}>
-                                                        {schedule.guideAssignments.length}
+                                                        {guideAssignments(schedule).length}
                                                     </Badge>
                                                 </Tooltip>
-                                                <Tooltip label={`${schedule.driverAssignments.length} Drivers Assigned`}>
+                                                <Tooltip label={`${driverAssignments(schedule).length} Drivers Assigned`}>
                                                     <Badge variant="dot" color="orange" leftSection={<Truck size={10} />}>
-                                                        {schedule.driverAssignments.length}
+                                                        {driverAssignments(schedule).length}
                                                     </Badge>
                                                 </Tooltip>
                                             </Group>
-                                            {schedule.driverAssignments.length > 0 && (
+                                            {driverAssignments(schedule).length > 0 && (
                                                 <Text size="xs" color="dimmed" mt={4}>
-                                                    {schedule.driverAssignments.map((assignment) => `${assignment.driver?.name || 'Driver'} (${assignment.role})`).join(', ')}
+                                                    {driverAssignments(schedule).map((assignment) => `${assignment.driver?.name || 'Driver'} (${assignment.role})`).join(', ')}
                                                 </Text>
                                             )}
                                         </Table.Td>
@@ -306,6 +327,10 @@ export default function Schedules({ title, tour, schedules, drivers, vehicles }:
                             onChange={(e) => setFormData({ ...formData, return_date: e.target.value })}
                             required
                         />
+                        <Group grow align="flex-start">
+                            <TextInput label="Departure Time" type="time" value={formData.departure_time} onChange={(e) => setFormData({ ...formData, departure_time: e.target.value })} required />
+                            <TextInput label="Departure / Pickup Point" value={formData.departure_point} onChange={(e) => setFormData({ ...formData, departure_point: e.target.value })} required />
+                        </Group>
                         <NumberInput
                             label="Total Seats"
                             value={formData.total_seats}
@@ -319,6 +344,14 @@ export default function Schedules({ title, tour, schedules, drivers, vehicles }:
                             value={formData.price_override}
                             onChange={(e) => setFormData({ ...formData, price_override: e.target.value })}
                         />
+                        <TextInput
+                            label="Child Price Override (Optional)"
+                            placeholder="Leave blank to use tour child price"
+                            type="number"
+                            value={formData.child_price_override}
+                            onChange={(e) => setFormData({ ...formData, child_price_override: e.target.value })}
+                        />
+                        <TextInput label="Operations Notes" value={formData.notes} onChange={(e) => setFormData({ ...formData, notes: e.target.value })} />
                         <Select
                             label="Status"
                             data={[
@@ -362,13 +395,16 @@ export default function Schedules({ title, tour, schedules, drivers, vehicles }:
                                 disabled: assignmentData.role === 'lead' ? !driver.can_tour_lead : !driver.can_tour_transport && !driver.can_tour_lead,
                             }))}
                             value={assignmentData.driver_id}
-                            onChange={(val) => setAssignmentData({ ...assignmentData, driver_id: val || '' })}
+                            onChange={(val) => {
+                                const vehicle = vehicles.find((item) => item.driver_id === Number(val));
+                                setAssignmentData({ ...assignmentData, driver_id: val || '', vehicle_id: vehicle ? String(vehicle.id) : '' });
+                            }}
                             searchable
                             required
                         />
                         <Select
                             label="Vehicle"
-                            data={vehicles.map((vehicle) => ({
+                            data={vehicles.filter((vehicle) => vehicle.driver_id === Number(assignmentData.driver_id)).map((vehicle) => ({
                                 value: String(vehicle.id),
                                 label: `${vehicle.registration_number} · ${vehicle.make || ''} ${vehicle.model || ''}`,
                             }))}

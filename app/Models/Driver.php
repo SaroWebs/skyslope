@@ -66,31 +66,31 @@ class Driver extends Authenticatable
     protected function casts(): array
     {
         return [
-            'email_verified_at'  => 'datetime',
-            'phone_verified_at'  => 'datetime',
-            'license_expiry'     => 'date',
-            'date_of_birth'      => 'date',
-            'approved_at'        => 'datetime',
-            'is_online'          => 'boolean',
-            'is_active'          => 'boolean',
-            'is_approved'        => 'boolean',
-            'rating'             => 'decimal:2',
-            'can_short_ride'      => 'boolean',
-            'can_long_ride'       => 'boolean',
-            'can_tour_lead'       => 'boolean',
-            'can_tour_transport'  => 'boolean',
+            'email_verified_at' => 'datetime',
+            'phone_verified_at' => 'datetime',
+            'license_expiry' => 'date',
+            'date_of_birth' => 'date',
+            'approved_at' => 'datetime',
+            'is_online' => 'boolean',
+            'is_active' => 'boolean',
+            'is_approved' => 'boolean',
+            'rating' => 'decimal:2',
+            'can_short_ride' => 'boolean',
+            'can_long_ride' => 'boolean',
+            'can_tour_lead' => 'boolean',
+            'can_tour_transport' => 'boolean',
             'can_rental_delivery' => 'boolean',
-            'languages'           => 'array',
-            'expertise_tags'      => 'array',
-            'password'           => 'hashed',
+            'languages' => 'array',
+            'expertise_tags' => 'array',
+            'password' => 'hashed',
         ];
     }
 
     // ── Relationships ──────────────────────────────────────────────
 
-    public function vehicles(): HasMany
+    public function vehicle(): HasOne
     {
-        return $this->hasMany(Vehicle::class, 'driver_id');
+        return $this->hasOne(Vehicle::class, 'driver_id');
     }
 
     public function driverAvailability(): HasOne
@@ -138,14 +138,52 @@ class Driver extends Authenticatable
         return $this->morphMany(WithdrawalRequest::class, 'owner');
     }
 
+    public function rideReviews(): HasMany
+    {
+        return $this->hasMany(RideBookingReview::class, 'driver_id');
+    }
+
+    public function rentalReviews(): HasMany
+    {
+        return $this->hasMany(CarRentalReview::class, 'driver_id');
+    }
+
+    public function tourReviews(): HasMany
+    {
+        return $this->hasMany(TourBookingReview::class, 'driver_id');
+    }
+
     // ── Helpers ────────────────────────────────────────────────────
 
-    public function isOnline(): bool   { return (bool) $this->is_online; }
-    public function isApproved(): bool { return (bool) $this->is_approved; }
-    public function isAdmin(): bool    { return false; }
-    public function isDriver(): bool   { return true; }
-    public function isCustomer(): bool { return false; }
-    public function isGuide(): bool    { return false; }
+    public function isOnline(): bool
+    {
+        return (bool) $this->is_online;
+    }
+
+    public function isApproved(): bool
+    {
+        return (bool) $this->is_approved;
+    }
+
+    public function isAdmin(): bool
+    {
+        return false;
+    }
+
+    public function isDriver(): bool
+    {
+        return true;
+    }
+
+    public function isCustomer(): bool
+    {
+        return false;
+    }
+
+    public function isGuide(): bool
+    {
+        return false;
+    }
 
     public function canHandleService(string $serviceType, ?string $role = null): bool
     {

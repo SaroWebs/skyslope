@@ -3,9 +3,10 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Http\Resources\CustomerApp\InsurancePolicyResource;
+use App\Models\ExtendedCare;
 use App\Models\InsuranceClaim;
 use App\Models\InsurancePolicy;
-use App\Models\ExtendedCare;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
 
@@ -16,7 +17,7 @@ class InsuranceController extends Controller
      */
     public function getPolicies(Request $request)
     {
-        if (!$request->user()->isCustomer()) {
+        if (! $request->user()->isCustomer()) {
             return response()->json(['success' => false, 'message' => 'Only customer accounts can access insurance.'], 403);
         }
 
@@ -27,7 +28,7 @@ class InsuranceController extends Controller
 
         return response()->json([
             'success' => true,
-            'data' => $policies,
+            'data' => InsurancePolicyResource::collection($policies)->resolve($request),
         ]);
     }
 
@@ -36,7 +37,7 @@ class InsuranceController extends Controller
      */
     public function getPolicy(Request $request, $id)
     {
-        if (!$request->user()->isCustomer()) {
+        if (! $request->user()->isCustomer()) {
             return response()->json(['success' => false, 'message' => 'Only customer accounts can access insurance.'], 403);
         }
 
@@ -45,7 +46,7 @@ class InsuranceController extends Controller
             ->with(['claims'])
             ->first();
 
-        if (!$policy) {
+        if (! $policy) {
             return response()->json([
                 'success' => false,
                 'message' => 'Policy not found',
@@ -54,7 +55,7 @@ class InsuranceController extends Controller
 
         return response()->json([
             'success' => true,
-            'data' => $policy,
+            'data' => (new InsurancePolicyResource($policy))->resolve($request),
         ]);
     }
 
@@ -63,7 +64,7 @@ class InsuranceController extends Controller
      */
     public function createPolicy(Request $request)
     {
-        if (!$request->user()->isCustomer()) {
+        if (! $request->user()->isCustomer()) {
             return response()->json(['success' => false, 'message' => 'Only customer accounts can access insurance.'], 403);
         }
 
@@ -100,7 +101,7 @@ class InsuranceController extends Controller
 
         return response()->json([
             'success' => true,
-            'data' => $policy,
+            'data' => (new InsurancePolicyResource($policy))->resolve($request),
             'message' => 'Insurance policy created successfully',
         ], 201);
     }
@@ -110,7 +111,7 @@ class InsuranceController extends Controller
      */
     public function updatePolicy(Request $request, $id)
     {
-        if (!$request->user()->isCustomer()) {
+        if (! $request->user()->isCustomer()) {
             return response()->json(['success' => false, 'message' => 'Only customer accounts can access insurance.'], 403);
         }
 
@@ -118,7 +119,7 @@ class InsuranceController extends Controller
             ->where('id', $id)
             ->first();
 
-        if (!$policy) {
+        if (! $policy) {
             return response()->json([
                 'success' => false,
                 'message' => 'Policy not found',
@@ -149,7 +150,7 @@ class InsuranceController extends Controller
 
         return response()->json([
             'success' => true,
-            'data' => $policy,
+            'data' => (new InsurancePolicyResource($policy))->resolve($request),
             'message' => 'Policy updated successfully',
         ]);
     }
@@ -159,7 +160,7 @@ class InsuranceController extends Controller
      */
     public function cancelPolicy(Request $request, $id)
     {
-        if (!$request->user()->isCustomer()) {
+        if (! $request->user()->isCustomer()) {
             return response()->json(['success' => false, 'message' => 'Only customer accounts can access insurance.'], 403);
         }
 
@@ -167,7 +168,7 @@ class InsuranceController extends Controller
             ->where('id', $id)
             ->first();
 
-        if (!$policy) {
+        if (! $policy) {
             return response()->json([
                 'success' => false,
                 'message' => 'Policy not found',
@@ -187,7 +188,7 @@ class InsuranceController extends Controller
      */
     public function getClaims(Request $request)
     {
-        if (!$request->user()->isCustomer()) {
+        if (! $request->user()->isCustomer()) {
             return response()->json(['success' => false, 'message' => 'Only customer accounts can access insurance.'], 403);
         }
 
@@ -207,7 +208,7 @@ class InsuranceController extends Controller
      */
     public function createClaim(Request $request)
     {
-        if (!$request->user()->isCustomer()) {
+        if (! $request->user()->isCustomer()) {
             return response()->json(['success' => false, 'message' => 'Only customer accounts can access insurance.'], 403);
         }
 
@@ -234,14 +235,14 @@ class InsuranceController extends Controller
             ->where('id', $insurancePolicyId)
             ->first();
 
-        if (!$insurance) {
+        if (! $insurance) {
             return response()->json([
                 'success' => false,
                 'message' => 'Insurance policy not found or does not belong to you',
             ], 404);
         }
 
-        if (!$insurance->isActive()) {
+        if (! $insurance->isActive()) {
             return response()->json([
                 'success' => false,
                 'message' => 'Insurance policy is not active',
@@ -270,7 +271,7 @@ class InsuranceController extends Controller
      */
     public function getExtendedCare(Request $request)
     {
-        if (!$request->user()->isCustomer()) {
+        if (! $request->user()->isCustomer()) {
             return response()->json(['success' => false, 'message' => 'Only customer accounts can access insurance.'], 403);
         }
 
@@ -290,7 +291,7 @@ class InsuranceController extends Controller
      */
     public function requestAssistance(Request $request)
     {
-        if (!$request->user()->isCustomer()) {
+        if (! $request->user()->isCustomer()) {
             return response()->json(['success' => false, 'message' => 'Only customer accounts can access insurance.'], 403);
         }
 
@@ -325,7 +326,7 @@ class InsuranceController extends Controller
      */
     public function cancelAssistance(Request $request, $id)
     {
-        if (!$request->user()->isCustomer()) {
+        if (! $request->user()->isCustomer()) {
             return response()->json(['success' => false, 'message' => 'Only customer accounts can access insurance.'], 403);
         }
 
@@ -333,7 +334,7 @@ class InsuranceController extends Controller
             ->where('id', $id)
             ->first();
 
-        if (!$care) {
+        if (! $care) {
             return response()->json([
                 'success' => false,
                 'message' => 'Assistance request not found',

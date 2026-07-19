@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{{ $subject ?? 'Notification from SkySlope' }}</title>
+    <title>{{ $subject ?? 'Notification from HappyMiles' }}</title>
     <style>
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
@@ -63,7 +63,7 @@
 <body>
     <div class="container">
         <div class="header">
-            <div class="logo">🚗 SkySlope</div>
+            <div class="logo">🚗 HappyMiles</div>
         </div>
 
         <div class="content">
@@ -97,7 +97,7 @@
         </div>
 
         <div class="footer">
-            <p>© {{ date('Y') }} SkySlope. All rights reserved.</p>
+            <p>© {{ date('Y') }} HappyMiles Tours &amp; Travels. All rights reserved.</p>
             <p>
                 This email was sent to {{ $userEmail ?? 'you' }}.
                 If you have any questions, please contact our support team.

@@ -17,19 +17,41 @@ class PlaceMedia extends Model
 
     protected $fillable = [
         'place_id',
+        'uploaded_by_customer_id',
         'path',
         'type',
+        'source',
+        'approval_status',
+        'reviewed_by',
+        'reviewed_at',
+        'rejection_reason',
         'caption',
         'sort_order',
     ];
 
     protected $casts = [
         'sort_order' => 'integer',
+        'reviewed_at' => 'datetime',
     ];
 
     public function place(): BelongsTo
     {
         return $this->belongsTo(Place::class, 'place_id');
+    }
+
+    public function customer(): BelongsTo
+    {
+        return $this->belongsTo(Customer::class, 'uploaded_by_customer_id');
+    }
+
+    public function reviewer(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'reviewed_by');
+    }
+
+    public function scopeApproved($query)
+    {
+        return $query->where('approval_status', 'approved');
     }
 
     public function getFilePathAttribute(): string
@@ -48,5 +70,6 @@ class PlaceMedia extends Model
     }
 
     public function isImage(): bool { return $this->type === 'image'; }
+    public function isPanorama(): bool { return $this->type === 'panorama'; }
     public function isVideo(): bool { return $this->type === 'video'; }
 }

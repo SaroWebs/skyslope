@@ -1,177 +1,31 @@
-import React, { useState } from 'react';
-import { Link, useForm } from '@inertiajs/react';
+import React from 'react';
+import { Head, Link, useForm } from '@inertiajs/react';
+import { Alert, Button, Checkbox, Group, Paper, Select, SimpleGrid, Stack, Text, Textarea, TextInput } from '@mantine/core';
+import { ArrowLeft, Save } from 'lucide-react';
 import AdminLayout from '../../../../layouts/AdminLayout';
 
-interface Place {
-    id: number;
-    name: string;
-    description: string;
-}
+type Place = { id: number; name: string; city?: string | null; state?: string | null };
+type Itinerary = { id: number; day_index: number; time?: string | null; title?: string | null; details?: string | null; description?: string | null; activities?: string[]; accommodation?: string | null; meals_included?: string[]; distance_km?: string | null; place?: Place };
+const lines = (value: string) => value.split('\n').map((item) => item.trim()).filter(Boolean);
 
-interface Tour {
-    id: number;
-    title: string;
-    description: string;
-}
-
-interface Itinerary {
-    id: number;
-    day_index: number;
-    time: string;
-    details: string;
-    place: Place;
-}
-
-interface EditItineraryProps {
-    title: string;
-    user: any;
-    tour: Tour;
-    itinerary: Itinerary;
-    places: Place[];
-}
-
-export default function EditItinerary({ title, user, tour, itinerary, places }: EditItineraryProps) {
-    const { data, setData, put, processing, errors } = useForm({
-        day_index: itinerary.day_index.toString(),
-        time: itinerary.time || '',
-        place_id: itinerary.place.id.toString(),
-        details: itinerary.details || '',
+export default function EditItinerary({ title, tour, itinerary, places }: { title: string; tour: { id: number; title: string }; itinerary: Itinerary; places: Place[] }) {
+    const { data, setData, put, processing, errors, transform } = useForm({
+        time: itinerary.time?.slice(0, 5) ?? '', place_id: itinerary.place ? String(itinerary.place.id) : '', title: itinerary.title ?? '',
+        details: itinerary.details ?? itinerary.description ?? '', activities_text: (itinerary.activities ?? []).join('\n'), accommodation: itinerary.accommodation ?? '',
+        meals_included: itinerary.meals_included ?? [] as string[], distance_km: itinerary.distance_km ?? '',
     });
+    const submit = (event: React.FormEvent) => { event.preventDefault(); transform((values) => ({ ...values, activities: lines(values.activities_text) })); put(`/admin/tours/${tour.id}/itineraries/${itinerary.id}`); };
 
-    const handleSubmit = (e: React.FormEvent) => {
-        e.preventDefault();
-        put(`/admin/tours/${tour.id}/itineraries/${itinerary.id}`);
-    };
-
-    return (
-        <AdminLayout title={title}>
-            <div className="bg-white shadow rounded-lg">
-                <div className="px-4 py-5 sm:p-6">
-                    <div className="flex justify-between items-center mb-6">
-                        <h2 className="text-lg font-medium text-gray-900">
-                            Edit Itinerary for: {tour.title}
-                        </h2>
-                        <Link
-                            href={`/admin/tours/${tour.id}/itineraries`}
-                            className="bg-gray-600 text-white px-4 py-2 rounded-md hover:bg-gray-700 text-sm font-medium"
-                        >
-                            Back to Itineraries
-                        </Link>
-                    </div>
-
-                    <form onSubmit={handleSubmit} className="space-y-6">
-                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                            {/* Day Index */}
-                            <div>
-                                <label htmlFor="day_index" className="block text-sm font-medium text-gray-700">
-                                    Day Number *
-                                </label>
-                                <input
-                                    type="number"
-                                    id="day_index"
-                                    min="1"
-                                    value={data.day_index}
-                                    onChange={(e) => setData('day_index', e.target.value)}
-                                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
-                                    placeholder="Enter day number (e.g., 1, 2, 3)"
-                                />
-                                {errors.day_index && (
-                                    <p className="mt-1 text-sm text-red-600">{errors.day_index}</p>
-                                )}
-                            </div>
-
-                            {/* Time */}
-                            <div>
-                                <label htmlFor="time" className="block text-sm font-medium text-gray-700">
-                                    Time
-                                </label>
-                                <input
-                                    type="time"
-                                    id="time"
-                                    value={data.time}
-                                    onChange={(e) => setData('time', e.target.value)}
-                                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
-                                    placeholder="Select time (optional)"
-                                />
-                                {errors.time && (
-                                    <p className="mt-1 text-sm text-red-600">{errors.time}</p>
-                                )}
-                            </div>
-
-                            {/* Place */}
-                            <div className="lg:col-span-2">
-                                <label htmlFor="place_id" className="block text-sm font-medium text-gray-700">
-                                    Place *
-                                </label>
-                                <select
-                                    id="place_id"
-                                    value={data.place_id}
-                                    onChange={(e) => setData('place_id', e.target.value)}
-                                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
-                                >
-                                    <option value="">Select a place</option>
-                                    {places.map((place) => (
-                                        <option key={place.id} value={place.id}>
-                                            {place.name}
-                                        </option>
-                                    ))}
-                                </select>
-                                {errors.place_id && (
-                                    <p className="mt-1 text-sm text-red-600">{errors.place_id}</p>
-                                )}
-                                
-                                {/* Place Description */}
-                                {data.place_id && (
-                                    <div className="mt-2 p-3 bg-gray-50 rounded-md">
-                                        {(() => {
-                                            const selectedPlace = places.find(p => p.id === parseInt(data.place_id));
-                                            return selectedPlace ? (
-                                                <p className="text-sm text-gray-600">
-                                                    <span className="font-medium">Description:</span> {selectedPlace.description}
-                                                </p>
-                                            ) : null;
-                                        })()}
-                                    </div>
-                                )}
-                            </div>
-
-                            {/* Details */}
-                            <div className="lg:col-span-2">
-                                <label htmlFor="details" className="block text-sm font-medium text-gray-700">
-                                    Details
-                                </label>
-                                <textarea
-                                    id="details"
-                                    rows={4}
-                                    value={data.details}
-                                    onChange={(e) => setData('details', e.target.value)}
-                                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
-                                    placeholder="Additional details about this itinerary item..."
-                                />
-                                {errors.details && (
-                                    <p className="mt-1 text-sm text-red-600">{errors.details}</p>
-                                )}
-                            </div>
-                        </div>
-
-                        <div className="flex justify-end space-x-3">
-                            <Link
-                                href={`/admin/tours/${tour.id}/itineraries`}
-                                className="bg-gray-600 text-white px-4 py-2 rounded-md hover:bg-gray-700 text-sm font-medium"
-                            >
-                                Cancel
-                            </Link>
-                            <button
-                                type="submit"
-                                disabled={processing}
-                                className="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
-                            >
-                                {processing ? 'Updating...' : 'Update Itinerary'}
-                            </button>
-                        </div>
-                    </form>
-                </div>
-            </div>
-        </AdminLayout>
-    );
+    return <AdminLayout title={title}><Head title={`Edit Day ${itinerary.day_index} · ${tour.title}`} /><form onSubmit={submit}><Stack gap="lg" maw={920} mx="auto">
+        <Group justify="space-between"><div><Text size="xs" fw={800} c="blue" tt="uppercase">Itinerary day</Text><Text size="xl" fw={900}>Edit Day {itinerary.day_index}</Text><Text c="dimmed">Day order is sequential; add or remove days to change the calculated tour duration.</Text></div><Button component={Link} href={`/admin/tours/${tour.id}/itineraries`} variant="default" leftSection={<ArrowLeft size={16} />}>Itinerary</Button></Group>
+        <Paper p="xl" radius="lg" withBorder><Stack gap="lg">
+            <SimpleGrid cols={{ base: 1, md: 2 }}><Select required searchable label="Point of interest" data={places.map((place) => ({ value: String(place.id), label: [place.name, place.city, place.state].filter(Boolean).join(' · ') }))} value={data.place_id} onChange={(value) => setData('place_id', value ?? '')} error={errors.place_id} /><TextInput type="time" label="Day start time" value={data.time} onChange={(e) => setData('time', e.currentTarget.value)} error={errors.time} /></SimpleGrid>
+            <TextInput label="Day title" value={data.title} onChange={(e) => setData('title', e.currentTarget.value)} error={errors.title} />
+            <Textarea required minRows={5} label="Detailed day plan" value={data.details} onChange={(e) => setData('details', e.currentTarget.value)} error={errors.details} />
+            <SimpleGrid cols={{ base: 1, md: 3 }}><Textarea minRows={3} label="Activities" description="One per line" value={data.activities_text} onChange={(e) => setData('activities_text', e.currentTarget.value)} /><TextInput label="Accommodation" value={data.accommodation} onChange={(e) => setData('accommodation', e.currentTarget.value)} error={errors.accommodation} /><TextInput label="Travel distance" value={data.distance_km} onChange={(e) => setData('distance_km', e.currentTarget.value)} error={errors.distance_km} /></SimpleGrid>
+            <Checkbox.Group label="Meals included" value={data.meals_included} onChange={(value) => setData('meals_included', value)}><Group mt="xs"><Checkbox value="breakfast" label="Breakfast" /><Checkbox value="lunch" label="Lunch" /><Checkbox value="dinner" label="Dinner" /></Group></Checkbox.Group>
+            {Object.keys(errors).length > 0 && <Alert color="red">Review the highlighted fields.</Alert>}
+            <Group justify="flex-end"><Button component={Link} href={`/admin/tours/${tour.id}/itineraries`} variant="default">Cancel</Button><Button type="submit" loading={processing} leftSection={<Save size={17} />}>Save Day {itinerary.day_index}</Button></Group>
+        </Stack></Paper>
+    </Stack></form></AdminLayout>;
 }

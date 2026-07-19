@@ -91,7 +91,7 @@ export default function AppLayout({ children, title, backPath, showBottomNav = t
                             </ActionIcon>
                         ) : (
                             <Text fw={900} size="lg" variant="gradient" gradient={{ from: 'blue', to: 'indigo' }}>
-                                Skyslope
+                                HappyMiles
                             </Text>
                         )}
                         {title && !backPath && <Text fw={700} size="md">{title}</Text>}

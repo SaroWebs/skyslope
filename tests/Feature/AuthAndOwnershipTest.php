@@ -1,8 +1,8 @@
 <?php
 
+use App\Models\BookingAuditLog;
 use App\Models\CarCategory;
 use App\Models\CarRental;
-use App\Models\BookingAuditLog;
 use App\Models\Customer;
 use App\Models\Driver;
 use App\Models\DriverAvailability;
@@ -79,6 +79,31 @@ it('sends customer otp for both existing and new phones with a development code'
         ->assertJsonStructure(['dev_otp']);
 });
 
+it('does not create or expose development otps in production when sms credentials are missing', function () {
+    $this->app->detectEnvironment(fn () => 'production');
+    config([
+        'app.env' => 'production',
+        'services.otp.allow_dev_delivery' => false,
+        'services.twilio.sid' => 'your_twilio_account_sid',
+        'services.twilio.token' => 'your_twilio_auth_token',
+        'services.twilio.from' => '+1234567890',
+    ]);
+
+    $response = $this->postJson('/api/customer-app/otp/send', [
+        'phone' => '9500000199',
+        'action' => 'login',
+    ]);
+
+    $response->assertStatus(503)
+        ->assertJsonPath('success', false)
+        ->assertJsonMissingPath('dev_otp');
+
+    $this->assertDatabaseMissing('otps', [
+        'phone' => '9500000199',
+        'type' => 'customer',
+    ]);
+});
+
 it('branches new customer otp verification into profile completion', function () {
     Otp::create([
         'phone' => '9500000093',
@@ -149,6 +174,73 @@ it('lets approved drivers verify otp and access protected driver app routes', fu
     ])->assertOk()
         ->assertJsonPath('success', true)
         ->assertJsonPath('driver.id', $driver->id);
+});
+
+it('returns a development otp when an existing driver requests a login code', function () {
+    $driver = Driver::create([
+        'name' => 'Development OTP Driver',
+        'phone' => '8500000099',
+        'email' => 'development-otp-driver@example.com',
+        'status' => 'active',
+        'is_active' => true,
+        'is_approved' => true,
+    ]);
+
+    $this->postJson('/api/driver-app/otp/send', [
+        'phone' => $driver->phone,
+    ])->assertOk()
+        ->assertJsonPath('success', true)
+        ->assertJsonPath('driver_exists', true)
+        ->assertJsonPath('dev_otp', '123456');
+});
+
+it('redirects an unknown driver into registration and creates a pending service profile', function () {
+    $phone = '8500000100';
+
+    $this->postJson('/api/driver-app/otp/send', [
+        'phone' => $phone,
+    ])->assertOk()
+        ->assertJsonPath('success', true)
+        ->assertJsonPath('driver_exists', false)
+        ->assertJsonMissingPath('dev_otp');
+
+    $this->assertDatabaseMissing('drivers', ['phone' => $phone]);
+
+    $this->postJson('/api/driver-app/register', [
+        'phone' => $phone,
+        'name' => 'New Service Driver',
+        'email' => 'new-service-driver@example.com',
+        'license_number' => 'DL-TEST-100',
+        'license_expiry' => now()->addYear()->toDateString(),
+        'vehicle_type' => 'suv',
+        'vehicle_number' => 'KA01TEST100',
+        'vehicle_model' => 'Test SUV',
+        'service_types' => ['ride', 'tour', 'rental'],
+    ])->assertCreated()
+        ->assertJsonPath('success', true)
+        ->assertJsonPath('driver_created', true)
+        ->assertJsonPath('driver_status', 'pending')
+        ->assertJsonPath('dev_otp', '123456');
+
+    $this->assertDatabaseHas('drivers', [
+        'phone' => $phone,
+        'status' => 'pending',
+        'is_active' => true,
+        'is_approved' => false,
+        'can_short_ride' => true,
+        'can_long_ride' => true,
+        'can_tour_transport' => true,
+        'can_rental_delivery' => true,
+    ]);
+
+    $this->postJson('/api/driver-app/otp/verify', [
+        'phone' => $phone,
+        'code' => '123456',
+    ])->assertForbidden()
+        ->assertJsonPath('phone_verified', true)
+        ->assertJsonPath('driver_status', 'pending');
+
+    expect(Driver::where('phone', $phone)->firstOrFail()->phone_verified_at)->not->toBeNull();
 });
 
 it('blocks customers from accessing another customer ride booking', function () {
@@ -284,14 +376,14 @@ it('returns customer next steps and records customer check-in for rental booking
 
     Sanctum::actingAs($customer);
 
-    $this->getJson("/api/customer-app/bookings/rental/{$rental->id}/next-steps")
+    $this->getJson("/api/customer-app/car-rentals/{$rental->id}/next-steps")
         ->assertOk()
         ->assertJsonPath('success', true)
         ->assertJsonPath('data.service_type', 'rental')
         ->assertJsonPath('data.actions.can_check_in', true)
         ->assertJsonStructure(['data' => ['start_verification' => ['code'], 'instructions']]);
 
-    $this->postJson("/api/customer-app/bookings/rental/{$rental->id}/check-in", [
+    $this->postJson("/api/customer-app/car-rentals/{$rental->id}/check-in", [
         'latitude' => 12.9717,
         'longitude' => 77.5947,
         'note' => 'At the gate.',

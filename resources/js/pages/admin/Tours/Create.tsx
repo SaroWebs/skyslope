@@ -1,208 +1,66 @@
 import React from 'react';
 import { Head, Link, useForm } from '@inertiajs/react';
+import { Alert, Box, Button, Checkbox, Group, NumberInput, Paper, Select, SimpleGrid, Stack, Text, Textarea, TextInput, ThemeIcon } from '@mantine/core';
+import { ArrowLeft, CircleAlert, MapPinned, Save, Sparkles, WalletCards } from 'lucide-react';
 import AdminLayout from '../../../layouts/AdminLayout';
-import { 
-    Paper, 
-    Stack, 
-    TextInput, 
-    NumberInput, 
-    Textarea, 
-    Button, 
-    Group, 
-    Text, 
-    SimpleGrid, 
-    ThemeIcon, 
-    Divider,
-    rem
-} from '@mantine/core';
-import { 
-    Plus, 
-    ArrowLeft, 
-    Navigation, 
-    IndianRupee, 
-    Tag, 
-    Calendar, 
-    Save, 
-    X,
-    FileText,
-    Info
-} from 'lucide-react';
 
-interface CreateTourProps {
-    title: string;
-}
+type Option = { id: number; name: string };
+const lines = (value: string) => value.split('\n').map((item) => item.trim()).filter(Boolean);
 
-export default function Create({ title }: CreateTourProps) {
-    const { data, setData, post, processing, errors } = useForm({
-        title: '',
-        description: '',
-        price: '',
-        discount: '',
-        available_from: '',
-        available_to: '',
+export default function Create({ title, categories }: { title: string; categories: Option[] }) {
+    const { data, setData, post, processing, errors, transform } = useForm({
+        tour_category_id: '', title: '', short_description: '', description: '',
+        highlights_text: '', inclusions_text: '', exclusions_text: '',
+        min_group_size: 1, max_group_size: 20, price_per_person: 0, child_price: 0, discount: 0,
+        start_location: '', end_location: '', region: '', difficulty: 'easy', cover_image: '',
+        available_from: '', available_to: '', is_active: false, is_featured: false,
     });
 
-    const handleSubmit = (e: React.FormEvent) => {
-        e.preventDefault();
+    const submit = (event: React.FormEvent) => {
+        event.preventDefault();
+        transform((values) => ({
+            ...values,
+            tour_category_id: values.tour_category_id || null,
+            highlights: lines(values.highlights_text),
+            inclusions: lines(values.inclusions_text),
+            exclusions: lines(values.exclusions_text),
+        }));
         post('/admin/tours');
     };
 
+    const heading = (icon: React.ReactNode, step: string, name: string, help: string) => (
+        <Group align="flex-start" gap="sm"><ThemeIcon variant="light" radius="xl" size="lg">{icon}</ThemeIcon><Box><Text size="xs" fw={800} c="blue" tt="uppercase" lts={0.8}>{step}</Text><Text fw={850} size="lg">{name}</Text><Text size="sm" c="dimmed">{help}</Text></Box></Group>
+    );
+
     return (
         <AdminLayout title={title}>
-            <Head title="Create New Tour" />
+            <Head title="Create tour package" />
+            <form onSubmit={submit}>
+                <Stack gap="lg" maw={1080} mx="auto">
+                    <Group justify="space-between" align="flex-end"><Box><Text size="xs" fw={800} c="blue" tt="uppercase" lts={1}>Tour setup · Step 1</Text><Text size="xl" fw={900}>Create the package</Text><Text c="dimmed">Save the commercial shell first. You will add itinerary days one by one next.</Text></Box><Button component={Link} href="/admin/tours" variant="default" leftSection={<ArrowLeft size={16} />}>Tours</Button></Group>
+                    {Object.keys(errors).length > 0 && <Alert color="red" icon={<CircleAlert size={18} />} title="Review the highlighted fields">The package could not be saved yet.</Alert>}
 
-            <Stack gap="lg" maw={800} mx="auto">
-                <Group justify="space-between" align="flex-end">
-                    <Stack gap={2}>
-                        <Group gap="xs">
-                            <ThemeIcon variant="light" color="blue" size="sm">
-                                <Plus size={14} />
-                            </ThemeIcon>
-                            <Text size="xs" fw={700} color="dimmed" tt="uppercase">Tour Provisioning</Text>
-                        </Group>
-                        <Text size="h3" fw={800}>Architect New Experience</Text>
-                    </Stack>
-                    <Button 
-                        component={Link} 
-                        href="/admin/tours" 
-                        variant="subtle" 
-                        color="gray" 
-                        leftSection={<ArrowLeft size={16} />}
-                        radius="md"
-                    >
-                        Index
-                    </Button>
-                </Group>
+                    <Paper p="xl" radius="lg" withBorder><Stack gap="lg">
+                        {heading(<Sparkles size={18} />, '1 · Identity', 'Describe the experience', 'Use customer-facing language; itinerary detail comes in the next step.')}
+                        <SimpleGrid cols={{ base: 1, md: 2 }}><TextInput required label="Tour title" value={data.title} onChange={(e) => setData('title', e.currentTarget.value)} error={errors.title} /><Select clearable searchable label="Category" data={categories.map((item) => ({ value: String(item.id), label: item.name }))} value={data.tour_category_id} onChange={(value) => setData('tour_category_id', value ?? '')} error={errors.tour_category_id} /></SimpleGrid>
+                        <Textarea required minRows={2} maxLength={500} label="Card summary" description="A concise promise shown in customer results." value={data.short_description} onChange={(e) => setData('short_description', e.currentTarget.value)} error={errors.short_description} />
+                        <Textarea required minRows={5} label="Full description" value={data.description} onChange={(e) => setData('description', e.currentTarget.value)} error={errors.description} />
+                        <SimpleGrid cols={{ base: 1, md: 3 }}><Textarea minRows={4} label="Highlights" description="One per line" value={data.highlights_text} onChange={(e) => setData('highlights_text', e.currentTarget.value)} /><Textarea minRows={4} label="Inclusions" description="One per line" value={data.inclusions_text} onChange={(e) => setData('inclusions_text', e.currentTarget.value)} /><Textarea minRows={4} label="Exclusions" description="One per line" value={data.exclusions_text} onChange={(e) => setData('exclusions_text', e.currentTarget.value)} /></SimpleGrid>
+                    </Stack></Paper>
 
-                <Paper p="xl" radius="md" withBorder shadow="sm">
-                    <form onSubmit={handleSubmit}>
-                        <Stack gap="xl">
-                            <Box>
-                                <Group gap={8} mb="xs">
-                                    <FileText size={16} color="var(--mantine-color-blue-6)" />
-                                    <Text fw={700} size="sm">Foundational Information</Text>
-                                </Group>
-                                <Stack gap="md">
-                                    <TextInput
-                                        label="Tour Designation"
-                                        placeholder="e.g. Majestic Meghalaya 5D4N"
-                                        required
-                                        value={data.title}
-                                        onChange={(e) => setData('title', e.currentTarget.value)}
-                                        error={errors.title}
-                                        radius="md"
-                                    />
-                                    <Textarea
-                                        label="Package Narrative"
-                                        placeholder="Describe the unique elements of this tour..."
-                                        required
-                                        minRows={4}
-                                        value={data.description}
-                                        onChange={(e) => setData('description', e.currentTarget.value)}
-                                        error={errors.description}
-                                        radius="md"
-                                    />
-                                </Stack>
-                            </Box>
+                    <Paper p="xl" radius="lg" withBorder><Stack gap="lg">
+                        {heading(<MapPinned size={18} />, '2 · Geography', 'Define the route boundary', 'Days and nights are deliberately absent—they will be calculated from itinerary days.')}
+                        <SimpleGrid cols={{ base: 1, md: 3 }}><TextInput required label="Start location" value={data.start_location} onChange={(e) => setData('start_location', e.currentTarget.value)} error={errors.start_location} /><TextInput required label="End location" value={data.end_location} onChange={(e) => setData('end_location', e.currentTarget.value)} error={errors.end_location} /><TextInput required label="Region / destination" value={data.region} onChange={(e) => setData('region', e.currentTarget.value)} error={errors.region} /><Select required label="Difficulty" data={['easy', 'moderate', 'challenging', 'extreme']} value={data.difficulty} onChange={(value) => setData('difficulty', value ?? 'easy')} error={errors.difficulty} /><TextInput required type="date" label="Available from" value={data.available_from} onChange={(e) => setData('available_from', e.currentTarget.value)} error={errors.available_from} /><TextInput required type="date" label="Available to" value={data.available_to} onChange={(e) => setData('available_to', e.currentTarget.value)} error={errors.available_to} /><TextInput label="Cover image URL" placeholder="https://…" value={data.cover_image} onChange={(e) => setData('cover_image', e.currentTarget.value)} error={errors.cover_image} /></SimpleGrid>
+                    </Stack></Paper>
 
-                            <Divider variant="dashed" />
+                    <Paper p="xl" radius="lg" withBorder><Stack gap="lg">
+                        {heading(<WalletCards size={18} />, '3 · Commercials', 'Set group and price rules', 'Departure inventory and driver assignment are configured after the itinerary.')}
+                        <SimpleGrid cols={{ base: 1, sm: 2, lg: 5 }}><NumberInput required min={1} label="Minimum group" value={data.min_group_size} onChange={(value) => setData('min_group_size', Number(value))} error={errors.min_group_size} /><NumberInput required min={1} label="Maximum group" value={data.max_group_size} onChange={(value) => setData('max_group_size', Number(value))} error={errors.max_group_size} /><NumberInput required min={0} prefix="₹ " label="Adult price" value={data.price_per_person} onChange={(value) => setData('price_per_person', Number(value))} error={errors.price_per_person} /><NumberInput required min={0} prefix="₹ " label="Child price" value={data.child_price} onChange={(value) => setData('child_price', Number(value))} error={errors.child_price} /><NumberInput min={0} max={100} suffix="%" label="Discount" value={data.discount} onChange={(value) => setData('discount', Number(value))} error={errors.discount} /></SimpleGrid>
+                    </Stack></Paper>
 
-                            <Box>
-                                <Group gap={8} mb="xs">
-                                    <IndianRupee size={16} color="var(--mantine-color-green-6)" />
-                                    <Text fw={700} size="sm">Economic Parameters</Text>
-                                </Group>
-                                <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="lg">
-                                    <TextInput
-                                        label="Market Price (Base)"
-                                        type="number"
-                                        placeholder="0.00"
-                                        leftSection={<IndianRupee size={16} color="gray" />}
-                                        required
-                                        value={data.price}
-                                        onChange={(e) => setData('price', e.currentTarget.value)}
-                                        error={errors.price}
-                                        radius="md"
-                                    />
-                                    <TextInput
-                                        label="Incentive Discount (%)"
-                                        type="number"
-                                        placeholder="0"
-                                        leftSection={<Tag size={16} color="gray" />}
-                                        value={data.discount}
-                                        onChange={(e) => setData('discount', e.currentTarget.value)}
-                                        error={errors.discount}
-                                        radius="md"
-                                    />
-                                </SimpleGrid>
-                            </Box>
-
-                            <Divider variant="dashed" />
-
-                            <Box>
-                                <Group gap={8} mb="xs">
-                                    <Calendar size={16} color="var(--mantine-color-indigo-6)" />
-                                    <Text fw={700} size="sm">Availability Window</Text>
-                                </Group>
-                                <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="lg">
-                                    <TextInput
-                                        label="Deployment Date (From)"
-                                        type="date"
-                                        required
-                                        value={data.available_from}
-                                        onChange={(e) => setData('available_from', e.currentTarget.value)}
-                                        error={errors.available_from}
-                                        radius="md"
-                                    />
-                                    <TextInput
-                                        label="Retirement Date (To)"
-                                        type="date"
-                                        required
-                                        value={data.available_to}
-                                        onChange={(e) => setData('available_to', e.currentTarget.value)}
-                                        error={errors.available_to}
-                                        radius="md"
-                                    />
-                                </SimpleGrid>
-                            </Box>
-
-                            <Group justify="flex-end" pt="xl">
-                                <Button 
-                                    component={Link} 
-                                    href="/admin/tours" 
-                                    variant="subtle" 
-                                    color="gray"
-                                    radius="md"
-                                >
-                                    Discard Changes
-                                </Button>
-                                <Button 
-                                    type="submit" 
-                                    color="blue" 
-                                    size="md" 
-                                    radius="md" 
-                                    leftSection={<Save size={18} />}
-                                    loading={processing}
-                                >
-                                    Publish Experience
-                                </Button>
-                            </Group>
-                        </Stack>
-                    </form>
-                </Paper>
-
-                <Paper p="lg" radius="md" bg="blue.0" withBorder>
-                    <Group gap="sm" align="flex-start">
-                        <ThemeIcon color="blue" variant="light">
-                            <Info size={16} />
-                        </ThemeIcon>
-                        <Box style={{ flex: 1 }}>
-                            <Text size="sm" fw={700} color="blue.9">Pro Tip:</Text>
-                            <Text size="xs" color="blue.8">After creating the tour, you can add detailed daily itineraries, assign guides, and link preferred drivers from the tour management console.</Text>
-                        </Box>
-                    </Group>
-                </Paper>
-            </Stack>
+                    <Paper p="lg" radius="lg" withBorder><Group justify="space-between"><Group><Checkbox checked={data.is_active} onChange={(e) => setData('is_active', e.currentTarget.checked)} label="Publish after setup" /><Checkbox checked={data.is_featured} onChange={(e) => setData('is_featured', e.currentTarget.checked)} label="Featured" /></Group><Button type="submit" loading={processing} leftSection={<Save size={17} />}>Save and add Day 1</Button></Group></Paper>
+                </Stack>
+            </form>
         </AdminLayout>
     );
 }

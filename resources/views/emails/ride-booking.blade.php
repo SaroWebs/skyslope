@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Ride Booking Confirmation - SkySlope</title>
+    <title>Ride Booking Confirmation - HappyMiles</title>
     <style>
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
@@ -143,7 +143,7 @@
 <body>
     <div class="container">
         <div class="header">
-            <div class="logo">🚗 SkySlope</div>
+            <div class="logo">🚗 HappyMiles</div>
             <p style="margin: 0; opacity: 0.9;">Your ride has been booked!</p>
             <div class="booking-id">{{ $booking['booking_number'] }}</div>
         </div>
@@ -220,7 +220,7 @@
         </div>
 
         <div class="footer">
-            <p>© {{ date('Y') }} SkySlope. All rights reserved.</p>
+            <p>© {{ date('Y') }} HappyMiles Tours &amp; Travels. All rights reserved.</p>
             <p>
                 Need help? Contact our support team at support@skyslope.com<br>
                 This email was sent to {{ $user->email ?? 'your email' }}.

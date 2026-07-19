@@ -56,6 +56,16 @@ it('creates rides with estimated distance and normalized hourly service type', f
         'can_long_ride' => true,
         'rating' => 4.8,
     ]);
+    $category = CarCategory::create([
+        'name' => 'Hourly Sedan', 'slug' => 'hourly-sedan', 'vehicle_type' => 'sedan',
+        'seats' => 4, 'base_price_per_day' => 1700, 'is_active' => true,
+    ]);
+    Vehicle::create([
+        'driver_id' => $driver->id, 'car_category_id' => $category->id,
+        'registration_number' => 'KA01SV0010', 'make' => 'Toyota', 'model' => 'Etios',
+        'year' => 2024, 'color' => 'White', 'seats' => 4,
+        'is_active' => true, 'approval_status' => 'approved',
+    ]);
     DriverAvailability::create([
         'driver_id' => $driver->id,
         'is_available' => true,
@@ -396,6 +406,19 @@ it('lets drivers accept and complete tour assignments and rental assignments', f
         'base_price_per_day' => 1500,
     ]);
 
+    Vehicle::create([
+        'driver_id' => $driver->id,
+        'car_category_id' => $category->id,
+        'registration_number' => 'KA01TOUR01',
+        'make' => 'Toyota',
+        'model' => 'Etios',
+        'year' => 2024,
+        'color' => 'White',
+        'seats' => 4,
+        'is_active' => true,
+        'approval_status' => 'approved',
+    ]);
+
     $rental = CarRental::create([
         'customer_id' => $customer->id,
         'driver_id' => $driver->id,
@@ -414,14 +437,17 @@ it('lets drivers accept and complete tour assignments and rental assignments', f
 
     Sanctum::actingAs($driver);
 
+    // Finish the existing rental before accepting tour work; drivers cannot
+    // be engaged by two modules at the same time.
+    $this->postJson("/api/driver-app/rentals/{$rental->id}/complete")->assertOk();
+    $this->assertDatabaseHas('car_rentals', ['id' => $rental->id, 'status' => 'completed']);
+
     $this->postJson("/api/driver-app/tour-assignments/{$assignment->id}/accept")->assertOk();
     $this->assertDatabaseHas('tour_driver_assignments', ['id' => $assignment->id, 'status' => 'accepted']);
 
     $this->postJson("/api/driver-app/tour-assignments/{$assignment->id}/complete")->assertOk();
     $this->assertDatabaseHas('tour_driver_assignments', ['id' => $assignment->id, 'status' => 'completed']);
 
-    $this->postJson("/api/driver-app/rentals/{$rental->id}/complete")->assertOk();
-    $this->assertDatabaseHas('car_rentals', ['id' => $rental->id, 'status' => 'completed']);
 });
 
 it('rejects guide app routes with a deprecated response', function () {
@@ -1038,6 +1064,18 @@ it('tracks driver ride dispatch decline and accept history', function () {
         'is_approved' => true,
         'can_short_ride' => true,
     ]);
+    $category = CarCategory::create([
+        'name' => 'Dispatch Sedan', 'slug' => 'dispatch-sedan', 'vehicle_type' => 'sedan',
+        'seats' => 4, 'base_price_per_day' => 1500, 'is_active' => true,
+    ]);
+    foreach ([[$decliningDriver, 'KA01SV0014'], [$acceptingDriver, 'KA01SV0015']] as [$driver, $registration]) {
+        Vehicle::create([
+            'driver_id' => $driver->id, 'car_category_id' => $category->id,
+            'registration_number' => $registration, 'make' => 'Maruti', 'model' => 'Dzire',
+            'year' => 2024, 'color' => 'White', 'seats' => 4,
+            'is_active' => true, 'approval_status' => 'approved',
+        ]);
+    }
 
     foreach ([$decliningDriver, $acceptingDriver] as $driver) {
         DriverAvailability::create([

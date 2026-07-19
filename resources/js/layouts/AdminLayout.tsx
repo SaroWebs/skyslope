@@ -8,7 +8,6 @@ import {
     Text,
     UnstyledButton,
     ScrollArea,
-    Avatar,
     Menu,
     Modal,
     PasswordInput,
@@ -18,10 +17,9 @@ import {
     Box,
     Collapse,
     ActionIcon,
-    Divider,
 } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion } from 'framer-motion';
 import {
     LayoutDashboard,
     Users,
@@ -33,7 +31,6 @@ import {
     LogOut,
     ChevronRight,
     ChevronDown,
-    Key,
     Bell,
     Search,
     UserCircle,
@@ -63,6 +60,18 @@ interface NavigationItem {
     icon: React.ElementType;
     current?: boolean;
     children?: { name: string; href: string }[];
+}
+
+interface AdminUser {
+    name: string;
+    email?: string;
+}
+
+interface AdminPageProps {
+    auth?: {
+        user?: AdminUser;
+    };
+    [key: string]: unknown;
 }
 
 /* ─────────────────────────────────────────────
@@ -290,19 +299,6 @@ const PulseDot = () => (
 /* ─────────────────────────────────────────────
    Amber icon box
 ───────────────────────────────────────────── */
-const IconBox = ({ children }: { children: React.ReactNode }) => (
-    <div style={{
-        width: 36, height: 36, borderRadius: 10,
-        background: 'rgba(251,191,36,0.1)',
-        border: '1px solid rgba(251,191,36,0.2)',
-        color: '#fbbf24',
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        flexShrink: 0,
-    }}>
-        {children}
-    </div>
-);
-
 /* ─────────────────────────────────────────────
    NavItem
 ───────────────────────────────────────────── */
@@ -448,12 +444,11 @@ const NavItem = ({ item, index }: { item: NavigationItem; index: number }) => {
 ───────────────────────────────────────────── */
 const AdminLayout = ({ children, title = 'Admin Panel' }: AdminLayoutProps) => {
     const [opened, { toggle }] = useDisclosure();
-    const { url, props } = usePage();
-    const user = (props.auth as any)?.user || { name: 'Admin', email: 'admin@example.com' };
-    const flash = (props as any)?.flash as { success?: string; error?: string } | undefined;
+    const { url, props } = usePage<AdminPageProps>();
+    const user = props.auth?.user || { name: 'Admin', email: 'admin@example.com' };
 
     const [pwdOpened, { open: openPwd, close: closePwd }] = useDisclosure(false);
-    const { data: pwdData, setData: setPwdData, put: putPwd, processing: pwdProcessing, errors: pwdErrors, reset: resetPwd, wasSuccessful } = useForm({
+    const { data: pwdData, setData: setPwdData, put: putPwd, processing: pwdProcessing, errors: pwdErrors, reset: resetPwd } = useForm({
         current_password: '',
         password: '',
         password_confirmation: '',
@@ -468,7 +463,7 @@ const AdminLayout = ({ children, title = 'Admin Panel' }: AdminLayoutProps) => {
         const upper = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
         const num   = '0123456789';
         const spec  = '!@#$%^&*()_+';
-        let pwd = [
+        const pwd = [
             lower.charAt(Math.floor(Math.random() * lower.length)),
             upper.charAt(Math.floor(Math.random() * upper.length)),
             num.charAt(Math.floor(Math.random() * num.length)),
@@ -533,10 +528,17 @@ const AdminLayout = ({ children, title = 'Admin Panel' }: AdminLayoutProps) => {
             icon: Truck,
             current: url.startsWith('/admin/drivers'),
         },
-        { name: 'Ride Bookings', href: '/admin/ride-bookings', icon: Car, current: url.startsWith('/admin/ride-bookings') },
+        {
+            name: 'Bookings',
+            href: '/admin/bookings',
+            icon: ClipboardList,
+            current:
+                url.startsWith('/admin/bookings') ||
+                url.startsWith('/admin/ride-bookings') ||
+                url.startsWith('/admin/tour-bookings') ||
+                url.startsWith('/admin/car-rentals'),
+        },
         { name: 'Tour Packages', href: '/admin/tours', icon: Map, current: url.startsWith('/admin/tours') },
-        { name: 'Tour Bookings', href: '/admin/tour-bookings', icon: ClipboardList, current: url.startsWith('/admin/tour-bookings') },
-        { name: 'Car Rentals', href: '/admin/car-rentals', icon: Key, current: url.startsWith('/admin/car-rentals') },
         { name: 'Coupons & Offers', href: '/admin/coupons', icon: TicketPercent, current: url.startsWith('/admin/coupons') },
         {
             name: 'Master Data',

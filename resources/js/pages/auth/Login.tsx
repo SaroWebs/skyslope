@@ -102,7 +102,7 @@ export default function Login({ errors }: LoginProps) {
                             <Car size={20} color="#080808" />
                         </ThemeIcon>
                         <Text className="font-display" size="sm" tt="uppercase" lts={2} c="rgba(255,255,255,0.78)">
-                            SkySlope
+                            HappyMiles
                         </Text>
                     </Group>
 
@@ -114,7 +114,7 @@ export default function Login({ errors }: LoginProps) {
                             Admin access
                         </Title>
                         <Text maw={500} mt="lg" size="md" c="rgba(255,255,255,0.56)" lh={1.7}>
-                            Sign in to manage live bookings, users, vehicles, locations and service operations from the SkySlope admin dashboard.
+                            Sign in to manage live bookings, users, vehicles, locations and service operations from the HappyMiles admin dashboard.
                         </Text>
                     </Box>
 

@@ -5,20 +5,23 @@ namespace App\Services;
 use App\Models\CarCategory;
 use App\Models\Driver;
 use App\Models\DriverAvailability;
-use App\Models\RideDispatchAttempt;
 use App\Models\RideBooking;
+use App\Models\RideDispatchAttempt;
 use App\Models\Vehicle;
 use Illuminate\Support\Facades\DB;
 
 class DriverDispatchService
 {
+    public const DEFAULT_PICKUP_RADIUS_KM = 30.0;
+
     public function rankedCandidates(
         string $serviceType,
         float $pickupLat,
         float $pickupLng,
         ?string $role = null,
         int $limit = 10,
-        ?int $carCategoryId = null
+        ?int $carCategoryId = null,
+        bool $preferSharingEnabled = false
     ) {
         return $this->nearbyAvailability($pickupLat, $pickupLng)
             ->filter(function (DriverAvailability $availability) use ($serviceType, $role, $carCategoryId, $pickupLat, $pickupLng) {
@@ -35,15 +38,17 @@ class DriverDispatchService
                         $pickupLng
                     ) === [];
             })
-            ->sortByDesc(function (DriverAvailability $availability) use ($serviceType, $role) {
+            ->sortByDesc(function (DriverAvailability $availability) use ($serviceType, $role, $preferSharingEnabled) {
                 $driver = $availability->driver;
                 $rating = (float) ($driver->rating ?? 0);
                 $distance = (float) ($availability->distance ?? 999);
                 $capabilityFit = $driver->canHandleService($serviceType, $role) ? 25 : 0;
                 $workloadPenalty = $this->workloadScore($driver) * 2;
                 $acceptanceBonus = $this->acceptanceRate($driver) * 10;
+                $sharingPreferenceBonus = $preferSharingEnabled && $availability->sharing_enabled ? 18 : 0;
 
-                return $capabilityFit + ($rating * 10) + $acceptanceBonus - ($distance * 2) - $workloadPenalty;
+                return $capabilityFit + ($rating * 10) + $acceptanceBonus + $sharingPreferenceBonus
+                    - ($distance * 2) - $workloadPenalty;
             })
             ->take($limit)
             ->values();
@@ -55,7 +60,7 @@ class DriverDispatchService
 
         $candidates->values()->each(function (DriverAvailability $availability, int $index) use ($rideBooking, $expiresAt) {
             $driver = $availability->driver;
-            if (!$driver) {
+            if (! $driver) {
                 return;
             }
 
@@ -65,7 +70,7 @@ class DriverDispatchService
                     'driver_id' => $driver->id,
                 ],
                 [
-                    'score' => $this->candidateScore($availability),
+                    'score' => $this->candidateScore($availability, (bool) $rideBooking->sharing_requested),
                     'distance_km' => $availability->distance !== null ? round((float) $availability->distance, 2) : null,
                     'rank' => $index + 1,
                     'status' => 'offered',
@@ -166,15 +171,15 @@ class DriverDispatchService
         ?int $vehicleId = null,
         ?float $pickupLat = null,
         ?float $pickupLng = null,
-        float $radiusKm = 30
+        float $radiusKm = self::DEFAULT_PICKUP_RADIUS_KM
     ): array {
         $failures = [];
 
-        if (!$driver->isApproved() || !$driver->is_active || $driver->status !== 'active') {
+        if (! $driver->isApproved() || ! $driver->is_active || $driver->status !== 'active') {
             $failures[] = 'Driver is not active and approved.';
         }
 
-        if (!$driver->canHandleService($serviceType, $role)) {
+        if (! $driver->canHandleService($serviceType, $role)) {
             $failures[] = 'Driver does not have the required service capability.';
         }
 
@@ -188,7 +193,7 @@ class DriverDispatchService
 
         if ($pickupLat !== null && $pickupLng !== null) {
             $availability = $driver->driverAvailability;
-            if (!$availability || !$availability->is_available || $availability->status !== 'online') {
+            if (! $availability || ! $availability->is_available || $availability->status !== 'online') {
                 $failures[] = 'Driver is not currently online and available.';
             } elseif ($availability->current_lat === null || $availability->current_lng === null) {
                 $failures[] = 'Driver has no current location.';
@@ -213,7 +218,7 @@ class DriverDispatchService
     {
         if ($vehicleId !== null) {
             $vehicle = Vehicle::find($vehicleId);
-            if (!$vehicle || !$vehicle->is_active) {
+            if (! $vehicle || ! $vehicle->is_active) {
                 return 'Selected vehicle is not active.';
             }
 
@@ -228,25 +233,16 @@ class DriverDispatchService
             return null;
         }
 
-        if ($carCategoryId === null) {
-            return null;
+        $vehicle = $driver->vehicle;
+        if (! $vehicle || ! $vehicle->isApprovedForService()) {
+            return 'Driver does not have an approved, service-ready vehicle.';
         }
 
-        $category = CarCategory::find($carCategoryId);
-        $hasMatchingVehicle = $driver->vehicles()
-            ->where('is_active', true)
-            ->where('car_category_id', $carCategoryId)
-            ->exists();
-
-        if ($hasMatchingVehicle) {
-            return null;
+        if ($carCategoryId !== null && (int) $vehicle->car_category_id !== (int) $carCategoryId) {
+            return 'Driver vehicle does not match the requested car category.';
         }
 
-        if ($category && $driver->vehicle_type && $driver->vehicle_type === $category->vehicle_type) {
-            return null;
-        }
-
-        return 'Driver does not have an active vehicle for the requested car category.';
+        return null;
     }
 
     private function nearbyAvailability(float $pickupLat, float $pickupLng)
@@ -255,7 +251,7 @@ class DriverDispatchService
             return DriverAvailability::query()
                 ->with('driver')
                 ->active()
-                ->nearLocation($pickupLat, $pickupLng, 30)
+                ->nearLocation($pickupLat, $pickupLng, self::DEFAULT_PICKUP_RADIUS_KM)
                 ->get();
         }
 
@@ -275,7 +271,7 @@ class DriverDispatchService
 
                 return $availability;
             })
-            ->filter(fn (DriverAvailability $availability) => (float) $availability->distance <= 30);
+            ->filter(fn (DriverAvailability $availability) => (float) $availability->distance <= self::DEFAULT_PICKUP_RADIUS_KM);
     }
 
     public function hasActiveWorkload(Driver $driver): bool
@@ -315,15 +311,16 @@ class DriverDispatchService
                 ->count();
     }
 
-    private function candidateScore(DriverAvailability $availability): float
+    private function candidateScore(DriverAvailability $availability, bool $preferSharingEnabled = false): float
     {
         $driver = $availability->driver;
-        if (!$driver) {
+        if (! $driver) {
             return 0.0;
         }
 
         return round(((float) ($driver->rating ?? 0) * 10)
             + ($this->acceptanceRate($driver) * 10)
+            + ($preferSharingEnabled && $availability->sharing_enabled ? 18 : 0)
             - ((float) ($availability->distance ?? 999) * 2)
             - ($this->workloadScore($driver) * 2), 2);
     }

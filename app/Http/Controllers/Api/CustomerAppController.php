@@ -4,10 +4,16 @@ namespace App\Http\Controllers\Api;
 
 use App\Events\NewRideRequest;
 use App\Http\Controllers\Controller;
+use App\Http\Resources\CustomerApp\BookingReceiptResource;
+use App\Http\Resources\CustomerApp\PlaceDetailResource;
+use App\Http\Resources\CustomerApp\PlaceMediaResource;
+use App\Http\Resources\CustomerApp\PlaceSummaryResource;
+use App\Http\Resources\CustomerApp\TourResource;
 use App\Models\CarCategory;
 use App\Models\CarRental;
 use App\Models\CarRentalReview;
 use App\Models\Place;
+use App\Models\PlaceMedia;
 use App\Models\PlaceReview;
 use App\Models\RideBooking;
 use App\Models\RideBookingReview;
@@ -36,13 +42,16 @@ class CustomerAppController extends Controller
         return response()->json([
             'success' => true,
             'data' => [
-                'featured_tours' => Tour::with('itineraries.place.media')
-                    ->where('available_to', '>=', now())
-                    ->orderBy('available_from')
+                'featured_tours' => Tour::with(['category', 'itineraries.place.media' => fn ($query) => $query->approved(), 'schedules' => fn ($query) => $query
+                    ->where('status', 'open')->where('departure_date', '>=', now()->toDateString())])
+                    ->active()
+                    ->where(fn ($query) => $query->whereNull('available_to')->orWhereDate('available_to', '>=', now()))
+                    ->whereHas('schedules', fn ($query) => $query->where('status', 'open')->where('departure_date', '>=', now()->toDateString()))
+                    ->orderByDesc('is_featured')
                     ->take(6)
                     ->get()
                     ->map(fn (Tour $tour) => $this->formatPublicTour($tour)),
-                'featured_destinations' => Place::with('media')
+                'featured_destinations' => Place::with(['media' => fn ($query) => $query->approved()])
                     ->where('is_active', true)
                     ->orderBy('name')
                     ->take(8)
@@ -57,10 +66,17 @@ class CustomerAppController extends Controller
     {
         return response()->json([
             'success' => true,
-            'data' => Tour::with(['itineraries.place.media', 'schedules' => function ($q) {
-                $q->where('status', 'open')->where('departure_date', '>=', now());
+            'data' => Tour::with(['category', 'itineraries.place.media' => fn ($query) => $query->approved(), 'schedules' => function ($q) {
+                $q->where('status', 'open')->where('departure_date', '>=', now()->toDateString());
             }])
-                ->where('available_to', '>=', now())
+                ->active()
+                ->where(fn ($query) => $query->whereNull('available_from')->orWhereDate('available_from', '<=', now()))
+                ->where(fn ($query) => $query->whereNull('available_to')->orWhereDate('available_to', '>=', now()))
+                ->whereHas('schedules', fn ($query) => $query
+                    ->where('status', 'open')
+                    ->where('departure_date', '>=', now()->toDateString())
+                    ->whereColumn('total_seats', '>', DB::raw('booked_seats + reserved_seats')))
+                ->orderByDesc('is_featured')
                 ->orderBy('available_from')
                 ->get()
                 ->map(fn (Tour $tour) => $this->formatPublicTour($tour)),
@@ -69,7 +85,14 @@ class CustomerAppController extends Controller
 
     public function publicTour(Tour $tour)
     {
-        $tour->load(['itineraries.place.media', 'schedules' => function ($q) {
+        abort_unless(
+            $tour->is_active
+            && (! $tour->available_from || $tour->available_from->lte(now()))
+            && (! $tour->available_to || $tour->available_to->gte(now()->startOfDay())),
+            404
+        );
+
+        $tour->load(['category', 'itineraries.place.media' => fn ($query) => $query->approved(), 'schedules' => function ($q) {
             $q->where('status', 'open')->where('departure_date', '>=', now());
         }]);
 
@@ -81,10 +104,23 @@ class CustomerAppController extends Controller
 
     public function tourSchedules(Tour $tour)
     {
+        abort_unless($tour->is_active, 404);
+
         $schedules = $tour->schedules()
             ->where('status', 'open')
             ->where('departure_date', '>=', now())
-            ->get();
+            ->get()
+            ->map(fn (TourSchedule $schedule) => [
+                'id' => $schedule->id,
+                'departure_date' => optional($schedule->departure_date)->toDateString(),
+                'return_date' => optional($schedule->return_date)->toDateString(),
+                'departure_time' => $schedule->departure_time,
+                'departure_point' => $schedule->departure_point,
+                'available_seats' => max(0, $schedule->getAvailableSeats()),
+                'price' => $schedule->getEffectivePrice(),
+                'child_price' => $schedule->getEffectiveChildPrice(),
+                'status' => $schedule->getAvailableSeats() > 0 ? $schedule->status : 'sold_out',
+            ]);
 
         return response()->json([
             'success' => true,
@@ -96,7 +132,7 @@ class CustomerAppController extends Controller
     {
         return response()->json([
             'success' => true,
-            'data' => Place::with('media')
+            'data' => Place::with(['media' => fn ($query) => $query->approved()])
                 ->where('is_active', true)
                 ->orderBy('name')
                 ->get()
@@ -108,7 +144,7 @@ class CustomerAppController extends Controller
     {
         return response()->json([
             'success' => true,
-            'data' => Place::with('media')
+            'data' => Place::with(['media' => fn ($query) => $query->approved()])
                 ->where('is_active', true)
                 ->orderByDesc('is_featured')
                 ->orderByDesc('rating')
@@ -121,7 +157,7 @@ class CustomerAppController extends Controller
     {
         return response()->json([
             'success' => true,
-            'data' => Place::with('media')
+            'data' => Place::with(['media' => fn ($query) => $query->approved()])
                 ->where('is_active', true)
                 ->where('is_featured', true)
                 ->orderByDesc('rating')
@@ -133,7 +169,7 @@ class CustomerAppController extends Controller
 
     public function publicDestination(Place $place)
     {
-        $place->load(['media', 'reviews.customer:id,name']);
+        $place->load(['media' => fn ($query) => $query->approved(), 'reviews.customer:id,name']);
 
         return response()->json([
             'success' => true,
@@ -143,10 +179,40 @@ class CustomerAppController extends Controller
 
     public function publicCarCategories()
     {
+        $categories = CarCategory::active()->get();
+
         return response()->json([
             'success' => true,
-            'data' => CarCategory::active()->get(),
+            'data' => $categories,
+            // Kept for older mobile builds that used the original response key.
+            'categories' => $categories,
         ]);
+    }
+
+    public function uploadPlaceMedia(Request $request, Place $place)
+    {
+        abort_unless($place->is_active, 404);
+        $validated = $request->validate([
+            'image' => 'required|image|mimes:jpeg,png,jpg,webp|max:10240',
+            'caption' => 'nullable|string|max:500',
+            'is_360' => 'nullable|boolean',
+        ]);
+
+        $media = PlaceMedia::create([
+            'place_id' => $place->id,
+            'uploaded_by_customer_id' => $request->user()->id,
+            'path' => $request->file('image')->store('place_media/customer', 'public'),
+            'type' => $request->boolean('is_360') ? 'panorama' : 'image',
+            'source' => 'customer',
+            'approval_status' => 'pending',
+            'caption' => $validated['caption'] ?? null,
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Photo uploaded and sent to the admin for approval.',
+            'data' => (new PlaceMediaResource($media))->resolve($request),
+        ], 201);
     }
 
     public function dashboard(Request $request)
@@ -215,35 +281,51 @@ class CustomerAppController extends Controller
             'pickup_option' => 'nullable|string|max:120',
             'insurance_selected' => 'nullable|boolean',
             'coupon_code' => 'nullable|string|max:40',
+            'sharing_requested' => 'prohibited',
+            'reserved_seats' => 'prohibited',
+            'ride_mode' => 'prohibited',
+            'car_category_id' => 'prohibited',
+            'start_date' => 'prohibited',
+            'end_date' => 'prohibited',
         ]);
 
         if ($validator->fails()) {
             return response()->json(['errors' => $validator->errors()], 422);
         }
 
-        $schedule = TourSchedule::with('tour')->findOrFail($request->tour_schedule_id);
-
-        if (! $schedule->isAvailable()) {
-            return response()->json(['success' => false, 'message' => 'This schedule is no longer available or is sold out.'], 400);
-        }
-
         $totalPax = (int) $request->number_of_adults + (int) ($request->number_of_children ?? 0);
 
-        if ($schedule->getAvailableSeats() < $totalPax) {
-            return response()->json(['success' => false, 'message' => 'Only '.$schedule->getAvailableSeats().' seats remaining.'], 400);
-        }
-
-        $priceAdult = $schedule->getEffectivePrice();
-        $priceChild = $schedule->getEffectiveChildPrice();
-        $subtotal = ($request->number_of_adults * $priceAdult) + ($request->number_of_children * $priceChild);
-        $couponResult = app(CustomerCouponService::class)->preview($customer, $request->input('coupon_code'), 'tour', (float) $subtotal);
-
-        if ($request->filled('coupon_code') && ! $couponResult['eligible']) {
-            return response()->json(['success' => false, 'message' => $couponResult['message']], 422);
-        }
-
         try {
-            $booking = DB::transaction(function () use ($request, $customer, $schedule, $subtotal, $totalPax, $couponResult) {
+            $booking = DB::transaction(function () use ($request, $customer, $totalPax) {
+                $schedule = TourSchedule::with('tour')->lockForUpdate()->findOrFail($request->tour_schedule_id);
+
+                if ((int) $schedule->tour_id !== (int) $request->tour_id) {
+                    throw new \RuntimeException('The selected departure does not belong to this tour.');
+                }
+
+                $tour = $schedule->tour;
+                if (! $tour->is_active
+                    || ($tour->available_from && $tour->available_from->isFuture())
+                    || ($tour->available_to && $tour->available_to->lt(now()->startOfDay()))) {
+                    throw new \RuntimeException('This tour is not currently bookable.');
+                }
+
+                if (! $schedule->isAvailable()) {
+                    throw new \RuntimeException('This departure is no longer available or is sold out.');
+                }
+
+                if ($schedule->getAvailableSeats() < $totalPax) {
+                    throw new \RuntimeException('Only '.$schedule->getAvailableSeats().' seats remaining.');
+                }
+
+                $subtotal = ((int) $request->number_of_adults * $schedule->getEffectivePrice())
+                    + ((int) ($request->number_of_children ?? 0) * $schedule->getEffectiveChildPrice());
+                $couponResult = app(CustomerCouponService::class)->preview($customer, $request->input('coupon_code'), 'tour', (float) $subtotal);
+
+                if ($request->filled('coupon_code') && ! $couponResult['eligible']) {
+                    throw new \RuntimeException($couponResult['message']);
+                }
+
                 $discountAmount = (float) ($couponResult['discount_amount'] ?? 0);
                 $totalPrice = max(0, round((float) $subtotal - $discountAmount, 2));
 
@@ -355,6 +437,13 @@ class CustomerAppController extends Controller
             'extras' => 'nullable|array',
             'insurance_selected' => 'nullable|boolean',
             'coupon_code' => 'nullable|string|max:40',
+            'sharing_requested' => 'prohibited',
+            'reserved_seats' => 'prohibited',
+            'ride_mode' => 'prohibited',
+            'tour_id' => 'prohibited',
+            'tour_schedule_id' => 'prohibited',
+            'number_of_adults' => 'prohibited',
+            'number_of_children' => 'prohibited',
         ]);
 
         if ($validator->fails()) {
@@ -469,7 +558,7 @@ class CustomerAppController extends Controller
         Gate::authorize('view', $booking);
 
         $booking->load([
-            'driver:id,name,phone',
+            'driver:id,name,phone,rating,vehicle_number,vehicle_model,vehicle_color',
             'reviews',
             'tips',
         ]);
@@ -497,10 +586,27 @@ class CustomerAppController extends Controller
             'service_type' => 'required|in:point_to_point,hourly,hourly_rental,round_trip',
             'scheduled_at' => 'required|date|after:now',
             'coupon_code' => 'nullable|string|max:40',
+            'sharing_requested' => 'sometimes|boolean',
+            'reserved_seats' => 'sometimes|integer|min:1|max:3',
+            'vehicle_class' => 'sometimes|in:mini,comfort,xl',
+            'tour_id' => 'prohibited',
+            'tour_schedule_id' => 'prohibited',
+            'number_of_adults' => 'prohibited',
+            'number_of_children' => 'prohibited',
+            'car_category_id' => 'prohibited',
+            'start_date' => 'prohibited',
+            'end_date' => 'prohibited',
         ]);
 
         if ($validator->fails()) {
             return response()->json(['errors' => $validator->errors()], 422);
+        }
+
+        if ($request->boolean('sharing_requested') && $request->service_type !== 'point_to_point') {
+            return response()->json([
+                'success' => false,
+                'message' => 'Ride sharing is available only for point-to-point rides.',
+            ], 422);
         }
 
         $result = app(RideEstimateService::class)->estimate(
@@ -508,7 +614,10 @@ class CustomerAppController extends Controller
             (float) $request->pickup_lng,
             $request->dropoff_lat ? (float) $request->dropoff_lat : null,
             $request->dropoff_lng ? (float) $request->dropoff_lng : null,
-            $request->service_type
+            $request->service_type,
+            $request->boolean('sharing_requested'),
+            (int) $request->input('reserved_seats', 1),
+            $request->input('vehicle_class', 'comfort')
         );
 
         if ($request->filled('coupon_code')) {
@@ -543,10 +652,27 @@ class CustomerAppController extends Controller
             'special_requests' => 'nullable|string',
             'payment_method' => 'required|in:cash,card,wallet,upi',
             'coupon_code' => 'nullable|string|max:40',
+            'sharing_requested' => 'sometimes|boolean',
+            'reserved_seats' => 'sometimes|integer|min:1|max:3',
+            'vehicle_class' => 'sometimes|in:mini,comfort,xl',
+            'tour_id' => 'prohibited',
+            'tour_schedule_id' => 'prohibited',
+            'number_of_adults' => 'prohibited',
+            'number_of_children' => 'prohibited',
+            'car_category_id' => 'prohibited',
+            'start_date' => 'prohibited',
+            'end_date' => 'prohibited',
         ]);
 
         if ($validator->fails()) {
             return response()->json(['errors' => $validator->errors()], 422);
+        }
+
+        if ($request->boolean('sharing_requested') && $request->service_type !== 'point_to_point') {
+            return response()->json([
+                'success' => false,
+                'message' => 'Ride sharing is available only for point-to-point rides.',
+            ], 422);
         }
 
         $estimate = app(RideEstimateService::class)->estimate(
@@ -554,7 +680,10 @@ class CustomerAppController extends Controller
             (float) $request->pickup_lng,
             $request->dropoff_lat ? (float) $request->dropoff_lat : null,
             $request->dropoff_lng ? (float) $request->dropoff_lng : null,
-            $request->service_type
+            $request->service_type,
+            $request->boolean('sharing_requested'),
+            (int) $request->input('reserved_seats', 1),
+            $request->input('vehicle_class', 'comfort')
         );
         $couponResult = app(CustomerCouponService::class)->preview($customer, $request->input('coupon_code'), 'ride', (float) $estimate['pricing']['subtotal']);
 
@@ -571,6 +700,10 @@ class CustomerAppController extends Controller
                     'booking_number' => RideBooking::generateBookingNumber(),
                     'customer_id' => $customer->id,
                     'service_type' => $estimate['service_type'],
+                    'ride_mode' => $estimate['sharing']['requested'] ? 'shared' : 'private',
+                    'sharing_requested' => $estimate['sharing']['requested'],
+                    'sharing_enabled_by' => $estimate['sharing']['enabled_by'],
+                    'reserved_seats' => $estimate['sharing']['reserved_seats'],
                     'customer_name' => $customer->name,
                     'customer_email' => $customer->email,
                     'customer_phone' => $customer->phone,
@@ -586,6 +719,9 @@ class CustomerAppController extends Controller
                     'base_fare' => $estimate['pricing']['base_fare'],
                     'distance_fare' => $estimate['pricing']['distance_fare'],
                     'surge_multiplier' => $estimate['pricing']['surge_multiplier'],
+                    'full_car_fare' => $estimate['pricing']['private_subtotal'],
+                    'sharing_discount_percent' => $estimate['pricing']['sharing_discount_percent'],
+                    'sharing_savings' => $estimate['pricing']['sharing_savings'],
                     'discount_amount' => $discountAmount,
                     'total_fare' => $totalFare,
                     'payment_method' => $request->payment_method,
@@ -625,7 +761,8 @@ class CustomerAppController extends Controller
             (float) $request->pickup_lng,
             null,
             10,
-            $ride->car_category_id ? (int) $ride->car_category_id : null
+            $ride->car_category_id ? (int) $ride->car_category_id : null,
+            (bool) $ride->sharing_requested
         );
         $dispatchService->createRideAttempts($ride, $dispatchCandidates);
         $candidateDriverIds = $dispatchCandidates
@@ -657,6 +794,7 @@ class CustomerAppController extends Controller
                 'admin_assignable' => (bool) $ride->admin_assignable,
                 'dispatch_status' => $ride->dispatch_status,
             ],
+            'sharing' => $estimate['sharing'],
         ], 201);
     }
 
@@ -903,10 +1041,33 @@ class CustomerAppController extends Controller
         ], 201);
     }
 
-    public function bookingNextSteps(Request $request, string $serviceType, int $booking)
+    public function rideNextSteps(Request $request, int $booking)
     {
-        $serviceType = $this->normalizeCustomerServiceType($serviceType);
-        $model = $this->resolveCustomerBooking($request, $serviceType, $booking);
+        $ride = RideBooking::where('customer_id', $request->user()->id)->findOrFail($booking);
+
+        return $this->bookingNextStepsResponse($ride, 'ride');
+    }
+
+    public function tourNextSteps(Request $request, int $booking)
+    {
+        $tour = TourBooking::with('tour:id,title,start_location,end_location')
+            ->where('customer_id', $request->user()->id)
+            ->findOrFail($booking);
+
+        return $this->bookingNextStepsResponse($tour, 'tour');
+    }
+
+    public function rentalNextSteps(Request $request, int $booking)
+    {
+        $rental = CarRental::with('carCategory:id,name')
+            ->where('customer_id', $request->user()->id)
+            ->findOrFail($booking);
+
+        return $this->bookingNextStepsResponse($rental, 'rental');
+    }
+
+    private function bookingNextStepsResponse(RideBooking|TourBooking|CarRental $model, string $serviceType)
+    {
         $verification = app(StartVerificationService::class);
 
         return response()->json([
@@ -934,11 +1095,32 @@ class CustomerAppController extends Controller
         ]);
     }
 
-    public function bookingCheckIn(Request $request, string $serviceType, int $booking)
+    public function rideCheckIn(Request $request, int $booking)
     {
-        $serviceType = $this->normalizeCustomerServiceType($serviceType);
-        $model = $this->resolveCustomerBooking($request, $serviceType, $booking);
+        $ride = RideBooking::where('customer_id', $request->user()->id)->findOrFail($booking);
 
+        return $this->recordBookingCheckIn($request, $ride, 'ride');
+    }
+
+    public function tourCheckIn(Request $request, int $booking)
+    {
+        $tour = TourBooking::where('customer_id', $request->user()->id)->findOrFail($booking);
+
+        return $this->recordBookingCheckIn($request, $tour, 'tour');
+    }
+
+    public function rentalCheckIn(Request $request, int $booking)
+    {
+        $rental = CarRental::where('customer_id', $request->user()->id)->findOrFail($booking);
+
+        return $this->recordBookingCheckIn($request, $rental, 'rental');
+    }
+
+    private function recordBookingCheckIn(
+        Request $request,
+        RideBooking|TourBooking|CarRental $model,
+        string $serviceType
+    ) {
         if (in_array($model->status, ['completed', 'cancelled'], true)) {
             return response()->json([
                 'success' => false,
@@ -1002,30 +1184,6 @@ class CustomerAppController extends Controller
                 'receipt' => $this->formatBookingReceipt($booking, $serviceType, $refund),
             ],
         ]);
-    }
-
-    private function normalizeCustomerServiceType(string $serviceType): string
-    {
-        return match ($serviceType) {
-            'ride', 'rides' => 'ride',
-            'tour', 'tours', 'tour-booking', 'tour-bookings' => 'tour',
-            'rental', 'rentals', 'car-rental', 'car-rentals' => 'rental',
-            default => abort(404, 'Unknown service type.'),
-        };
-    }
-
-    private function resolveCustomerBooking(Request $request, string $serviceType, int $booking): RideBooking|TourBooking|CarRental
-    {
-        return match ($serviceType) {
-            'ride' => RideBooking::where('customer_id', $request->user()->id)->findOrFail($booking),
-            'tour' => TourBooking::with('tour:id,title,start_location,end_location')
-                ->where('customer_id', $request->user()->id)
-                ->findOrFail($booking),
-            'rental' => CarRental::with('carCategory:id,name')
-                ->where('customer_id', $request->user()->id)
-                ->findOrFail($booking),
-            default => abort(404, 'Unknown service type.'),
-        };
     }
 
     private function nextStepInstructions(RideBooking|TourBooking|CarRental $booking, string $serviceType): array
@@ -1110,121 +1268,22 @@ class CustomerAppController extends Controller
 
     private function formatBookingReceipt(RideBooking|TourBooking|CarRental $booking, string $serviceType, mixed $refund = null): array
     {
-        $title = match ($serviceType) {
-            'ride' => $booking->pickup_location ?? 'Ride booking',
-            'tour' => $booking->tour?->title ?? 'Tour booking',
-            'rental' => $booking->carCategory?->name ?? 'Car rental',
-            default => 'Booking',
-        };
-
-        $amount = match ($serviceType) {
-            'ride' => $booking->total_fare,
-            default => $booking->total_price,
-        };
-
-        $travelDate = match ($serviceType) {
-            'ride' => $booking->scheduled_at,
-            'tour' => $booking->travel_date,
-            'rental' => $booking->start_date,
-            default => $booking->created_at,
-        };
-
-        return [
-            'id' => $booking->id,
-            'service_type' => $serviceType,
-            'title' => $title,
-            'receipt_number' => $booking->booking_number ?? (string) $booking->id,
-            'booking_number' => $booking->booking_number ?? (string) $booking->id,
-            'transaction_id' => $booking->transaction_id ?? $booking->payment_reference ?? null,
-            'payment_method' => $booking->payment_method,
-            'payment_status' => $booking->payment_status,
-            'status' => $booking->status,
-            'amount' => (float) $amount,
-            'coupon_code' => $booking->coupon_code ?? null,
-            'discount_amount' => (float) ($booking->discount_amount ?? 0),
-            'currency' => 'INR',
-            'travel_date' => optional($travelDate)->toDateString(),
-            'refund_status' => $refund->status ?? $booking->refund_status ?? ($booking->refunded_at ? 'processed' : 'not-applicable'),
-            'support_actions' => [
-                'can_contact_support' => true,
-                'can_cancel' => ! in_array($booking->status, ['completed', 'cancelled'], true),
-                'can_review' => $booking->status === 'completed',
-            ],
-        ];
+        return (new BookingReceiptResource($booking, $serviceType, $refund))->resolve(request());
     }
 
     private function formatPlaceDetails(Place $place): array
     {
-        return [
-            'place' => $place,
-            'media' => $place->media,
-            'active_tours' => $this->relatedToursForPlace($place)->map(fn (Tour $tour) => $this->formatPublicTour($tour)),
-            'skyslope_reviews' => $place->reviews,
-            'google_summary' => [
-                'place_id' => $place->google_place_id,
-                'rating' => $place->google_rating,
-                'review_count' => $place->google_review_count,
-                'reviews' => $place->google_reviews ?? [],
-                'photos' => $place->google_photos ?? [],
-                'coordinates' => [
-                    'latitude' => $place->latitude,
-                    'longitude' => $place->longitude,
-                ],
-                'last_synced_at' => $place->google_synced_at,
-            ],
-        ];
+        return (new PlaceDetailResource($place, $this->relatedToursForPlace($place)))->resolve(request());
     }
 
     private function formatPublicPlaceSummary(Place $place): array
     {
-        return [
-            'id' => $place->id,
-            'name' => $place->name,
-            'slug' => $place->slug,
-            'description' => $place->description,
-            'short_description' => $place->short_description,
-            'location' => $place->location,
-            'city' => $place->city,
-            'state' => $place->state,
-            'country' => $place->country,
-            'rating' => $place->rating,
-            'review_count' => $place->review_count,
-            'cover_image' => $place->cover_image,
-            'tags' => $place->tags ?? [],
-            'media' => $place->media,
-        ];
+        return (new PlaceSummaryResource($place))->resolve(request());
     }
 
     private function formatPublicTour(Tour $tour, bool $includePlaces = false): array
     {
-        $nextSchedule = $tour->relationLoaded('schedules') ? $tour->schedules->first() : $tour->getNextAvailableSchedule();
-
-        return [
-            'id' => $tour->id,
-            'title' => $tour->title,
-            'slug' => $tour->slug,
-            'description' => $tour->description,
-            'short_description' => $tour->short_description,
-            'highlights' => $tour->highlights ?? [],
-            'inclusions' => $tour->inclusions ?? [],
-            'exclusions' => $tour->exclusions ?? [],
-            'duration_days' => $tour->duration_days,
-            'duration_nights' => $tour->duration_nights,
-            'price_per_person' => $tour->price_per_person,
-            'child_price' => $tour->child_price,
-            'start_location' => $tour->start_location,
-            'end_location' => $tour->end_location,
-            'region' => $tour->region,
-            'difficulty' => $tour->difficulty,
-            'cover_image' => $tour->cover_image,
-            'gallery' => $tour->gallery ?? [],
-            'available_from' => optional($tour->available_from)->toDateString(),
-            'available_to' => optional($tour->available_to)->toDateString(),
-            'available_seats' => $nextSchedule ? $nextSchedule->getAvailableSeats() : null,
-            'itineraries' => $tour->itineraries,
-            'schedules' => $tour->relationLoaded('schedules') ? $tour->schedules : collect([$nextSchedule])->filter()->values(),
-            'related_places' => $includePlaces ? $this->relatedPlacesForTour($tour)->map(fn (Place $place) => $this->formatPublicPlaceSummary($place)) : [],
-        ];
+        return (new TourResource($tour, $includePlaces ? $this->relatedPlacesForTour($tour) : null))->resolve(request());
     }
 
     private function relatedToursForPlace(Place $place)
@@ -1246,7 +1305,7 @@ class CustomerAppController extends Controller
             return collect();
         }
 
-        $explicitTours = Tour::with(['itineraries.place.media', 'schedules' => function ($q) {
+        $explicitTours = Tour::with(['itineraries.place.media' => fn ($query) => $query->approved(), 'schedules' => function ($q) {
             $q->where('status', 'open')->where('departure_date', '>=', now());
         }])
             ->active()
@@ -1258,7 +1317,7 @@ class CustomerAppController extends Controller
             return $explicitTours->values();
         }
 
-        return Tour::with(['itineraries.place.media', 'schedules' => function ($q) {
+        return Tour::with(['itineraries.place.media' => fn ($query) => $query->approved(), 'schedules' => function ($q) {
             $q->where('status', 'open')->where('departure_date', '>=', now());
         }])
             ->active()
@@ -1316,14 +1375,14 @@ class CustomerAppController extends Controller
             ->values();
 
         if ($explicitPlaceIds->isNotEmpty()) {
-            return Place::with('media')
+            return Place::with(['media' => fn ($query) => $query->approved()])
                 ->whereIn('id', $explicitPlaceIds)
                 ->where('is_active', true)
                 ->get()
                 ->values();
         }
 
-        return Place::with('media')
+        return Place::with(['media' => fn ($query) => $query->approved()])
             ->where('is_active', true)
             ->get()
             ->filter(function (Place $place) use ($terms) {
