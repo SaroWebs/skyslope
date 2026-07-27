@@ -2,6 +2,7 @@ import React from 'react';
 import { Head, Link, useForm } from '@inertiajs/react';
 import AdminLayout from '@/layouts/AdminLayout';
 import LocationInput from '@/components/ui/LocationInput';
+import PlaceLocationMap, { type ResolvedMapLocation } from '@/components/places/PlaceLocationMap';
 import {
     Button,
     Divider,
@@ -49,6 +50,11 @@ interface SearchResult {
     type: string;
     lat?: number;
     lng?: number;
+    city?: string;
+    state?: string;
+    country?: string;
+    rating?: number;
+    reviewCount?: number;
 }
 
 export default function Edit({ title, place }: EditPlaceProps) {
@@ -76,7 +82,26 @@ export default function Edit({ title, place }: EditPlaceProps) {
         setData('google_place_id', location.id);
         setData('latitude', location.lat?.toString() || '');
         setData('longitude', location.lng?.toString() || '');
+        setData('city', location.city || '');
+        setData('state', location.state || '');
+        setData('country', location.country || 'India');
+        setData('google_rating', location.rating?.toString() || '');
+        setData('google_review_count', location.reviewCount?.toString() || '0');
     };
+
+    const handleMapLocationChange = (location: ResolvedMapLocation) => {
+        setData('latitude', location.latitude.toFixed(8));
+        setData('longitude', location.longitude.toFixed(8));
+        if (location.googlePlaceId) setData('google_place_id', location.googlePlaceId);
+        if (location.address) setData('location', location.address);
+        if (location.city) setData('city', location.city);
+        if (location.state) setData('state', location.state);
+        if (location.country) setData('country', location.country);
+    };
+
+    const latitude = Number(data.latitude);
+    const longitude = Number(data.longitude);
+    const hasCoordinates = Number.isFinite(latitude) && Number.isFinite(longitude) && data.latitude !== '' && data.longitude !== '';
 
     const handleSubmit = (event: React.FormEvent) => {
         event.preventDefault();
@@ -156,6 +181,11 @@ export default function Edit({ title, place }: EditPlaceProps) {
                                     <TextInput type="number" step="any" label="Latitude" value={data.latitude} onChange={(event) => setData('latitude', event.currentTarget.value)} error={errors.latitude} />
                                     <TextInput type="number" step="any" label="Longitude" value={data.longitude} onChange={(event) => setData('longitude', event.currentTarget.value)} error={errors.longitude} />
                                 </SimpleGrid>
+                                {hasCoordinates ? (
+                                    <PlaceLocationMap latitude={latitude} longitude={longitude} editable onLocationChange={handleMapLocationChange} />
+                                ) : (
+                                    <Text size="sm" c="dimmed">Choose a Google place or enter coordinates to activate the map.</Text>
+                                )}
                             </Stack>
 
                             <Divider />
@@ -177,6 +207,9 @@ export default function Edit({ title, place }: EditPlaceProps) {
                                 </SimpleGrid>
                                 <Text size="xs" color="dimmed">
                                     Last Google sync: {place.google_synced_at ? new Date(place.google_synced_at).toLocaleString() : 'Never'}
+                                </Text>
+                                <Text size="xs" c="dimmed">
+                                    Moving the map pin resolves a new Google Place ID when possible. Saving automatically refreshes the Google profile.
                                 </Text>
                                 <TagsInput
                                     label="Tags"

@@ -71,8 +71,8 @@
                 <h2>{{ $greeting }}</h2>
             @endisset
 
-            @isset($message)
-                <p>{{ $message }}</p>
+            @isset($notificationMessage)
+                <p>{{ $notificationMessage }}</p>
             @endisset
 
             @isset($highlight)

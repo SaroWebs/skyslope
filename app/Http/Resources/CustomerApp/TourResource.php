@@ -2,6 +2,7 @@
 
 namespace App\Http\Resources\CustomerApp;
 
+use App\Support\MediaUrl;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 use Illuminate\Support\Collection;
@@ -41,8 +42,12 @@ class TourResource extends JsonResource
             'end_location' => $this->end_location,
             'region' => $this->region,
             'difficulty' => $this->difficulty,
-            'cover_image' => $this->cover_image,
-            'gallery' => $this->gallery ?? [],
+            'cover_image' => MediaUrl::resolve($this->cover_image),
+            'gallery' => collect($this->gallery ?? [])
+                ->map(fn ($image) => MediaUrl::resolve($image))
+                ->filter()
+                ->values()
+                ->all(),
             'available_from' => optional($this->available_from)->toDateString(),
             'available_to' => optional($this->available_to)->toDateString(),
             'available_seats' => $nextSchedule && method_exists($nextSchedule, 'getAvailableSeats')

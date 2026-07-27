@@ -4,10 +4,12 @@ namespace App\Http\Controllers;
 
 use App\Models\Driver;
 use App\Models\DriverAvailability;
+use App\Models\Vehicle;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 
 class AdminDriverController extends Controller
 {
@@ -30,7 +32,7 @@ class AdminDriverController extends Controller
             $query->where('status', $status);
         }
 
-        $drivers = $query->with('driverAvailability')
+        $drivers = $query->with(['driverAvailability', 'vehicle.category'])
             ->withCount('assignedRideBookings')
             ->withCount([
                 'rideReviews as ride_ratings_count' => fn ($q) => $q->whereNotNull('driver_rating'),
@@ -55,6 +57,10 @@ class AdminDriverController extends Controller
             'title' => 'Driver Management',
             'user' => Auth::user(),
             'drivers' => $drivers,
+            'vehicles' => Vehicle::query()
+                ->with('driver:id,name')
+                ->orderBy('registration_number')
+                ->get(['id', 'driver_id', 'registration_number', 'make', 'model']),
             'filters' => $request->only(['search', 'status']),
         ]);
     }
@@ -67,7 +73,10 @@ class AdminDriverController extends Controller
         $validated = $this->validateDriver($request);
 
         $driver = DB::transaction(function () use ($validated) {
+            $vehicleId = $validated['vehicle_id'] ?? null;
+            unset($validated['vehicle_id']);
             $driver = Driver::create($this->withStatusFields($validated));
+            $this->syncAssignedVehicle($driver, $vehicleId);
 
             DriverAvailability::create([
                 'driver_id' => $driver->id,
@@ -91,7 +100,10 @@ class AdminDriverController extends Controller
         $validated = $this->validateDriver($request, $driver);
 
         DB::transaction(function () use ($validated, $driver) {
+            $vehicleId = $validated['vehicle_id'] ?? null;
+            unset($validated['vehicle_id']);
             $driver->update($this->withStatusFields($validated, $driver));
+            $this->syncAssignedVehicle($driver, $vehicleId);
 
             DriverAvailability::firstOrCreate(
                 ['driver_id' => $driver->id],
@@ -278,14 +290,15 @@ class AdminDriverController extends Controller
      */
     public function assignVehicle(Request $request, Driver $driver)
     {
-        $validated = $request->validate(['vehicle_id' => 'required|exists:vehicles,id']);
+        $validated = $request->validate(['vehicle_id' => 'nullable|exists:vehicles,id']);
 
         DB::transaction(function () use ($validated, $driver) {
-            \App\Models\Vehicle::where('driver_id', $driver->id)->update(['driver_id' => null]);
-            \App\Models\Vehicle::where('id', $validated['vehicle_id'])->update(['driver_id' => $driver->id]);
+            $this->syncAssignedVehicle($driver, $validated['vehicle_id'] ?? null);
         });
 
-        return redirect()->back()->with('success', 'Vehicle assigned to driver successfully.');
+        return redirect()->back()->with('success', filled($validated['vehicle_id'] ?? null)
+            ? 'Vehicle assigned to driver successfully.'
+            : 'Vehicle unassigned from driver successfully.');
     }
 
     public function updateCapabilities(Request $request, Driver $driver)
@@ -344,6 +357,7 @@ class AdminDriverController extends Controller
             'vehicle_model' => ['nullable', 'string', 'max:100'],
             'vehicle_color' => ['nullable', 'string', 'max:50'],
             'vehicle_year' => ['nullable', 'integer', 'min:1980', 'max:'.(now()->year + 1)],
+            'vehicle_id' => ['nullable', 'integer', 'exists:vehicles,id'],
             'status' => ['required', Rule::in(['pending', 'active', 'suspended', 'rejected'])],
             'can_short_ride' => ['required', 'boolean'],
             'can_long_ride' => ['required', 'boolean'],
@@ -370,5 +384,22 @@ class AdminDriverController extends Controller
         }
 
         return $validated;
+    }
+
+    private function syncAssignedVehicle(Driver $driver, ?int $vehicleId): void
+    {
+        $vehicle = $vehicleId ? Vehicle::lockForUpdate()->findOrFail($vehicleId) : null;
+
+        if ($vehicle?->driver_id && $vehicle->driver_id !== $driver->id) {
+            throw ValidationException::withMessages([
+                'vehicle_id' => 'This vehicle is already assigned to another driver. Unassign it first.',
+            ]);
+        }
+
+        Vehicle::where('driver_id', $driver->id)
+            ->when($vehicle, fn ($query) => $query->whereKeyNot($vehicle->id))
+            ->update(['driver_id' => null]);
+
+        $vehicle?->update(['driver_id' => $driver->id]);
     }
 }

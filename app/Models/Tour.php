@@ -64,7 +64,10 @@ class Tour extends Model
 
     public function itineraries(): HasMany
     {
-        return $this->hasMany(TourItinerary::class, 'tour_id')->orderBy('day_number');
+        return $this->hasMany(TourItinerary::class, 'tour_id')
+            ->orderBy('day_number')
+            ->orderBy('stop_order')
+            ->orderBy('time');
     }
 
     public function schedules(): HasMany

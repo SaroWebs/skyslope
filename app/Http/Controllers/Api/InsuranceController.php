@@ -5,13 +5,55 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Http\Resources\CustomerApp\InsurancePolicyResource;
 use App\Models\ExtendedCare;
+use App\Models\DriverInsurancePolicy;
 use App\Models\InsuranceClaim;
 use App\Models\InsurancePolicy;
+use App\Services\InsurancePlanCatalog;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
 
 class InsuranceController extends Controller
 {
+    public function getDriverPolicies(Request $request)
+    {
+        if (! $request->user()->isDriver()) {
+            return response()->json(['success' => false, 'message' => 'Only driver accounts can access driver insurance.'], 403);
+        }
+
+        $policies = DriverInsurancePolicy::where('driver_id', $request->user()->id)
+            ->with('vehicle:id,registration_number,make,model')->latest()->get()
+            ->map(fn (DriverInsurancePolicy $policy) => [
+                'id' => $policy->id,
+                'policy_number' => $policy->policy_number,
+                'product_code' => $policy->product_code,
+                'provider_name' => $policy->provider_name,
+                'coverage_amount' => (float) $policy->coverage_amount,
+                'premium' => $policy->premium === null ? null : (float) $policy->premium,
+                'start_date' => $policy->start_date->toDateString(),
+                'end_date' => $policy->end_date->toDateString(),
+                'status' => $policy->status,
+                'verified_at' => optional($policy->verified_at)->toIso8601String(),
+                'is_active' => $policy->isActive(),
+                'vehicle' => $policy->vehicle,
+            ]);
+
+        return response()->json(['success' => true, 'data' => $policies]);
+    }
+
+    public function getPlans(Request $request, InsurancePlanCatalog $catalog)
+    {
+        if (! $request->user()->isCustomer()) {
+            return response()->json(['success' => false, 'message' => 'Only customer accounts can access insurance.'], 403);
+        }
+
+        return response()->json([
+            'success' => true,
+            'data' => $catalog->publicPlans(),
+            'disclosure' => 'Coverage is optional and applies only to the linked booking. Benefits, exclusions, cancellation rules, and the named provider must be reviewed before acceptance.',
+        ]);
+    }
+
     /**
      * Get user's insurance policies
      */
@@ -62,22 +104,18 @@ class InsuranceController extends Controller
     /**
      * Create new insurance policy
      */
-    public function createPolicy(Request $request)
+    public function createPolicy(Request $request, InsurancePlanCatalog $catalog)
     {
         if (! $request->user()->isCustomer()) {
             return response()->json(['success' => false, 'message' => 'Only customer accounts can access insurance.'], 403);
         }
 
         $validator = Validator::make($request->all(), [
-            'policy_type' => 'required_without:insurance_type|in:basic,comprehensive,premium,third_party,personal_accident',
-            'insurance_type' => 'required_without:policy_type|in:basic,comprehensive,premium,third_party,personal_accident',
-            'coverage_amount' => 'required|numeric|min:1000',
-            'premium' => 'required_without:premium_amount|numeric|min:100',
-            'premium_amount' => 'required_without:premium|numeric|min:100',
-            'start_date' => 'required|date|after_or_equal:today',
-            'end_date' => 'required|date|after:start_date',
-            'terms' => 'nullable|string',
-            'terms_accepted' => 'nullable|boolean',
+            'plan_code' => 'required|string',
+            'service_type' => 'required|in:ride,tour,rental',
+            'booking_id' => 'required|integer|min:1',
+            'terms_accepted' => 'accepted',
+            'terms_version' => 'required|string|in:'.InsurancePlanCatalog::TERMS_VERSION,
         ]);
 
         if ($validator->fails()) {
@@ -87,17 +125,41 @@ class InsuranceController extends Controller
             ], 422);
         }
 
-        $policy = InsurancePolicy::create([
+        $plan = $catalog->plan($request->string('plan_code')->toString());
+        if (! $catalog->isConfigured()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Insurance issuance is temporarily unavailable until the licensed provider and policy wording are configured.',
+            ], 503);
+        }
+        if ($plan['service_type'] !== $request->string('service_type')->toString()) {
+            return response()->json(['success' => false, 'errors' => ['plan_code' => ['This plan does not cover the selected service.']]], 422);
+        }
+
+        $booking = $catalog->customerBooking($plan['service_type'], $request->integer('booking_id'), $request->user()->id);
+
+        if (InsurancePolicy::whereMorphedTo('coverable', $booking)->exists()) {
+            return response()->json(['success' => false, 'message' => 'This booking already has an insurance policy.'], 409);
+        }
+
+        $policy = DB::transaction(fn () => InsurancePolicy::create([
             'customer_id' => $request->user()->id,
             'policy_number' => InsurancePolicy::generatePolicyNumber(),
-            'policy_type' => $request->policy_type ?? $request->insurance_type,
-            'coverage_amount' => $request->coverage_amount,
-            'premium' => $request->premium ?? $request->premium_amount,
-            'start_date' => $request->start_date,
-            'end_date' => $request->end_date,
+            'coverable_type' => $booking->getMorphClass(),
+            'coverable_id' => $booking->getKey(),
+            'policy_type' => $plan['policy_type'],
+            'product_code' => $plan['code'],
+            'provider_name' => config('services.insurance.provider_name'),
+            'coverage_amount' => $plan['coverage_amount'],
+            'premium' => $plan['premium'],
+            'start_date' => today(),
+            'end_date' => today()->addDays($plan['duration_days']),
             'status' => 'active',
-            'terms' => $request->terms ?? ($request->boolean('terms_accepted') ? 'Accepted by customer.' : null),
-        ]);
+            'terms' => 'Accepted insurance policy terms, including stated benefits, exclusions, claim requirements, and cancellation rules.',
+            'terms_version' => InsurancePlanCatalog::TERMS_VERSION,
+            'terms_accepted_at' => now(),
+            'issued_at' => now(),
+        ]));
 
         return response()->json([
             'success' => true,
@@ -126,33 +188,10 @@ class InsuranceController extends Controller
             ], 404);
         }
 
-        $validator = Validator::make($request->all(), [
-            'coverage_amount' => 'numeric|min:1000',
-            'premium' => 'numeric|min:100',
-            'premium_amount' => 'numeric|min:100',
-            'status' => 'in:active,expired,cancelled,claimed',
-            'terms' => 'nullable|string',
-        ]);
-
-        if ($validator->fails()) {
-            return response()->json([
-                'success' => false,
-                'errors' => $validator->errors(),
-            ], 422);
-        }
-
-        $updates = $request->only(['coverage_amount', 'premium', 'status', 'terms']);
-        if ($request->filled('premium_amount')) {
-            $updates['premium'] = $request->premium_amount;
-        }
-
-        $policy->update($updates);
-
         return response()->json([
-            'success' => true,
-            'data' => (new InsurancePolicyResource($policy))->resolve($request),
-            'message' => 'Policy updated successfully',
-        ]);
+            'success' => false,
+            'message' => 'Issued insurance terms, price, coverage, and status are immutable. Cancel the policy or contact support for corrections.',
+        ], 409);
     }
 
     /**
@@ -175,7 +214,11 @@ class InsuranceController extends Controller
             ], 404);
         }
 
-        $policy->update(['status' => 'cancelled']);
+        if ($policy->status !== 'active') {
+            return response()->json(['success' => false, 'message' => 'Only active policies can be cancelled.'], 409);
+        }
+
+        $policy->update(['status' => 'cancelled', 'cancelled_at' => now()]);
 
         return response()->json([
             'success' => true,
@@ -219,6 +262,7 @@ class InsuranceController extends Controller
             'incident_description' => 'required|string|max:1000',
             'claim_amount' => 'required|numeric|min:100',
             'documents' => 'nullable|array',
+            'documents.*' => 'string|max:500',
         ]);
 
         if ($validator->fails()) {
@@ -253,10 +297,11 @@ class InsuranceController extends Controller
             'insurance_policy_id' => $insurance->id,
             'customer_id' => $request->user()->id,
             'claim_number' => InsuranceClaim::generateClaimNumber(),
+            'incident_date' => $request->incident_date,
             'description' => $request->incident_description,
+            'documents' => $request->documents,
             'claim_amount' => $request->claim_amount,
             'status' => 'pending',
-            'admin_notes' => $request->documents ? json_encode(['documents' => $request->documents]) : null,
         ]);
 
         return response()->json([

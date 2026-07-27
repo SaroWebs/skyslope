@@ -137,6 +137,72 @@ it('broadcasts ride requests to available and targeted driver channels', functio
         ->and($event->broadcastWith()['targeted'])->toBeTrue();
 });
 
+it('settles a completed cash ride and exposes earnings and customer completion', function () {
+    Event::fake();
+
+    $customer = Customer::create([
+        'name' => 'Completed Ride Customer',
+        'phone' => '9000000088',
+        'is_active' => true,
+    ]);
+    $driver = Driver::create([
+        'name' => 'Completed Ride Driver',
+        'phone' => '8000000088',
+        'status' => 'active',
+        'is_active' => true,
+        'is_approved' => true,
+        'can_short_ride' => true,
+    ]);
+    DriverAvailability::create([
+        'driver_id' => $driver->id,
+        'is_available' => false,
+        'status' => 'on_ride',
+    ]);
+    $ride = RideBooking::create([
+        'booking_number' => RideBooking::generateBookingNumber(),
+        'customer_id' => $customer->id,
+        'driver_id' => $driver->id,
+        'service_type' => 'point_to_point',
+        'customer_name' => $customer->name,
+        'customer_phone' => $customer->phone,
+        'pickup_location' => 'Station',
+        'dropoff_location' => 'Hotel',
+        'scheduled_at' => now(),
+        'estimated_distance_km' => 12,
+        'total_fare' => 500,
+        'status' => 'in_transit',
+        'payment_status' => 'pending',
+        'payment_method' => 'cash',
+        'start_pin_verified_at' => now(),
+    ]);
+
+    Sanctum::actingAs($driver);
+    $this->postJson("/api/driver-app/tracking/ride/{$ride->id}/status", ['status' => 'completed'])
+        ->assertOk()
+        ->assertJsonPath('data.status', 'completed')
+        ->assertJsonPath('data.payment_status', 'paid')
+        ->assertJsonPath('data.driver_share', '400.00');
+
+    $this->getJson('/api/driver-app/dashboard')
+        ->assertOk()
+        ->assertJsonPath('stats.earnings', 400);
+    $this->getJson('/api/driver-app/wallet')
+        ->assertOk()
+        ->assertJsonPath('data.balance', '0.00')
+        ->assertJsonPath('data.weekly_earnings', 400);
+
+    Sanctum::actingAs($customer);
+    $this->getJson("/api/customer-app/tracking/ride/{$ride->id}")
+        ->assertOk()
+        ->assertJsonPath('data.booking.status', 'completed')
+        ->assertJsonPath('data.status_steps.4.key', 'completed')
+        ->assertJsonPath('data.status_steps.4.done', true);
+
+    expect((float) $ride->fresh()->commission_amount)->toBe(100.0)
+        ->and((float) $ride->fresh()->driver_share)->toBe(400.0)
+        ->and($ride->fresh()->payment_status)->toBe('paid');
+});
+
 it('puts rides with no eligible drivers into the admin dispatch queue', function () {
     Event::fake();
 
@@ -238,6 +304,11 @@ it('returns local and cached google place details separately', function () {
         'google_review_count' => 1200,
         'google_reviews' => [['author' => 'Google User', 'rating' => 5, 'text' => 'Beautiful']],
         'google_photos' => [['photo_reference' => 'photo-1']],
+        'google_details' => [
+            'formatted_address' => 'City Palace Road, Jaipur',
+            'website' => 'https://example.com/city-palace',
+            'opening_hours' => ['open_now' => true, 'weekday_text' => ['Monday: 9:00 AM – 5:00 PM']],
+        ],
         'google_synced_at' => now(),
     ]);
 
@@ -252,6 +323,7 @@ it('returns local and cached google place details separately', function () {
     $this->getJson("/api/customer-app/public/places/{$place->id}")
         ->assertOk()
         ->assertJsonPath('data.google_summary.place_id', 'google-123')
+        ->assertJsonPath('data.google_summary.details.formatted_address', 'City Palace Road, Jaipur')
         ->assertJsonPath('data.skyslope_reviews.0.review', 'Worth visiting');
 });
 
@@ -265,6 +337,13 @@ it('syncs google place details into the local place cache', function () {
                 'place_id' => 'google-sync-123',
                 'rating' => 4.7,
                 'user_ratings_total' => 321,
+                'formatted_address' => 'MI Road, Jaipur, Rajasthan',
+                'formatted_phone_number' => '0141 123 4567',
+                'website' => 'https://example.com/place',
+                'url' => 'https://maps.google.com/?cid=123',
+                'business_status' => 'OPERATIONAL',
+                'types' => ['tourist_attraction', 'point_of_interest'],
+                'opening_hours' => ['open_now' => true, 'weekday_text' => ['Monday: Open 24 hours']],
                 'geometry' => [
                     'location' => ['lat' => 26.9124, 'lng' => 75.7873],
                 ],
@@ -316,10 +395,35 @@ it('syncs google place details into the local place cache', function () {
     ]);
 
     expect($place->fresh()->google_reviews[0]['author_name'])->toBe('Google Reviewer')
-        ->and($place->fresh()->google_photos[0]['photo_reference'])->toBe('photo-reference-1');
+        ->and($place->fresh()->google_photos[0]['photo_reference'])->toBe('photo-reference-1')
+        ->and($place->fresh()->google_details['formatted_address'])->toBe('MI Road, Jaipur, Rajasthan')
+        ->and($place->fresh()->google_details['opening_hours']['open_now'])->toBeTrue();
 
     Http::assertSent(fn ($request) => $request['place_id'] === 'google-sync-123'
         && str_contains($request['fields'], 'reviews'));
+});
+
+it('serves cached Google place photos through signed API URLs', function () {
+    config(['services.google_maps.api_key' => 'fake-google-key']);
+    Http::fake([
+        'https://maps.googleapis.com/maps/api/place/photo*' => Http::response('image-bytes', 200, ['Content-Type' => 'image/jpeg']),
+    ]);
+
+    $place = Place::create([
+        'name' => 'Photo Place',
+        'slug' => 'photo-place',
+        'is_active' => true,
+        'google_place_id' => 'photo-place-id',
+        'google_photos' => [['photo_reference' => 'signed-photo-reference']],
+    ]);
+
+    $details = $this->getJson("/api/customer-app/public/places/{$place->id}")
+        ->assertOk()
+        ->assertJsonPath('data.google_summary.photos.0.photo_reference', 'signed-photo-reference');
+
+    $this->get($details->json('data.google_summary.photos.0.url'))
+        ->assertOk()
+        ->assertHeader('Content-Type', 'image/jpeg');
 });
 
 it('skips google place sync cleanly when api key is missing', function () {

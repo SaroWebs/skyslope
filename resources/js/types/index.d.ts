@@ -87,11 +87,11 @@ export interface Itinerary {
     tour_id: number;
     day_index: number;
     time: string;
-    place_id: number;
+    place_id: number | null;
     details: string;
     created_at: string;
     updated_at: string;
-    place?: Place;
+    place?: Place | null;
     tour?: Tour;
 }
 

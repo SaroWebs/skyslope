@@ -59,6 +59,11 @@ class RolePermissionSeeder extends Seeder
             // System administration permissions
             ['name' => 'view_reports',    'display_name' => 'View Reports',    'group' => 'reports'],
             ['name' => 'manage_settings', 'display_name' => 'Manage Settings', 'group' => 'settings'],
+            ['name' => 'manage_cms',      'display_name' => 'Manage Frontend CMS', 'group' => 'settings'],
+            ['name' => 'manage_vehicles', 'display_name' => 'Manage Vehicles', 'group' => 'fleet'],
+            ['name' => 'manage_customers','display_name' => 'Manage Customers', 'group' => 'customers'],
+            ['name' => 'manage_financials','display_name' => 'Manage Financials', 'group' => 'financials'],
+            ['name' => 'manage_support',  'display_name' => 'Manage Support', 'group' => 'support'],
             ['name' => 'view_logs',       'display_name' => 'View Logs',       'group' => 'logs'],
         ];
 
@@ -94,6 +99,36 @@ class RolePermissionSeeder extends Seeder
                 'display_name' => 'Customer',
                 'description' => 'Can view and book tours',
                 'permissions' => ['view_tours', 'view_places', 'create_bookings', 'view_bookings']
+            ],
+            [
+                'name' => 'operations_manager',
+                'display_name' => 'Operations Manager',
+                'description' => 'Runs bookings, tours, drivers, vehicles, and customers',
+                'permissions' => ['view_tours', 'create_tours', 'edit_tours', 'view_places', 'edit_places', 'view_bookings', 'edit_bookings', 'view_drivers', 'assign_drivers', 'manage_drivers', 'manage_vehicles', 'manage_customers'],
+            ],
+            [
+                'name' => 'content_manager',
+                'display_name' => 'Content Manager',
+                'description' => 'Maintains the CMS, tours, places, and destination media',
+                'permissions' => ['manage_cms', 'view_tours', 'create_tours', 'edit_tours', 'view_places', 'create_places', 'edit_places'],
+            ],
+            [
+                'name' => 'fleet_manager',
+                'display_name' => 'Fleet Manager',
+                'description' => 'Maintains drivers, vehicle assignments, and fleet compliance',
+                'permissions' => ['view_drivers', 'assign_drivers', 'manage_drivers', 'manage_vehicles'],
+            ],
+            [
+                'name' => 'support_agent',
+                'display_name' => 'Support Agent',
+                'description' => 'Supports customers and reviews booking issues',
+                'permissions' => ['view_bookings', 'edit_bookings', 'manage_customers', 'manage_support'],
+            ],
+            [
+                'name' => 'finance_manager',
+                'display_name' => 'Finance Manager',
+                'description' => 'Reviews reports, payments, wallets, and payouts',
+                'permissions' => ['view_bookings', 'view_reports', 'manage_financials'],
             ],
         ];
 

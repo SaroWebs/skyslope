@@ -7,7 +7,6 @@ use App\Models\Driver;
 use App\Models\RideBooking;
 use App\Models\TourBooking;
 use App\Models\Wallet;
-use App\Models\WalletTransaction;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Log;
 
@@ -94,22 +93,20 @@ class CommissionService
 
     public function getDriverCommissionStats(int $driverId, ?string $startDate = null, ?string $endDate = null): array
     {
-        $query = WalletTransaction::query()
-            ->where('reference_type', 'driver_earning')
-            ->whereHas('wallet', function ($query) use ($driverId) {
-                $query->where('owner_type', Driver::class)
-                    ->where('owner_id', $driverId);
-            });
+        $query = RideBooking::query()
+            ->where('driver_id', $driverId)
+            ->where('status', 'completed')
+            ->where('driver_share', '>', 0);
 
         if ($startDate) {
-            $query->whereDate('created_at', '>=', $startDate);
+            $query->whereDate('completed_at', '>=', $startDate);
         }
 
         if ($endDate) {
-            $query->whereDate('created_at', '<=', $endDate);
+            $query->whereDate('completed_at', '<=', $endDate);
         }
 
-        $totalEarnings = (float) $query->sum('amount');
+        $totalEarnings = (float) $query->sum('driver_share');
         $earningCount = $query->count();
 
         return [

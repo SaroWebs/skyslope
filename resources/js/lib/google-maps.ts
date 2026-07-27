@@ -31,7 +31,7 @@ export const loadGoogleMaps = async (): Promise<typeof google> => {
 
     // Create script element
     const script = document.createElement('script');
-    script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&libraries=places&region=IN&language=en`;
+    script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&libraries=places&region=IN&language=en&v=weekly`;
     script.async = true;
     script.defer = true;
     
@@ -53,13 +53,15 @@ export const loadGoogleMaps = async (): Promise<typeof google> => {
   return googleMapsPromise;
 };
 
+export const googleMapsMapId = (): string =>
+  import.meta.env.VITE_GOOGLE_MAPS_MAP_ID || 'DEMO_MAP_ID';
+
 export const createAutocomplete = (
   input: HTMLInputElement,
   options: google.maps.places.AutocompleteOptions = {}
 ): google.maps.places.Autocomplete => {
   const defaultOptions: google.maps.places.AutocompleteOptions = {
     fields: ['place_id', 'formatted_address', 'name', 'geometry'],
-    types: ['establishment', 'geocode'],
     componentRestrictions: { country: 'IN' }, // Restrict to India
     ...options
   };

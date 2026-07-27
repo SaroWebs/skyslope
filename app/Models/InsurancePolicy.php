@@ -18,12 +18,18 @@ class InsurancePolicy extends Model
         'coverable_type',
         'coverable_id',
         'policy_type',
+        'product_code',
+        'provider_name',
         'premium',
         'coverage_amount',
         'start_date',
         'end_date',
         'status',
         'terms',
+        'terms_version',
+        'terms_accepted_at',
+        'issued_at',
+        'cancelled_at',
     ];
 
     protected $casts = [
@@ -31,6 +37,9 @@ class InsurancePolicy extends Model
         'coverage_amount' => 'decimal:2',
         'start_date'      => 'date',
         'end_date'        => 'date',
+        'terms_accepted_at' => 'datetime',
+        'issued_at' => 'datetime',
+        'cancelled_at' => 'datetime',
     ];
 
     public function customer(): BelongsTo
@@ -58,6 +67,11 @@ class InsurancePolicy extends Model
         return $number;
     }
 
-    public function isActive(): bool  { return $this->status === 'active'; }
+    public function isActive(): bool
+    {
+        return $this->status === 'active'
+            && ! $this->start_date->isFuture()
+            && ! $this->end_date->isPast();
+    }
     public function isExpired(): bool { return $this->status === 'expired' || $this->end_date->isPast(); }
 }

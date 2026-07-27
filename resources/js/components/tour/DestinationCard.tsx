@@ -2,14 +2,24 @@ import React from 'react'
 import { Link } from '@inertiajs/react'
 import { Card, Text, Badge, Button, Stack, Box, Group } from '@mantine/core'
 import { Place } from '@/types'
+import { resolveMediaUrl } from '@/lib/utils'
 
 interface DestinationCardProps {
   place: Place
 }
 
+type DestinationMedia = {
+  file_path?: string
+  url?: string
+}
+
+type PlaceWithLegacyMedia = Place & {
+  place_media?: DestinationMedia[]
+}
+
 const DestinationCard: React.FC<DestinationCardProps> = ({ place }) => {
-  const legacyMedia = Array.isArray((place as any).place_media) ? ((place as any).place_media as any[]) : []
-  const media = Array.isArray(place.media) ? place.media : legacyMedia
+  const legacyMedia = (place as PlaceWithLegacyMedia).place_media ?? []
+  const media = (Array.isArray(place.media) ? place.media : legacyMedia) as DestinationMedia[]
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -52,7 +62,7 @@ const DestinationCard: React.FC<DestinationCardProps> = ({ place }) => {
         <Box style={{
           height: '200px',
           background: media.length > 0
-            ? `url(/storage/${media[0].file_path})`
+            ? `url(${resolveMediaUrl(media[0].url || media[0].file_path)})`
             : 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
           backgroundSize: 'cover',
           backgroundPosition: 'center',

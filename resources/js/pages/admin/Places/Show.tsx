@@ -1,6 +1,8 @@
 import React from 'react';
 import { Link, useForm, router } from '@inertiajs/react';
 import AdminLayout from '@/layouts/AdminLayout';
+import PlaceLocationMap from '@/components/places/PlaceLocationMap';
+import { RefreshCw } from 'lucide-react';
 
 interface Place {
     id: number;
@@ -23,6 +25,7 @@ interface Place {
     media: Array<{
         id: number;
         path: string;
+        url: string;
         type: string;
         caption: string | null;
         source: 'admin' | 'customer';
@@ -40,6 +43,7 @@ interface ShowPlaceProps {
 export default function Show({ title, place }: ShowPlaceProps) {
     const { data, setData, post, processing, errors, reset } = useForm({
         file: null as File | null,
+        url: '',
         caption: '',
         type: 'image',
     });
@@ -67,6 +71,9 @@ export default function Show({ title, place }: ShowPlaceProps) {
         const reason = prompt('Why is this customer photo being rejected?');
         if (reason?.trim()) router.patch(`/admin/media/${mediaId}/reject`, { reason: reason.trim() }, { preserveScroll: true });
     };
+    const latitude = Number(place.latitude);
+    const longitude = Number(place.longitude);
+    const hasCoordinates = Number.isFinite(latitude) && Number.isFinite(longitude) && place.latitude !== null && place.longitude !== null;
 
     return (
         <AdminLayout title={title}>
@@ -143,6 +150,30 @@ export default function Show({ title, place }: ShowPlaceProps) {
                                     </dd>
                                 </div>
                             </dl>
+                            <div className="mt-6">
+                                <h3 className="mb-3 text-md font-medium text-gray-900">Exact map location</h3>
+                                {hasCoordinates ? <PlaceLocationMap latitude={latitude} longitude={longitude} /> : <p className="text-sm text-gray-500">No coordinates saved yet.</p>}
+                                <div className="mt-3 flex flex-wrap gap-2">
+                                    <button
+                                        type="button"
+                                        onClick={() => router.post(`/admin/places/${place.id}/sync-google`, {}, { preserveScroll: true })}
+                                        disabled={!place.google_place_id}
+                                        className="inline-flex min-h-11 items-center gap-2 rounded-md bg-amber-500 px-4 py-2 text-sm font-extrabold text-black hover:bg-amber-400 disabled:cursor-not-allowed disabled:opacity-40"
+                                    >
+                                        <RefreshCw size={16} /> Sync Google data
+                                    </button>
+                                    {hasCoordinates ? (
+                                        <a
+                                            href={`https://www.google.com/maps/search/?api=1&query=${latitude},${longitude}${place.google_place_id ? `&query_place_id=${encodeURIComponent(place.google_place_id)}` : ''}`}
+                                            target="_blank"
+                                            rel="noreferrer"
+                                            className="inline-flex min-h-11 items-center rounded-md border border-white/15 px-4 py-2 text-sm font-bold text-white hover:bg-white/5"
+                                        >
+                                            Open in Google Maps
+                                        </a>
+                                    ) : null}
+                                </div>
+                            </div>
                         </div>
 
                         <div>
@@ -158,9 +189,24 @@ export default function Show({ title, place }: ShowPlaceProps) {
                                         onChange={(e) => setData('file', e.target.files?.[0] || null)}
                                         className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
                                         accept="image/*,video/*"
-                                        required
                                     />
                                     {errors.file && <div className="text-red-600 text-sm mt-1">{errors.file}</div>}
+                                </div>
+
+                                <div>
+                                    <label htmlFor="url" className="block text-sm font-medium text-gray-700">
+                                        Or external media URL
+                                    </label>
+                                    <input
+                                        type="url"
+                                        id="url"
+                                        value={data.url}
+                                        onChange={(e) => setData('url', e.target.value)}
+                                        placeholder="https://images.example.com/place.jpg"
+                                        className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
+                                    />
+                                    <p className="mt-1 text-xs text-gray-500">HTTP/HTTPS URLs are loaded directly; uploaded files use public storage.</p>
+                                    {errors.url && <div className="text-red-600 text-sm mt-1">{errors.url}</div>}
                                 </div>
 
                                 <div>
@@ -206,13 +252,13 @@ export default function Show({ title, place }: ShowPlaceProps) {
                                     <div key={media.id} className="border border-gray-200 rounded-lg p-4">
                                         {media.type !== 'video' ? (
                                             <img
-                                                src={`/storage/${media.path}`}
+                                                src={media.url}
                                                 alt={media.caption || 'Media'}
                                                 className="w-full h-32 object-cover rounded-md mb-2"
                                             />
                                         ) : (
                                             <video
-                                                src={`/storage/${media.path}`}
+                                                src={media.url}
                                                 className="w-full h-32 object-cover rounded-md mb-2"
                                                 controls
                                             />

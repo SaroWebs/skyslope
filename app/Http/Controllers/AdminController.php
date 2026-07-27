@@ -30,6 +30,7 @@ use App\Services\BookingStatusService;
 use App\Services\CommissionService;
 use App\Services\DriverDispatchService;
 use App\Services\GooglePlaceDetailsService;
+use App\Support\MediaUrl;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -455,6 +456,7 @@ class AdminController extends Controller
         $itineraries = $tour->itineraries()
             ->with('place.media')
             ->orderBy('day_index')
+            ->orderBy('stop_order')
             ->orderBy('time')
             ->get();
 
@@ -469,16 +471,25 @@ class AdminController extends Controller
     /**
      * Show create tour itinerary form
      */
-    public function createTourItinerary(Tour $tour)
+    public function createTourItinerary(Request $request, Tour $tour)
     {
         $places = Place::where('is_active', true)->orderBy('name')->get();
+        $maxDay = (int) $tour->itineraries()->max('day_number');
+        $requestedDay = (int) $request->integer('day', $maxDay + 1);
+        $suggestedDay = min(max(1, $requestedDay), $maxDay + 1);
 
         return inertia('admin/Tours/Itineraries/Create', [
             'title' => 'Create Tour Itinerary',
             'user' => Auth::user(),
             'tour' => $tour,
             'places' => $places,
-            'nextDay' => ((int) $tour->itineraries()->max('day_number')) + 1,
+            'nextDay' => $suggestedDay,
+            'maxDay' => $maxDay,
+            'dayOptions' => $tour->itineraries()
+                ->selectRaw('day_number, COUNT(*) as stops_count')
+                ->groupBy('day_number')
+                ->orderBy('day_number')
+                ->get(),
         ]);
     }
 
@@ -488,6 +499,7 @@ class AdminController extends Controller
     public function storeTourItinerary(Request $request, Tour $tour)
     {
         $validated = $request->validate([
+            'day_number' => 'required|integer|min:1',
             'time' => 'nullable|date_format:H:i',
             'place_id' => 'required|exists:places,id',
             'title' => 'nullable|string|max:255',
@@ -500,12 +512,18 @@ class AdminController extends Controller
             'distance_km' => 'nullable|string|max:50',
         ]);
         $place = Place::findOrFail($validated['place_id']);
-        $dayNumber = ((int) $tour->itineraries()->max('day_number')) + 1;
+        $maxDay = (int) $tour->itineraries()->max('day_number');
+        $dayNumber = (int) $validated['day_number'];
+        if ($dayNumber > $maxDay + 1) {
+            return back()->withErrors(['day_number' => 'Add the next sequential day or choose an existing day.'])->withInput();
+        }
+        $stopOrder = ((int) $tour->itineraries()->where('day_number', $dayNumber)->max('stop_order')) + 1;
 
         $tour->itineraries()->create([
             'place_id' => $place->id,
             'day_index' => $dayNumber,
             'day_number' => $dayNumber,
+            'stop_order' => $stopOrder,
             'time' => $validated['time'] ?? null,
             'title' => $validated['title'] ?? $place->name,
             'description' => $validated['details'],
@@ -518,7 +536,7 @@ class AdminController extends Controller
         $this->syncTourDurationFromItineraries($tour);
 
         return redirect()->route('admin.tours.itineraries', $tour->id)
-            ->with('success', "Day {$dayNumber} added. Tour duration updated automatically.");
+            ->with('success', "Visit {$stopOrder} added to Day {$dayNumber}. Tour duration updated automatically.");
     }
 
     /**
@@ -555,6 +573,7 @@ class AdminController extends Controller
             'tour' => $tour,
             'itinerary' => $itinerary->load('place.media'),
             'places' => $places,
+            'maxDay' => (int) $tour->itineraries()->max('day_number'),
         ]);
     }
 
@@ -568,6 +587,7 @@ class AdminController extends Controller
         }
 
         $validated = $request->validate([
+            'day_number' => 'required|integer|min:1',
             'time' => 'nullable|date_format:H:i',
             'place_id' => 'sometimes|required|exists:places,id',
             'title' => 'nullable|string|max:255',
@@ -581,11 +601,21 @@ class AdminController extends Controller
         ]);
 
         $place = isset($validated['place_id']) ? Place::findOrFail($validated['place_id']) : $itinerary->place;
+        $maxDay = (int) $tour->itineraries()->max('day_number');
+        $dayNumber = (int) $validated['day_number'];
+        if ($dayNumber > $maxDay + 1) {
+            return back()->withErrors(['day_number' => 'Move the visit to an existing day or the next sequential day.'])->withInput();
+        }
+        $dayChanged = $dayNumber !== $itinerary->day_number;
+        $stopOrder = $dayChanged
+            ? ((int) $tour->itineraries()->where('day_number', $dayNumber)->max('stop_order')) + 1
+            : $itinerary->stop_order;
 
         $itinerary->update([
             'place_id' => $place?->id,
-            'day_index' => $itinerary->day_index,
-            'day_number' => $itinerary->day_number,
+            'day_index' => $dayNumber,
+            'day_number' => $dayNumber,
+            'stop_order' => $stopOrder,
             'time' => $validated['time'] ?? null,
             'title' => $validated['title'] ?? $place?->name ?? $itinerary->title,
             'description' => $validated['details'],
@@ -595,6 +625,7 @@ class AdminController extends Controller
             'meals_included' => $validated['meals_included'] ?? [],
             'distance_km' => $validated['distance_km'] ?? null,
         ]);
+        $this->normalizeTourItineraryStops($tour);
         $this->syncTourDurationFromItineraries($tour);
 
         return redirect()->route('admin.tours.itineraries', $tour->id)->with('success', 'Itinerary updated successfully');
@@ -610,15 +641,10 @@ class AdminController extends Controller
         }
 
         $itinerary->delete();
-        $tour->itineraries()->orderBy('day_number')->get()->values()->each(function (TourItinerary $day, int $index) {
-            $dayNumber = $index + 1;
-            if ($day->day_number !== $dayNumber || $day->day_index !== $dayNumber) {
-                $day->update(['day_number' => $dayNumber, 'day_index' => $dayNumber]);
-            }
-        });
+        $this->normalizeTourItineraryStops($tour);
         $this->syncTourDurationFromItineraries($tour);
 
-        return redirect()->route('admin.tours.itineraries', $tour->id)->with('success', 'Itinerary deleted successfully');
+        return redirect()->route('admin.tours.itineraries', $tour->id)->with('success', 'Itinerary visit deleted successfully');
     }
 
     /**
@@ -854,7 +880,7 @@ class AdminController extends Controller
     /**
      * Store new place
      */
-    public function storePlace(Request $request)
+    public function storePlace(Request $request, GooglePlaceDetailsService $googlePlaces)
     {
         $validated = $request->validate([
             'name' => 'required|string|max:255',
@@ -875,13 +901,17 @@ class AdminController extends Controller
             'is_featured' => 'required|boolean',
         ]);
 
-        Place::create([
+        $place = Place::create([
             ...$validated,
             'slug' => $this->uniquePlaceSlug($validated['name']),
             'country' => ($validated['country'] ?? null) ?: 'India',
             'tags' => $validated['tags'] ?? [],
             'google_review_count' => $validated['google_review_count'] ?? 0,
         ]);
+
+        if ($place->google_place_id) {
+            $googlePlaces->sync($place, true);
+        }
 
         return redirect()->route('admin.places')->with('success', 'Place created successfully');
     }
@@ -932,7 +962,7 @@ class AdminController extends Controller
     /**
      * Update place
      */
-    public function updatePlace(Request $request, Place $place)
+    public function updatePlace(Request $request, Place $place, GooglePlaceDetailsService $googlePlaces)
     {
         $validated = $request->validate([
             'name' => 'required|string|max:255',
@@ -963,6 +993,10 @@ class AdminController extends Controller
             'google_review_count' => $validated['google_review_count'] ?? 0,
         ]);
 
+        if ($place->google_place_id && ($place->wasChanged(['google_place_id', 'latitude', 'longitude']) || !$place->google_synced_at)) {
+            $googlePlaces->sync($place, true);
+        }
+
         return redirect()->route('admin.places')->with('success', 'Place updated successfully');
     }
 
@@ -982,19 +1016,25 @@ class AdminController extends Controller
     public function storeMedia(Request $request, Place $place)
     {
         $validated = $request->validate([
-            'file' => 'required|file|mimes:jpeg,png,jpg,gif,svg,mp4,avi,mov|max:20480',
+            'file' => 'nullable|required_without:url|file|mimes:jpeg,png,jpg,gif,svg,mp4,avi,mov|max:20480',
+            'url' => 'nullable|required_without:file|url:http,https|max:2048',
             'type' => 'required|in:image,panorama,video',
             'caption' => 'nullable|string|max:500',
         ]);
 
-        $isVideo = str_starts_with($request->file('file')->getMimeType(), 'video/');
+        if ($request->hasFile('file')) {
+            $isVideo = str_starts_with($request->file('file')->getMimeType(), 'video/');
         if (($validated['type'] === 'video') !== $isVideo) {
             return back()->withErrors(['type' => $isVideo
                 ? 'Video files must use the Video media type.'
                 : 'Image files must use Image or 360° panorama.'])->withInput();
         }
 
-        $filePath = $request->file('file')->store('place_media', 'public');
+        }
+
+        $filePath = $request->hasFile('file')
+            ? $request->file('file')->store('place_media', 'public')
+            : $validated['url'];
 
         PlaceMedia::create([
             'place_id' => $place->id,
@@ -1015,7 +1055,9 @@ class AdminController extends Controller
      */
     public function deleteMedia(PlaceMedia $media)
     {
-        Storage::disk('public')->delete($media->path);
+        if (! MediaUrl::isExternal($media->path)) {
+            Storage::disk('public')->delete(ltrim(str_replace('storage/', '', $media->path), '/'));
+        }
         $media->delete();
 
         return redirect()->route('admin.places.show', $media->place_id)->with('success', 'Media deleted successfully');
@@ -1565,7 +1607,6 @@ class AdminController extends Controller
                         Auth::id()
                     );
                     $this->recordBookingAudit($tourBooking->fresh(), 'cancelled', $before, $this->bookingAuditSnapshot($tourBooking->fresh()), $validated['cancellation_reason'] ?? null);
-                    $this->syncTourSeatInventory($tourBooking->fresh(), $previousStatus, $previousPaymentStatus);
                     $this->notifyBookingLifecycle($tourBooking->fresh('customer'), 'booking.cancelled');
                     if ($refund?->status === 'processed') {
                         $this->notifyBookingLifecycle($tourBooking->fresh('customer'), 'refund.processed', ['refund_id' => $refund->id]);
@@ -2439,5 +2480,27 @@ class AdminController extends Controller
             'duration_days' => $days,
             'duration_nights' => max(0, $days - 1),
         ]);
+    }
+
+    private function normalizeTourItineraryStops(Tour $tour): void
+    {
+        $dayNumbers = $tour->itineraries()->select('day_number')->distinct()->orderBy('day_number')->pluck('day_number');
+
+        $dayNumbers->values()->each(function (int $currentDay, int $dayIndex) use ($tour) {
+            $normalizedDay = $dayIndex + 1;
+            $stops = $tour->itineraries()
+                ->where('day_number', $currentDay)
+                ->orderBy('stop_order')
+                ->orderBy('time')
+                ->get();
+
+            $stops->values()->each(function (TourItinerary $stop, int $stopIndex) use ($normalizedDay) {
+                $stop->update([
+                    'day_number' => $normalizedDay,
+                    'day_index' => $normalizedDay,
+                    'stop_order' => $stopIndex + 1,
+                ]);
+            });
+        });
     }
 }

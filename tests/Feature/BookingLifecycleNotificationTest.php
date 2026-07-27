@@ -31,7 +31,8 @@ it('delivers booking lifecycle notifications through enabled channels', function
         'email_notification' => true,
     ]);
 
-    $service = new class extends NotificationService {
+    $service = new class extends NotificationService
+    {
         public array $calls = [];
 
         public function notify(object $user, array $channels, array $content): array
@@ -54,6 +55,7 @@ it('retries and logs failed booking lifecycle notification channels', function (
     config([
         'services.twilio.sid' => 'test-sid',
         'services.twilio.token' => 'test-token',
+        'services.twilio.from' => '+15550000000',
     ]);
 
     $customer = Customer::create([
@@ -78,7 +80,8 @@ it('retries and logs failed booking lifecycle notification channels', function (
         'email_notification' => false,
     ]);
 
-    $service = new class extends NotificationService {
+    $service = new class extends NotificationService
+    {
         public function notify(object $user, array $channels, array $content): array
         {
             return ['sms' => false];
@@ -101,4 +104,25 @@ it('retries and logs failed booking lifecycle notification channels', function (
                 && $context['failed_channels'] === ['sms']
         ))
         ->once();
+});
+
+it('renders lifecycle email content without colliding with the mail message variable', function () {
+    $sent = app(NotificationService::class)->sendEmail(
+        'lifecycle@example.com',
+        'Ride update',
+        'emails.notification',
+        ['notificationMessage' => 'Your ride has been completed.'],
+    );
+
+    expect($sent)->toBeTrue();
+});
+
+it('treats copied example provider credentials as unconfigured', function () {
+    config([
+        'services.whatsapp.api_url' => 'https://graph.facebook.com/v17.0',
+        'services.whatsapp.api_key' => 'your_whatsapp_api_key',
+        'services.whatsapp.from' => '1234567890',
+    ]);
+
+    expect(app(NotificationService::class)->isChannelConfigured('whatsapp'))->toBeFalse();
 });

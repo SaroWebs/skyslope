@@ -1,7 +1,8 @@
 import React from 'react'
 import { Link } from '@inertiajs/react'
-import { Card, Text, Group, Badge, Button, Stack, Image, Box } from '@mantine/core'
+import { Card, Text, Group, Badge, Button, Stack, Box } from '@mantine/core'
 import { Tour } from '@/types'
+import { resolveMediaUrl } from '@/lib/utils'
 
 interface TourCardProps {
   tour: Tour
@@ -60,7 +61,7 @@ const TourCard: React.FC<TourCardProps> = ({ tour }) => {
         <Box style={{
           height: '200px',
           background: tour.image_path
-            ? `url(/storage/${tour.image_path})`
+            ? `url(${resolveMediaUrl(tour.image_path)})`
             : 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
           backgroundSize: 'cover',
           backgroundPosition: 'center',

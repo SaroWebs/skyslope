@@ -2,19 +2,24 @@
 
 namespace App\Services;
 
-use Illuminate\Support\Facades\Http;
-use Illuminate\Support\Facades\Mail;
-use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\View;
 use Exception;
+use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\View;
 
 class NotificationService
 {
     protected ?string $twilioSid;
+
     protected ?string $twilioToken;
+
     protected ?string $twilioFrom;
+
     protected ?string $whatsappApiUrl;
+
     protected ?string $whatsappApiKey;
+
     protected ?string $whatsappFrom;
 
     public function __construct()
@@ -30,14 +35,14 @@ class NotificationService
     /**
      * Send SMS via Twilio
      *
-     * @param string $to Phone number with country code
-     * @param string $message SMS message content
-     * @return bool
+     * @param  string  $to  Phone number with country code
+     * @param  string  $message  SMS message content
      */
     public function sendSms(string $to, string $message): bool
     {
-        if (!$this->twilioSid || !$this->twilioToken) {
+        if (! $this->isChannelConfigured('sms')) {
             Log::warning('Twilio credentials not configured');
+
             return false;
         }
 
@@ -50,22 +55,25 @@ class NotificationService
                     'Body' => $message,
                 ]);
 
-            if (!$response->successful()) {
+            if (! $response->successful()) {
                 Log::error('Twilio SMS failed', [
                     'to' => $to,
                     'status' => $response->status(),
                     'body' => $response->body(),
                 ]);
+
                 return false;
             }
 
             Log::info('SMS sent successfully', ['to' => $to]);
+
             return true;
         } catch (Exception $e) {
             Log::error('SMS sending exception', [
                 'to' => $to,
                 'message' => $e->getMessage(),
             ]);
+
             return false;
         }
     }
@@ -73,15 +81,15 @@ class NotificationService
     /**
      * Send WhatsApp message via Business API
      *
-     * @param string $to Phone number with country code
-     * @param string $message Message content
-     * @param array $templateData Template data for structured messages
-     * @return bool
+     * @param  string  $to  Phone number with country code
+     * @param  string  $message  Message content
+     * @param  array  $templateData  Template data for structured messages
      */
     public function sendWhatsApp(string $to, string $message, array $templateData = []): bool
     {
-        if (!$this->whatsappApiUrl || !$this->whatsappApiKey) {
+        if (! $this->isChannelConfigured('whatsapp')) {
             Log::warning('WhatsApp API credentials not configured');
+
             return false;
         }
 
@@ -93,7 +101,7 @@ class NotificationService
             ];
 
             // Use template if provided
-            if (!empty($templateData)) {
+            if (! empty($templateData)) {
                 $payload['type'] = 'template';
                 $payload['template'] = $templateData;
             } else {
@@ -107,22 +115,25 @@ class NotificationService
             $response = Http::withToken($this->whatsappApiKey)
                 ->post("{$this->whatsappApiUrl}/{$this->whatsappFrom}/messages", $payload);
 
-            if (!$response->successful()) {
+            if (! $response->successful()) {
                 Log::error('WhatsApp message failed', [
                     'to' => $to,
                     'status' => $response->status(),
                     'body' => $response->body(),
                 ]);
+
                 return false;
             }
 
             Log::info('WhatsApp message sent successfully', ['to' => $to]);
+
             return true;
         } catch (Exception $e) {
             Log::error('WhatsApp sending exception', [
                 'to' => $to,
                 'message' => $e->getMessage(),
             ]);
+
             return false;
         }
     }
@@ -130,11 +141,10 @@ class NotificationService
     /**
      * Send email notification
      *
-     * @param string $to Email address
-     * @param string $subject Email subject
-     * @param string $view Blade view name
-     * @param array $data Data to pass to view
-     * @return bool
+     * @param  string  $to  Email address
+     * @param  string  $subject  Email subject
+     * @param  string  $view  Blade view name
+     * @param  array  $data  Data to pass to view
      */
     public function sendEmail(string $to, string $subject, string $view, array $data = []): bool
     {
@@ -144,21 +154,15 @@ class NotificationService
                     ->subject($subject);
             });
 
-            if (count(Mail::failures()) > 0) {
-                Log::error('Email sending failed', [
-                    'to' => $to,
-                    'failures' => Mail::failures(),
-                ]);
-                return false;
-            }
-
             Log::info('Email sent successfully', ['to' => $to]);
+
             return true;
         } catch (Exception $e) {
             Log::error('Email sending exception', [
                 'to' => $to,
                 'message' => $e->getMessage(),
             ]);
+
             return false;
         }
     }
@@ -166,9 +170,9 @@ class NotificationService
     /**
      * Send notification to user via multiple channels
      *
-     * @param object $user User-like recipient to notify
-     * @param array $channels Channels to use (sms, email, whatsapp)
-     * @param array $content Content for each channel
+     * @param  object  $user  User-like recipient to notify
+     * @param  array  $channels  Channels to use (sms, email, whatsapp)
+     * @param  array  $content  Content for each channel
      * @return array Results for each channel
      */
     public function notify(object $user, array $channels, array $content): array
@@ -178,24 +182,24 @@ class NotificationService
         foreach ($channels as $channel) {
             switch ($channel) {
                 case 'sms':
-                    if (!empty($user->phone) && !empty($content['sms'])) {
+                    if (! empty($user->phone) && ! empty($content['sms'])) {
                         $results['sms'] = $this->sendSms($user->phone, $content['sms']);
                     }
                     break;
 
                 case 'email':
-                    if (!empty($user->email) && !empty($content['email'])) {
+                    if (! empty($user->email) && ! empty($content['email'])) {
                         $results['email'] = $this->sendEmail(
                             $user->email,
                             $content['subject'] ?? 'Notification from HappyMiles',
                             $content['email_view'] ?? 'emails.notification',
-                            $content['email_data'] ?? ['message' => $content['email']]
+                            $content['email_data'] ?? ['notificationMessage' => $content['email']]
                         );
                     }
                     break;
 
                 case 'whatsapp':
-                    if (!empty($user->phone) && !empty($content['whatsapp'])) {
+                    if (! empty($user->phone) && ! empty($content['whatsapp'])) {
                         $results['whatsapp'] = $this->sendWhatsApp(
                             $user->phone,
                             $content['whatsapp'],
@@ -209,27 +213,54 @@ class NotificationService
         return $results;
     }
 
+    public function isChannelConfigured(string $channel): bool
+    {
+        return match ($channel) {
+            'sms' => $this->validProviderValues([$this->twilioSid, $this->twilioToken, $this->twilioFrom]),
+            'whatsapp' => $this->validProviderValues([$this->whatsappApiUrl, $this->whatsappApiKey, $this->whatsappFrom]),
+            'email' => filled(config('mail.default')),
+            default => false,
+        };
+    }
+
+    /**
+     * Treat copied example credentials as unconfigured so local/demo lifecycle
+     * events never attempt real provider calls with placeholder values.
+     *
+     * @param  array<int, string|null>  $values
+     */
+    private function validProviderValues(array $values): bool
+    {
+        foreach ($values as $value) {
+            $normalized = strtolower(trim((string) $value));
+            if ($normalized === ''
+                || str_starts_with($normalized, 'your_')
+                || str_starts_with($normalized, 'change_me')
+                || in_array($normalized, ['1234567890', '+1234567890', 'example'], true)) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
     /**
      * Send ride booking confirmation notification
-     *
-     * @param object $user
-     * @param array $bookingData
-     * @return array
      */
     public function sendRideBookingConfirmation(object $user, array $bookingData): array
     {
-        $smsMessage = "HappyMiles: Your ride has been booked! Booking #{$bookingData['booking_number']}. " .
-            "Pickup: {$bookingData['pickup_location']}. " .
-            "Scheduled: {$bookingData['scheduled_at']}. " .
+        $smsMessage = "HappyMiles: Your ride has been booked! Booking #{$bookingData['booking_number']}. ".
+            "Pickup: {$bookingData['pickup_location']}. ".
+            "Scheduled: {$bookingData['scheduled_at']}. ".
             "Fare: ₹{$bookingData['total_fare']}";
 
-        $whatsappMessage = "🚗 *HappyMiles Ride Booked!*\n\n" .
-            "Booking ID: {$bookingData['booking_number']}\n" .
-            "Pickup: {$bookingData['pickup_location']}\n" .
-            "Drop-off: {$bookingData['dropoff_location']}\n" .
-            "Scheduled: {$bookingData['scheduled_at']}\n" .
-            "Fare: ₹{$bookingData['total_fare']}\n\n" .
-            "Track your ride: " . url("/ride-booking/{$bookingData['id']}");
+        $whatsappMessage = "🚗 *HappyMiles Ride Booked!*\n\n".
+            "Booking ID: {$bookingData['booking_number']}\n".
+            "Pickup: {$bookingData['pickup_location']}\n".
+            "Drop-off: {$bookingData['dropoff_location']}\n".
+            "Scheduled: {$bookingData['scheduled_at']}\n".
+            "Fare: ₹{$bookingData['total_fare']}\n\n".
+            'Track your ride: '.url("/ride-booking/{$bookingData['id']}");
 
         return $this->notify($user, ['sms', 'email', 'whatsapp'], [
             'sms' => $smsMessage,
@@ -241,12 +272,6 @@ class NotificationService
 
     /**
      * Send ride status update notification
-     *
-     * @param object $user
-     * @param array $bookingData
-     * @param string $status
-     * @param string|null $message
-     * @return array
      */
     public function sendRideStatusUpdate(object $user, array $bookingData, string $status, ?string $message = null): array
     {
@@ -272,23 +297,18 @@ class NotificationService
 
     /**
      * Send driver assignment notification
-     *
-     * @param object $customer
-     * @param object $driver
-     * @param array $bookingData
-     * @return array
      */
     public function sendDriverAssignmentNotification(object $customer, object $driver, array $bookingData): array
     {
-        $smsMessage = "HappyMiles: Driver assigned! {$driver->name} will pick you up. " .
+        $smsMessage = "HappyMiles: Driver assigned! {$driver->name} will pick you up. ".
             "Contact: {$driver->phone}. Booking #{$bookingData['booking_number']}";
 
-        $whatsappMessage = "🚗 *Driver Assigned!*\n\n" .
-            "Driver: {$driver->name}\n" .
-            "Phone: {$driver->phone}\n" .
-            "Vehicle: {$bookingData['vehicle_number']}\n\n" .
-            "Booking: #{$bookingData['booking_number']}\n\n" .
-            "Your driver will arrive shortly!";
+        $whatsappMessage = "🚗 *Driver Assigned!*\n\n".
+            "Driver: {$driver->name}\n".
+            "Phone: {$driver->phone}\n".
+            "Vehicle: {$bookingData['vehicle_number']}\n\n".
+            "Booking: #{$bookingData['booking_number']}\n\n".
+            'Your driver will arrive shortly!';
 
         return $this->notify($customer, ['sms', 'whatsapp'], [
             'sms' => $smsMessage,
@@ -298,10 +318,6 @@ class NotificationService
 
     /**
      * Send wallet transaction notification
-     *
-     * @param object $user
-     * @param array $transactionData
-     * @return array
      */
     public function sendWalletNotification(object $user, array $transactionData): array
     {
@@ -311,11 +327,11 @@ class NotificationService
 
         $smsMessage = "HappyMiles Wallet: {$type} of ₹{$amount}. New balance: ₹{$balance}";
 
-        $whatsappMessage = "💰 *HappyMiles Wallet*\n\n" .
-            "Transaction: {$type}\n" .
-            "Amount: ₹{$amount}\n" .
-            "New Balance: ₹{$balance}\n\n" .
-            "Thank you for using HappyMiles!";
+        $whatsappMessage = "💰 *HappyMiles Wallet*\n\n".
+            "Transaction: {$type}\n".
+            "Amount: ₹{$amount}\n".
+            "New Balance: ₹{$balance}\n\n".
+            'Thank you for using HappyMiles!';
 
         return $this->notify($user, ['sms', 'whatsapp'], [
             'sms' => $smsMessage,
@@ -325,24 +341,16 @@ class NotificationService
 
     /**
      * Send OTP verification code
-     *
-     * @param string $phone
-     * @param string $otp
-     * @return bool
      */
     public function sendOtp(string $phone, string $otp): bool
     {
         $message = "HappyMiles: Your verification code is {$otp}. Valid for 5 minutes. Do not share with anyone.";
+
         return $this->sendSms($phone, $message);
     }
 
     /**
      * Send promotional message
-     *
-     * @param object $user
-     * @param string $message
-     * @param array $channels
-     * @return array
      */
     public function sendPromotional(object $user, string $message, array $channels = ['sms', 'whatsapp']): array
     {

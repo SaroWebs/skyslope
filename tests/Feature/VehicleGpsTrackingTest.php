@@ -2,6 +2,7 @@
 
 use App\Models\CarCategory;
 use App\Models\Driver;
+use App\Models\DriverLocation;
 use App\Models\Role;
 use App\Models\User;
 use App\Models\Vehicle;
@@ -137,4 +138,25 @@ it('rejects unknown tracker tokens and protects the admin tracking page', functi
     $this->actingAs(gpsAdmin())
         ->get("/admin/vehicles/{$vehicle->id}/tracking")
         ->assertOk();
+});
+
+it('falls back to the assigned driver location when vehicle gps is unavailable', function () {
+    $vehicle = gpsVehicle();
+    DriverLocation::create([
+        'driver_id' => $vehicle->driver_id,
+        'latitude' => 26.1445,
+        'longitude' => 91.7362,
+        'heading' => 42,
+        'speed' => 18.5,
+        'accuracy' => 9,
+    ]);
+
+    $this->actingAs(gpsAdmin())
+        ->getJson("/admin/vehicles/{$vehicle->id}/tracking-data")
+        ->assertOk()
+        ->assertJsonPath('location_source', 'driver_app')
+        ->assertJsonPath('is_online', true)
+        ->assertJsonPath('latest_location.latitude', '26.14450000')
+        ->assertJsonPath('latest_location.longitude', '91.73620000')
+        ->assertJsonCount(1, 'locations');
 });

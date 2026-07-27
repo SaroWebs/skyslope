@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\Wallet;
 use App\Models\WalletTransaction;
+use App\Models\RideBooking;
 use App\Services\CommissionService;
 use App\Services\RazorpayService;
 use Illuminate\Http\Request;
@@ -35,9 +36,19 @@ class WalletController extends Controller
             ], 404);
         }
 
+        $walletData = $wallet->toArray();
+        if ($request->user()->isDriver()) {
+            $earnings = RideBooking::where('driver_id', $request->user()->id)
+                ->where('status', 'completed');
+            $walletData['total_earnings'] = (float) (clone $earnings)->sum('driver_share');
+            $walletData['weekly_earnings'] = (float) (clone $earnings)
+                ->where('completed_at', '>=', now()->subWeek())
+                ->sum('driver_share');
+        }
+
         return response()->json([
             'success' => true,
-            'data' => $wallet,
+            'data' => $walletData,
         ]);
     }
 

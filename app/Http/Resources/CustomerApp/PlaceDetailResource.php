@@ -5,6 +5,7 @@ namespace App\Http\Resources\CustomerApp;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\URL;
 
 class PlaceDetailResource extends JsonResource
 {
@@ -25,7 +26,19 @@ class PlaceDetailResource extends JsonResource
                 'rating' => $this->google_rating === null ? null : (float) $this->google_rating,
                 'review_count' => (int) ($this->google_review_count ?? 0),
                 'reviews' => $this->google_reviews ?? [],
-                'photos' => $this->google_photos ?? [],
+                'photos' => collect($this->google_photos ?? [])->map(function (array $photo) use ($request) {
+                    $reference = $photo['photo_reference'] ?? null;
+
+                    return [
+                        ...$photo,
+                        'url' => $reference ? URL::temporarySignedRoute(
+                            'customer-app.google-place-photo',
+                            now()->addDay(),
+                            ['reference' => $reference],
+                        ) : null,
+                    ];
+                })->values()->all(),
+                'details' => $this->google_details ?? [],
                 'coordinates' => [
                     'latitude' => $this->latitude === null ? null : (float) $this->latitude,
                     'longitude' => $this->longitude === null ? null : (float) $this->longitude,

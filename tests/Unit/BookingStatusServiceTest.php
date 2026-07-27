@@ -19,6 +19,8 @@ it('allows and blocks ride transitions by actor', function () {
     expect($service->canTransition(BookingStatusService::RIDE, 'pending', 'confirmed', 'admin'))->toBeTrue()
         ->and($service->canTransition(BookingStatusService::RIDE, 'confirmed', 'driver_assigned', 'admin'))->toBeTrue()
         ->and($service->canTransition(BookingStatusService::RIDE, 'driver_assigned', 'driver_arriving', 'driver'))->toBeTrue()
+        ->and($service->canTransition(BookingStatusService::RIDE, 'pending', 'confirmed', 'driver'))->toBeFalse()
+        ->and($service->canTransition(BookingStatusService::RIDE, 'in_transit', 'cancelled', 'driver'))->toBeFalse()
         ->and($service->canTransition(BookingStatusService::RIDE, 'pickup', 'in_transit', 'driver'))->toBeTrue()
         ->and($service->canTransition(BookingStatusService::RIDE, 'in_transit', 'completed', 'driver'))->toBeTrue()
         ->and($service->canTransition(BookingStatusService::RIDE, 'completed', 'cancelled', 'admin'))->toBeFalse()
@@ -45,10 +47,21 @@ it('allows and blocks rental transitions', function () {
     expect($service->canTransition(BookingStatusService::RENTAL, 'pending', 'confirmed', 'admin'))->toBeTrue()
         ->and($service->canTransition(BookingStatusService::RENTAL, 'confirmed', 'driver_assigned', 'admin'))->toBeTrue()
         ->and($service->canTransition(BookingStatusService::RENTAL, 'driver_assigned', 'in_progress', 'driver'))->toBeTrue()
-        ->and($service->canTransition(BookingStatusService::RENTAL, 'driver_assigned', 'completed', 'driver'))->toBeTrue()
+        ->and($service->canTransition(BookingStatusService::RENTAL, 'driver_assigned', 'completed', 'driver'))->toBeFalse()
         ->and($service->canTransition(BookingStatusService::RENTAL, 'in_progress', 'completed', 'driver'))->toBeTrue()
         ->and($service->canTransition(BookingStatusService::RENTAL, 'pending', 'completed', 'admin'))->toBeFalse()
         ->and($service->canTransition(BookingStatusService::RENTAL, 'completed', 'cancelled', 'admin'))->toBeFalse()
         ->and($service->canTransition(BookingStatusService::RENTAL, 'confirmed', 'cancelled', 'customer'))->toBeTrue()
         ->and($service->canTransition(BookingStatusService::RENTAL, 'confirmed', 'driver_assigned', 'customer'))->toBeFalse();
+});
+
+it('keeps service state definitions isolated', function () {
+    $service = new BookingStatusService();
+
+    expect($service->definition(BookingStatusService::RIDE)['states'])->toContain('pickup', 'in_transit')
+        ->not->toContain('in_progress')
+        ->and($service->definition(BookingStatusService::TOUR)['states'])->toContain('in_progress')
+        ->not->toContain('pickup', 'driver_assigned')
+        ->and($service->definition(BookingStatusService::RENTAL)['states'])->toContain('driver_assigned', 'in_progress')
+        ->not->toContain('pickup', 'in_transit');
 });

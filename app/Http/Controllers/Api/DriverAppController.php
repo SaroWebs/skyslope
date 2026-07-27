@@ -9,7 +9,6 @@ use App\Models\DriverAvailability;
 use App\Models\RideBooking;
 use App\Models\TourBooking;
 use App\Models\TourDriverAssignment;
-use App\Models\Wallet;
 use App\Models\Vehicle;
 use App\Services\BookingLifecycleNotifier;
 use App\Services\CommissionService;
@@ -52,7 +51,9 @@ class DriverAppController extends Controller
                 'rental_assignments' => CarRental::where('driver_id', $driver->id)
                     ->whereIn('status', ['driver_assigned', 'in_progress'])
                     ->count(),
-                'earnings' => (float) optional(Wallet::forOwner($driver)->first())->balance,
+                'earnings' => (float) RideBooking::where('driver_id', $driver->id)
+                    ->where('status', 'completed')
+                    ->sum('driver_share'),
             ],
             'active_ride' => RideBooking::with('customer:id,name,phone')
                 ->where('driver_id', $driver->id)

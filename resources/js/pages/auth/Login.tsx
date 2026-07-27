@@ -70,6 +70,16 @@ export default function Login({ errors }: LoginProps) {
                     background-size: 40px 40px;
                     animation: auth-grid 9s linear infinite;
                 }
+
+                .auth-login-button {
+                    background: linear-gradient(135deg, #facc15, #f59e0b) !important;
+                    border: 1px solid #fde047 !important;
+                    box-shadow: 0 10px 30px rgba(245,158,11,0.28) !important;
+                    color: #111827 !important;
+                }
+                .auth-login-button:hover { background: linear-gradient(135deg, #fde047, #fbbf24) !important; }
+                .auth-login-button:focus-visible { outline: 3px solid rgba(253,224,71,0.55); outline-offset: 3px; }
+                .auth-login-button:disabled { opacity: 0.72; }
             `}</style>
 
             <Box className="auth-grid" style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }} />
@@ -209,13 +219,13 @@ export default function Login({ errors }: LoginProps) {
                                 </Group>
 
                                 <Button
+                                    className="auth-login-button"
                                     type="submit"
                                     fullWidth
                                     mt="sm"
                                     radius="md"
                                     size="md"
                                     loading={loading}
-                                    color="amber"
                                     rightSection={<ArrowRight size={18} />}
                                     styles={{
                                         root: {

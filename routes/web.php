@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\AdminController;
+use App\Http\Controllers\AdminCmsController;
 use App\Http\Controllers\AdminCouponController;
 use App\Http\Controllers\AdminCustomerController;
 use App\Http\Controllers\AdminDriverController;
@@ -91,6 +92,13 @@ Route::middleware(['auth', 'role:admin'])->prefix('admin')->name('admin.')->grou
         Route::delete('/{role}', 'destroy')->name('destroy');
     });
 
+    Route::controller(AdminCmsController::class)->prefix('cms')->name('cms.')->group(function () {
+        Route::get('/', 'index')->name('index');
+        Route::post('/', 'store')->name('store');
+        Route::put('/{cmsContent}', 'update')->name('update');
+        Route::delete('/{cmsContent}', 'destroy')->name('destroy');
+    });
+
     // Financial Management
     Route::controller(AdminFinancialController::class)->prefix('financials')->name('financials.')->group(function () {
         Route::get('/wallets', 'wallets')->name('wallets');
@@ -116,6 +124,7 @@ Route::middleware(['auth', 'role:admin'])->prefix('admin')->name('admin.')->grou
         Route::post('/drivers', 'store')->name('drivers.store');
         Route::get('/drivers/{driver}', 'show')->name('drivers.show');
         Route::put('/drivers/{driver}', 'update')->name('drivers.update');
+        Route::put('/drivers/{driver}/vehicle', 'assignVehicle')->name('drivers.vehicle');
         Route::post('/drivers/{driver}/approve', 'approve')->name('drivers.approve');
         Route::post('/drivers/{driver}/suspend', 'suspend')->name('drivers.suspend');
         Route::post('/drivers/{driver}/activate', 'activate')->name('drivers.activate');

@@ -65,6 +65,11 @@ return [
         'merchant_account' => env('RAZORPAY_MERCHANT_ACCOUNT'),
     ],
 
+    'insurance' => [
+        'provider_name' => env('INSURANCE_PROVIDER_NAME'),
+        'provider_policy_url' => env('INSURANCE_PROVIDER_POLICY_URL'),
+    ],
+
     'twilio' => [
         'sid' => env('TWILIO_SID'),
         'token' => env('TWILIO_TOKEN'),

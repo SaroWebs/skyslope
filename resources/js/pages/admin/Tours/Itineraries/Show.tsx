@@ -1,6 +1,7 @@
 import React from 'react';
 import { Link } from '@inertiajs/react';
 import AdminLayout from '../../../../layouts/AdminLayout';
+import { resolveMediaUrl } from '@/lib/utils';
 
 interface Place {
     id: number;
@@ -9,6 +10,7 @@ interface Place {
     media: Array<{
         id: number;
         file_path: string;
+        url?: string;
         file_type: string;
     }>;
 }
@@ -29,12 +31,11 @@ interface Itinerary {
 
 interface ShowItineraryProps {
     title: string;
-    user: any;
     tour: Tour;
     itinerary: Itinerary;
 }
 
-export default function ShowItinerary({ title, user, tour, itinerary }: ShowItineraryProps) {
+export default function ShowItinerary({ title, tour, itinerary }: ShowItineraryProps) {
     return (
         <AdminLayout title={title}>
             <div className="bg-white shadow rounded-lg">
@@ -113,7 +114,7 @@ export default function ShowItinerary({ title, user, tour, itinerary }: ShowItin
                                             <div key={media.id} className="aspect-square bg-gray-200 rounded-lg overflow-hidden">
                                                 {media.file_type === 'image' ? (
                                                     <img
-                                                        src={`/storage/${media.file_path}`}
+                                                        src={resolveMediaUrl(media.url || media.file_path)}
                                                         alt="Place media"
                                                         className="w-full h-full object-cover hover:scale-105 transition-transform duration-200"
                                                     />

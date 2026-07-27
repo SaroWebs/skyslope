@@ -12,6 +12,7 @@ use App\Http\Resources\CustomerApp\TourResource;
 use App\Models\CarCategory;
 use App\Models\CarRental;
 use App\Models\CarRentalReview;
+use App\Models\CmsContent;
 use App\Models\Place;
 use App\Models\PlaceMedia;
 use App\Models\PlaceReview;
@@ -29,9 +30,11 @@ use App\Services\CustomerCouponService;
 use App\Services\DriverDispatchService;
 use App\Services\RideEstimateService;
 use App\Services\StartVerificationService;
+use App\Support\MediaUrl;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Str;
 
@@ -42,7 +45,7 @@ class CustomerAppController extends Controller
         return response()->json([
             'success' => true,
             'data' => [
-                'featured_tours' => Tour::with(['category', 'itineraries.place.media' => fn ($query) => $query->approved(), 'schedules' => fn ($query) => $query
+                'featured_tours' => Tour::with(['category', 'schedules' => fn ($query) => $query
                     ->where('status', 'open')->where('departure_date', '>=', now()->toDateString())])
                     ->active()
                     ->where(fn ($query) => $query->whereNull('available_to')->orWhereDate('available_to', '>=', now()))
@@ -57,7 +60,9 @@ class CustomerAppController extends Controller
                     ->take(8)
                     ->get()
                     ->map(fn (Place $place) => $this->formatPublicPlaceSummary($place)),
-                'car_categories' => CarCategory::active()->take(6)->get(),
+                'car_categories' => CarCategory::active()->take(6)->get()
+                    ->map(fn (CarCategory $category) => $this->formatPublicCarCategory($category)),
+                'cms' => CmsContent::publishedPayload('customer-web'),
             ],
         ]);
     }
@@ -66,8 +71,10 @@ class CustomerAppController extends Controller
     {
         return response()->json([
             'success' => true,
-            'data' => Tour::with(['category', 'itineraries.place.media' => fn ($query) => $query->approved(), 'schedules' => function ($q) {
-                $q->where('status', 'open')->where('departure_date', '>=', now()->toDateString());
+            'data' => Tour::with(['category', 'schedules' => function ($q) {
+                $q->where('status', 'open')
+                    ->whereDate('departure_date', '>=', now()->toDateString())
+                    ->whereColumn('total_seats', '>', DB::raw('booked_seats + reserved_seats'));
             }])
                 ->active()
                 ->where(fn ($query) => $query->whereNull('available_from')->orWhereDate('available_from', '<=', now()))
@@ -93,7 +100,9 @@ class CustomerAppController extends Controller
         );
 
         $tour->load(['category', 'itineraries.place.media' => fn ($query) => $query->approved(), 'schedules' => function ($q) {
-            $q->where('status', 'open')->where('departure_date', '>=', now());
+            $q->where('status', 'open')
+                ->whereDate('departure_date', '>=', now()->toDateString())
+                ->whereColumn('total_seats', '>', DB::raw('booked_seats + reserved_seats'));
         }]);
 
         return response()->json([
@@ -108,7 +117,8 @@ class CustomerAppController extends Controller
 
         $schedules = $tour->schedules()
             ->where('status', 'open')
-            ->where('departure_date', '>=', now())
+            ->whereDate('departure_date', '>=', now()->toDateString())
+            ->whereColumn('total_seats', '>', DB::raw('booked_seats + reserved_seats'))
             ->get()
             ->map(fn (TourSchedule $schedule) => [
                 'id' => $schedule->id,
@@ -177,9 +187,31 @@ class CustomerAppController extends Controller
         ]);
     }
 
+    public function publicGooglePlacePhoto(Request $request)
+    {
+        $validated = $request->validate([
+            'reference' => 'required|string|max:4096',
+        ]);
+        $apiKey = config('services.google_maps.api_key');
+        abort_unless($apiKey, 503, 'Google Maps is not configured.');
+
+        $photo = Http::timeout(12)->get('https://maps.googleapis.com/maps/api/place/photo', [
+            'photo_reference' => $validated['reference'],
+            'maxwidth' => 1200,
+            'key' => $apiKey,
+        ]);
+        abort_unless($photo->ok(), 404, 'Google place photo is unavailable.');
+
+        return response($photo->body(), 200, [
+            'Content-Type' => $photo->header('Content-Type', 'image/jpeg'),
+            'Cache-Control' => 'public, max-age=86400',
+        ]);
+    }
+
     public function publicCarCategories()
     {
-        $categories = CarCategory::active()->get();
+        $categories = CarCategory::active()->get()
+            ->map(fn (CarCategory $category) => $this->formatPublicCarCategory($category));
 
         return response()->json([
             'success' => true,
@@ -301,6 +333,10 @@ class CustomerAppController extends Controller
 
                 if ((int) $schedule->tour_id !== (int) $request->tour_id) {
                     throw new \RuntimeException('The selected departure does not belong to this tour.');
+                }
+
+                if ($schedule->departure_date->startOfDay()->lt(now()->startOfDay())) {
+                    throw new \RuntimeException('This departure has already left. Select a future departure.');
                 }
 
                 $tour = $schedule->tour;
@@ -1279,6 +1315,24 @@ class CustomerAppController extends Controller
     private function formatPublicPlaceSummary(Place $place): array
     {
         return (new PlaceSummaryResource($place))->resolve(request());
+    }
+
+    private function formatPublicCarCategory(CarCategory $category): array
+    {
+        $images = collect($category->images ?? [])
+            ->map(fn ($image) => MediaUrl::resolve($image))
+            ->filter()
+            ->values()
+            ->all();
+
+        return [
+            ...$category->toArray(),
+            'images' => $images,
+            'cover_image' => $images[0] ?? null,
+            'capacity' => (int) $category->seats,
+            'base_fare' => (float) $category->base_price_per_day,
+            'per_km_fare' => (float) $category->price_per_km,
+        ];
     }
 
     private function formatPublicTour(Tour $tour, bool $includePlaces = false): array

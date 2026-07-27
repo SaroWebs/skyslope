@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Vehicle;
 use App\Models\CarCategory;
 use App\Models\Driver;
+use App\Models\DriverLocation;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Validation\Rule;
@@ -101,36 +102,105 @@ class AdminVehicleController extends Controller
     public function tracking(Vehicle $vehicle)
     {
         $vehicle->load(['category', 'driver', 'tracker']);
-        $locations = $vehicle->locations()
-            ->latest('recorded_at')
-            ->limit(100)
-            ->get()
-            ->sortBy('recorded_at')
-            ->values();
+        $tracking = $this->resolveTracking($vehicle);
 
         return inertia('admin/Vehicles/Tracking', [
             'title' => 'Vehicle GPS Tracking',
             'vehicle' => $vehicle,
             'tracker' => $vehicle->tracker,
-            'locations' => $locations,
+            ...$tracking,
             'google_maps_api_key' => config('services.google_maps.api_key'),
         ]);
     }
 
     public function trackingData(Vehicle $vehicle)
     {
-        $tracker = $vehicle->tracker;
+        $vehicle->loadMissing(['driver', 'tracker']);
+        $tracking = $this->resolveTracking($vehicle);
 
         return response()->json([
-            'tracker' => $tracker,
-            'is_online' => (bool) $tracker?->isOnline(),
-            'locations' => $vehicle->locations()
-                ->latest('recorded_at')
+            'tracker' => $vehicle->tracker,
+            ...$tracking,
+        ]);
+    }
+
+    /**
+     * Prefer a live hardware tracker. If it is unavailable, use the assigned
+     * driver's app location; a stale GPS fix remains the final last-known fallback.
+     */
+    private function resolveTracking(Vehicle $vehicle): array
+    {
+        $tracker = $vehicle->tracker;
+        $trackerOnline = (bool) $tracker?->isOnline();
+        $hasTrackerFix = filled($tracker?->latitude) && filled($tracker?->longitude);
+
+        $vehicleLocations = $vehicle->locations()
+            ->latest('recorded_at')
+            ->limit(100)
+            ->get()
+            ->sortBy('recorded_at')
+            ->values();
+
+        $driverLocations = $vehicle->driver_id
+            ? DriverLocation::query()
+                ->where('driver_id', $vehicle->driver_id)
+                ->latest()
                 ->limit(100)
                 ->get()
-                ->sortBy('recorded_at')
-                ->values(),
-        ]);
+                ->sortBy('created_at')
+                ->values()
+            : collect();
+
+        $driverLatest = $driverLocations->last();
+        $driverOnline = (bool) $driverLatest?->created_at?->greaterThanOrEqualTo(now()->subMinutes(5));
+
+        if ($trackerOnline && $hasTrackerFix) {
+            $source = 'vehicle_gps';
+            $locations = $vehicleLocations;
+            $latestLocation = [
+                'latitude' => $tracker->latitude,
+                'longitude' => $tracker->longitude,
+                'speed_kmh' => $tracker->speed_kmh,
+                'heading' => $tracker->heading,
+                'accuracy_m' => $tracker->accuracy_m,
+                'recorded_at' => $tracker->last_recorded_at ?? $tracker->last_ping_at,
+            ];
+        } elseif ($driverLatest) {
+            $source = 'driver_app';
+            $locations = $driverLocations->map(fn (DriverLocation $location) => [
+                'id' => 'driver-'.$location->id,
+                'latitude' => $location->latitude,
+                'longitude' => $location->longitude,
+                'speed_kmh' => $location->speed,
+                'heading' => $location->heading,
+                'accuracy_m' => $location->accuracy,
+                'ignition_on' => null,
+                'recorded_at' => $location->created_at,
+            ])->values();
+            $latestLocation = $locations->last();
+        } elseif ($hasTrackerFix) {
+            $source = 'vehicle_gps_stale';
+            $locations = $vehicleLocations;
+            $latestLocation = [
+                'latitude' => $tracker->latitude,
+                'longitude' => $tracker->longitude,
+                'speed_kmh' => $tracker->speed_kmh,
+                'heading' => $tracker->heading,
+                'accuracy_m' => $tracker->accuracy_m,
+                'recorded_at' => $tracker->last_recorded_at ?? $tracker->last_ping_at,
+            ];
+        } else {
+            $source = 'unavailable';
+            $locations = collect();
+            $latestLocation = null;
+        }
+
+        return [
+            'is_online' => $source === 'vehicle_gps' ? $trackerOnline : ($source === 'driver_app' && $driverOnline),
+            'location_source' => $source,
+            'latest_location' => $latestLocation,
+            'locations' => $locations,
+        ];
     }
 
     public function provisionTracker(Request $request, Vehicle $vehicle)

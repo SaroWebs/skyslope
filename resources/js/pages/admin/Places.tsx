@@ -1,6 +1,7 @@
 import React from 'react';
 import { Head, Link, router, usePage } from '@inertiajs/react';
 import AdminLayout from '../../layouts/AdminLayout';
+import { resolveMediaUrl } from '@/lib/utils';
 import { 
     SimpleGrid, 
     Card, 
@@ -88,7 +89,7 @@ export default function Places({ title, places }: PlacesProps) {
                             <Card.Section>
                                 {place.media && place.media.length > 0 ? (
                                     <Image
-                                        src={`/storage/${place.media[0].path}`}
+                                        src={resolveMediaUrl(place.media[0].path)}
                                         height={180}
                                         alt={place.name}
                                         fallbackSrc="https://placehold.co/600x400?text=No+Image"

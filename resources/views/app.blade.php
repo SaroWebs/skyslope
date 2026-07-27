@@ -15,7 +15,7 @@
         <link href="https://fonts.bunny.net/css?family=instrument-sans:400,500,600" rel="stylesheet" />
 
         @if(config('app.env') !== 'local' || env('VITE_GOOGLE_MAPS_API_KEY'))
-            <script src="https://maps.googleapis.com/maps/api/js?key={{ env('VITE_GOOGLE_MAPS_API_KEY') }}&libraries=places,geometry" async defer></script>
+            <script src="https://maps.googleapis.com/maps/api/js?key={{ env('VITE_GOOGLE_MAPS_API_KEY') }}&libraries=places,geometry,marker&v=weekly" async defer></script>
         @endif
 
         @viteReactRefresh

@@ -39,8 +39,9 @@ class SendBookingLifecycleNotification implements ShouldQueue
     public function handle(NotificationService $notifications): void
     {
         $booking = $this->booking();
-        if (!$booking || !$booking->customer) {
+        if (! $booking || ! $booking->customer) {
             Log::warning('Booking notification skipped: booking or customer missing', $this->logContext());
+
             return;
         }
 
@@ -51,13 +52,13 @@ class SendBookingLifecycleNotification implements ShouldQueue
         $failed = collect($channels)
             ->filter(fn (string $channel) => array_key_exists($channel, $results)
                 && $results[$channel] === false
-                && $this->channelConfigured($channel))
+                && $notifications->isChannelConfigured($channel))
             ->values()
             ->all();
         $skipped = collect($channels)
             ->filter(fn (string $channel) => array_key_exists($channel, $results)
                 && $results[$channel] === false
-                && !$this->channelConfigured($channel))
+                && ! $notifications->isChannelConfigured($channel))
             ->values()
             ->all();
 
@@ -110,7 +111,7 @@ class SendBookingLifecycleNotification implements ShouldQueue
         if ($booking->whatsapp_notification ?? true) {
             $channels[] = 'whatsapp';
         }
-        if (($booking->email_notification ?? false) && !empty($booking->customer?->email)) {
+        if (($booking->email_notification ?? false) && ! empty($booking->customer?->email)) {
             $channels[] = 'email';
         }
 
@@ -146,18 +147,8 @@ class SendBookingLifecycleNotification implements ShouldQueue
         ];
     }
 
-    private function channelConfigured(string $channel): bool
-    {
-        return match ($channel) {
-            'sms' => filled(config('services.twilio.sid')) && filled(config('services.twilio.token')),
-            'whatsapp' => filled(config('services.whatsapp.api_url')) && filled(config('services.whatsapp.api_key')),
-            'email' => true,
-            default => false,
-        };
-    }
-
     /**
-     * @param array<string, mixed> $extra
+     * @param  array<string, mixed>  $extra
      * @return array<string, mixed>
      */
     private function logContext(array $extra = []): array

@@ -274,6 +274,64 @@ const GlobalStyles = () => (
         .mantine-Badge-root[data-variant="outline"] {
             border-color: rgba(255,255,255,0.16) !important;
         }
+
+        /* Legacy admin pages still use light Tailwind utilities. Keep every
+           content surface readable while those pages are migrated. */
+        .admin-shell {
+            --mantine-color-text: rgba(255,255,255,0.88);
+            --mantine-color-body: #080808;
+            color: rgba(255,255,255,0.88);
+        }
+        .admin-shell .mantine-Title-root,
+        .admin-shell .mantine-Text-root:not([data-dimmed]),
+        .admin-shell h1,
+        .admin-shell h2,
+        .admin-shell h3,
+        .admin-shell h4,
+        .admin-shell dd {
+            color: rgba(255,255,255,0.9);
+        }
+        .admin-shell .mantine-Text-root[data-dimmed],
+        .admin-shell .mantine-Input-description,
+        .admin-shell dt,
+        .admin-shell [class*="text-gray-500"],
+        .admin-shell [class*="text-gray-600"] {
+            color: rgba(255,255,255,0.62) !important;
+        }
+        .admin-shell [class*="text-gray-700"],
+        .admin-shell [class*="text-gray-900"],
+        .admin-shell [class~="text-black"] {
+            color: rgba(255,255,255,0.88) !important;
+        }
+        .admin-shell [class~="bg-white"],
+        .admin-shell [class*="bg-gray-50"],
+        .admin-shell [class*="bg-gray-100"] {
+            background-color: rgba(17,17,17,0.86) !important;
+        }
+        .admin-shell [class*="border-gray-"],
+        .admin-shell input,
+        .admin-shell select,
+        .admin-shell textarea {
+            border-color: rgba(255,255,255,0.12) !important;
+        }
+        .admin-shell input:not([type="checkbox"]):not([type="radio"]),
+        .admin-shell select,
+        .admin-shell textarea {
+            background-color: rgba(255,255,255,0.045) !important;
+            color: rgba(255,255,255,0.9) !important;
+        }
+        .admin-shell option { background: #111; color: #f8fafc; }
+        .admin-shell input[type="file"]::file-selector-button {
+            background: rgba(251,191,36,0.12);
+            border: 0;
+            color: #fbbf24;
+            min-height: 42px;
+            padding: 0 14px;
+        }
+        .admin-shell a, .admin-shell button { outline-offset: 3px; }
+        .admin-shell a:focus-visible, .admin-shell button:focus-visible {
+            outline: 3px solid rgba(251,191,36,0.72);
+        }
     `}</style>
 );
 
@@ -571,9 +629,11 @@ const AdminLayout = ({ children, title = 'Admin Panel' }: AdminLayoutProps) => {
             href: '#',
             icon: ShieldCheck,
             current:
+                url.startsWith('/admin/cms') ||
                 url.startsWith('/admin/roles') ||
                 url.startsWith('/admin/settings'),
             children: [
+                { name: 'Frontend CMS', href: '/admin/cms' },
                 { name: 'System Settings', href: '/admin/settings' },
                 { name: 'Roles & Permissions', href: '/admin/roles' },
             ],
@@ -598,6 +658,7 @@ const AdminLayout = ({ children, title = 'Admin Panel' }: AdminLayoutProps) => {
             }} />
 
             <AppShell
+                className="admin-shell"
                 header={{ height: 68 }}
                 navbar={{ width: 268, breakpoint: 'sm', collapsed: { mobile: !opened } }}
                 padding="md"

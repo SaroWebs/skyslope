@@ -59,3 +59,23 @@ it('publishes admin place images and videos immediately', function () {
         'approval_status' => 'approved',
     ]);
 });
+
+it('publishes admin panorama images as a distinct media type', function () {
+    Storage::fake('public');
+    $place = Place::create(['name' => 'Temple Courtyard', 'slug' => 'temple-courtyard', 'is_active' => true]);
+    $admin = User::create(['name' => 'Panorama Admin', 'email' => 'panorama-admin@example.com', 'password' => 'password']);
+    $role = Role::create(['name' => 'admin', 'display_name' => 'Admin']);
+    $admin->roles()->attach($role);
+
+    $this->actingAs($admin)->post('/admin/places/'.$place->id.'/media', [
+        'file' => UploadedFile::fake()->image('view-360.jpg', 1600, 800),
+        'type' => 'panorama',
+        'caption' => 'Temple courtyard 360 view',
+    ])->assertRedirect();
+
+    $this->assertDatabaseHas('place_media', [
+        'place_id' => $place->id,
+        'type' => 'panorama',
+        'approval_status' => 'approved',
+    ]);
+});

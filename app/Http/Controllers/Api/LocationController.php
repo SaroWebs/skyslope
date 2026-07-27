@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\Destination;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Validator;
@@ -27,6 +28,11 @@ class LocationController extends Controller
         }
 
         $query = $request->input('query');
+        $cacheKey = 'public_location_search:'.sha1(mb_strtolower(trim($query)));
+        if (Cache::has($cacheKey)) {
+            return response()->json(['results' => Cache::get($cacheKey)]);
+        }
+
         $results = [];
 
         // First, search in local destinations
@@ -51,13 +57,22 @@ class LocationController extends Controller
 
         $results = $localDestinations->toArray();
 
+        // Local destinations are authoritative and should return immediately.
+        // Waiting for external providers merely to fill five suggestions made
+        // common searches feel unavailable when those providers were slow.
+        if ($results !== []) {
+            Cache::put($cacheKey, $results, now()->addMinutes(10));
+
+            return response()->json(['results' => $results]);
+        }
+
         // If Google Maps API key is available, search Google Places Autocomplete
         $googleApiKey = config('services.google_maps.api_key') ?: env('GOOGLE_MAPS_API_KEY');
 
         if ($googleApiKey && count($results) < 5) {
             try {
                 // Use Autocomplete API — better for partial queries like "Guw", faster and cheaper than Text Search
-                $googleResponse = Http::timeout(5)->withoutVerifying()->get('https://maps.googleapis.com/maps/api/place/autocomplete/json', [
+                $googleResponse = Http::connectTimeout(2)->timeout(3)->withoutVerifying()->get('https://maps.googleapis.com/maps/api/place/autocomplete/json', [
                     'input' => $query,
                     'key' => $googleApiKey,
                     'components' => 'country:in', // Restrict to India
@@ -102,7 +117,7 @@ class LocationController extends Controller
         // Fallback: If results are still low (< 5), try Photon (OpenStreetMap)
         if (count($results) < 5) {
             try {
-                $photonResponse = Http::timeout(5)->withoutVerifying()->get('https://photon.komoot.io/api/', [
+                $photonResponse = Http::connectTimeout(2)->timeout(3)->withoutVerifying()->get('https://photon.komoot.io/api/', [
                     'q' => $query,
                     'limit' => 5 - count($results),
                 ]);
@@ -146,6 +161,8 @@ class LocationController extends Controller
                 \Log::warning('Photon API error: '.$e->getMessage());
             }
         }
+
+        Cache::put($cacheKey, $results, now()->addMinutes(10));
 
         return response()->json(['results' => $results]);
     }

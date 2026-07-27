@@ -2,7 +2,6 @@
 
 namespace App\Services;
 
-use App\Models\CarCategory;
 use App\Models\Driver;
 use App\Models\DriverAvailability;
 use App\Models\RideBooking;
@@ -285,6 +284,10 @@ class DriverDispatchService
                 ->exists()
             || $driver->tourDriverAssignments()
                 ->whereIn('status', ['accepted'])
+                ->whereHas('schedule', function ($query) {
+                    $query->whereDate('departure_date', '<=', today())
+                        ->whereDate('return_date', '>=', today());
+                })
                 ->exists();
     }
 

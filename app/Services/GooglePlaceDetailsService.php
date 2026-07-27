@@ -34,7 +34,12 @@ class GooglePlaceDetailsService
         $response = Http::timeout(8)->get('https://maps.googleapis.com/maps/api/place/details/json', [
             'place_id' => $place->google_place_id,
             'key' => $apiKey,
-            'fields' => 'place_id,name,rating,user_ratings_total,reviews,photos,geometry',
+            'fields' => implode(',', [
+                'place_id', 'name', 'formatted_address', 'formatted_phone_number',
+                'international_phone_number', 'rating', 'user_ratings_total',
+                'reviews', 'photos', 'geometry', 'opening_hours', 'website', 'url',
+                'business_status', 'types', 'price_level', 'editorial_summary',
+            ]),
         ]);
 
         if (!$response->ok()) {
@@ -62,6 +67,7 @@ class GooglePlaceDetailsService
             'google_review_count' => $result['user_ratings_total'] ?? 0,
             'google_reviews' => $this->mapReviews($result['reviews'] ?? []),
             'google_photos' => $this->mapPhotos($result['photos'] ?? []),
+            'google_details' => $this->mapDetails($result),
             'latitude' => $location['lat'] ?? $place->latitude,
             'longitude' => $location['lng'] ?? $place->longitude,
             'google_synced_at' => now(),
@@ -112,5 +118,22 @@ class GooglePlaceDetailsService
             ])
             ->values()
             ->all();
+    }
+
+    private function mapDetails(array $result): array
+    {
+        return [
+            'name' => $result['name'] ?? null,
+            'formatted_address' => $result['formatted_address'] ?? null,
+            'formatted_phone_number' => $result['formatted_phone_number'] ?? null,
+            'international_phone_number' => $result['international_phone_number'] ?? null,
+            'opening_hours' => $result['opening_hours'] ?? null,
+            'website' => $result['website'] ?? null,
+            'google_maps_url' => $result['url'] ?? null,
+            'business_status' => $result['business_status'] ?? null,
+            'types' => $result['types'] ?? [],
+            'price_level' => $result['price_level'] ?? null,
+            'editorial_summary' => $result['editorial_summary']['overview'] ?? null,
+        ];
     }
 }

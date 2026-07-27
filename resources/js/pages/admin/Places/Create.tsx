@@ -28,6 +28,11 @@ interface SearchResult {
     type: string;
     lat?: number;
     lng?: number;
+    city?: string;
+    state?: string;
+    country?: string;
+    rating?: number;
+    reviewCount?: number;
 }
 
 export default function Create({ title }: CreatePlaceProps) {
@@ -55,6 +60,11 @@ export default function Create({ title }: CreatePlaceProps) {
         setData('google_place_id', location.id);
         setData('latitude', location.lat?.toString() || '');
         setData('longitude', location.lng?.toString() || '');
+        setData('city', location.city || '');
+        setData('state', location.state || '');
+        setData('country', location.country || 'India');
+        setData('google_rating', location.rating?.toString() || '');
+        setData('google_review_count', location.reviewCount?.toString() || '0');
     };
 
     const handleSubmit = (event: React.FormEvent) => {

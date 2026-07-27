@@ -105,6 +105,13 @@ class ProductionReadinessService
                 'critical'
             ),
             $this->check(
+                'insurance.provider',
+                filled(config('services.insurance.provider_name')) && filled(config('services.insurance.provider_policy_url')),
+                'Insurance provider identity and policy wording URL are configured.',
+                'Configure INSURANCE_PROVIDER_NAME and INSURANCE_PROVIDER_POLICY_URL before enabling insurance issuance.',
+                'critical'
+            ),
+            $this->check(
                 'maps.provider',
                 config('services.maps.provider') !== 'fallback' && (
                     filled(config('services.maps.google_api_key')) || filled(config('services.maps.mapbox_api_key'))

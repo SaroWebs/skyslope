@@ -13,6 +13,7 @@ class TourItinerary extends Model
         'tour_id',
         'place_id',
         'day_number',
+        'stop_order',
         'day_index',
         'time',
         'title',
@@ -28,6 +29,7 @@ class TourItinerary extends Model
         'activities'     => 'array',
         'meals_included' => 'array',
         'day_number'     => 'integer',
+        'stop_order'     => 'integer',
         'day_index'      => 'integer',
     ];
 

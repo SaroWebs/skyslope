@@ -19,7 +19,7 @@ class BookingCancellationService
         ?int $processedBy = null
     ): ?BookingRefund {
         return DB::transaction(function () use ($booking, $serviceType, $reason, $processedBy) {
-            $booking->refresh();
+            $booking = $booking->newQuery()->lockForUpdate()->findOrFail($booking->getKey());
 
             if ($booking->status === 'cancelled') {
                 return $booking->refunds()->latest()->first();
@@ -27,6 +27,8 @@ class BookingCancellationService
 
             $totalAmount = $this->bookingTotal($booking);
             $isPaid = $booking->payment_status === 'paid';
+            $wasConfirmed = $booking instanceof TourBooking
+                && ($booking->status === 'confirmed' || $isPaid);
             $cancellationFee = $isPaid ? $this->calculateFee($booking, $serviceType) : 0.0;
             $refundAmount = $isPaid ? max(0, $totalAmount - $cancellationFee) : 0.0;
 
@@ -37,6 +39,10 @@ class BookingCancellationService
                 'cancellation_fee' => $cancellationFee,
                 'refund_amount' => $refundAmount,
             ])->save();
+
+            if ($booking instanceof TourBooking) {
+                $this->releaseTourSeats($booking, $wasConfirmed);
+            }
 
             if (!$isPaid || $refundAmount <= 0) {
                 return null;
@@ -146,6 +152,18 @@ class BookingCancellationService
             $booking instanceof CarRental => (float) $booking->total_price,
             default => 0.0,
         };
+    }
+
+    private function releaseTourSeats(TourBooking $booking, bool $wasConfirmed): void
+    {
+        $schedule = $booking->schedule()->lockForUpdate()->first();
+        if (! $schedule) {
+            return;
+        }
+
+        $seats = $booking->getTotalPax();
+        $column = $wasConfirmed ? 'booked_seats' : 'reserved_seats';
+        $schedule->decrement($column, min((int) $schedule->{$column}, $seats));
     }
 
     private function bookingStartAt(Model $booking): mixed

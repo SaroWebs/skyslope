@@ -9,6 +9,8 @@ use App\Events\RideStatusUpdated;
 use App\Events\TourLocationUpdated;
 use App\Http\Controllers\Controller;
 use App\Models\CarRental;
+use App\Models\Customer;
+use App\Models\Driver;
 use App\Models\DriverAvailability;
 use App\Models\DriverLocation;
 use App\Models\InsurancePolicy;
@@ -147,8 +149,8 @@ class TrackingController extends Controller
 
         // Verify authorization
         $user = $request->user();
-        $isDriver = $booking->driver_id === $user->id;
-        $isCustomer = $booking->customer_id === $user->id;
+        $isDriver = $user instanceof Driver && (int) $booking->driver_id === (int) $user->id;
+        $isCustomer = $user instanceof Customer && (int) $booking->customer_id === (int) $user->id;
         $isAdmin = method_exists($user, 'isAdmin') && $user->isAdmin();
 
         Gate::authorize('updateStatus', $booking);
@@ -215,6 +217,12 @@ class TrackingController extends Controller
         }
 
         $booking->update($updateData);
+        $cashPaymentConfirmed = false;
+        if ($requestedStatus === 'completed' && $booking->payment_method === 'cash' && $booking->payment_status !== 'paid') {
+            $booking->update(['payment_status' => 'paid']);
+            $cashPaymentConfirmed = true;
+        }
+
         if ($requestedStatus === 'completed' && $booking->fresh()->payment_status === 'paid') {
             app(CommissionService::class)->settleRide($booking->fresh());
         }
@@ -244,6 +252,14 @@ class TrackingController extends Controller
             app(BookingLifecycleNotifier::class)->emit($booking->fresh('customer'), $notificationAction, [
                 'previous_status' => $previousStatus,
                 'actor' => $actor,
+            ]);
+        }
+
+        if ($cashPaymentConfirmed) {
+            app(BookingLifecycleNotifier::class)->emit($booking->fresh('customer'), 'payment.paid', [
+                'previous_status' => 'pending',
+                'actor' => $actor,
+                'payment_method' => 'cash',
             ]);
         }
 
@@ -702,11 +718,14 @@ class TrackingController extends Controller
         $activeIndex = array_search($normalized, $steps, true);
         $activeIndex = $activeIndex === false ? -1 : $activeIndex;
 
-        return collect($steps)->map(function (string $step, int $index) use ($activeIndex, $serviceType, $startedVerified) {
+        return collect($steps)->map(function (string $step, int $index) use ($activeIndex, $serviceType, $startedVerified, $normalized) {
             return [
                 'key' => $step,
                 'label' => $this->statusLabel($serviceType, $step),
-                'done' => $index < $activeIndex || ($step === 'in_transit' && $startedVerified) || ($step === 'in_progress' && $startedVerified),
+                'done' => $index < $activeIndex
+                    || ($step === 'completed' && $normalized === 'completed')
+                    || ($step === 'in_transit' && $startedVerified)
+                    || ($step === 'in_progress' && $startedVerified),
                 'active' => $index === $activeIndex,
             ];
         })->values()->all();

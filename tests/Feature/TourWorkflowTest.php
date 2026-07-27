@@ -38,12 +38,13 @@ it('creates a tour first and derives duration from sequential itinerary days', f
         ->and($tour->duration_days)->toBe(0)
         ->and($tour->itineraries)->toHaveCount(0);
 
-    foreach ([$firstPlace, $secondPlace] as $index => $place) {
+    foreach ([[$firstPlace, 1, '09:00'], [$secondPlace, 1, '14:00'], [$firstPlace, 2, '10:00']] as $index => [$place, $day, $time]) {
         $this->actingAs($admin)->post("/admin/tours/{$tour->id}/itineraries", [
             'place_id' => $place->id,
-            'time' => '09:00',
+            'day_number' => $day,
+            'time' => $time,
             'title' => $place->name,
-            'details' => "Plan for day ".($index + 1),
+            'details' => "Plan for visit ".($index + 1),
             'activities' => ['Guided visit'],
             'meals_included' => ['breakfast'],
         ])->assertRedirect();
@@ -51,9 +52,22 @@ it('creates a tour first and derives duration from sequential itinerary days', f
 
     expect($tour->fresh()->duration_days)->toBe(2)
         ->and($tour->fresh()->duration_nights)->toBe(1)
-        ->and($tour->itineraries()->pluck('day_number')->all())->toBe([1, 2]);
+        ->and($tour->itineraries()->pluck('day_number')->all())->toBe([1, 1, 2])
+        ->and($tour->itineraries()->pluck('stop_order')->all())->toBe([1, 2, 1]);
+
+    $this->getJson("/api/customer-app/public/tours/{$tour->id}")
+        ->assertOk()
+        ->assertJsonPath('data.itineraries.0.day_number', 1)
+        ->assertJsonPath('data.itineraries.0.stop_order', 1)
+        ->assertJsonPath('data.itineraries.1.day_number', 1)
+        ->assertJsonPath('data.itineraries.1.stop_order', 2)
+        ->assertJsonPath('data.itineraries.2.day_number', 2);
 
     $this->actingAs($admin)->delete("/admin/tours/{$tour->id}/itineraries/{$tour->itineraries()->first()->id}")->assertRedirect();
+    expect($tour->fresh()->duration_days)->toBe(2)
+        ->and($tour->itineraries()->where('day_number', 1)->first()->stop_order)->toBe(1);
+
+    $this->actingAs($admin)->delete("/admin/tours/{$tour->id}/itineraries/{$tour->itineraries()->where('day_number', 1)->first()->id}")->assertRedirect();
     expect($tour->fresh()->duration_days)->toBe(1)
         ->and($tour->fresh()->duration_nights)->toBe(0)
         ->and($tour->itineraries()->first()->day_number)->toBe(1);
@@ -79,6 +93,84 @@ it('rejects booking a departure that belongs to a different tour', function () {
         'tour_id' => $first->id, 'tour_schedule_id' => $schedule->id,
         'number_of_adults' => 1, 'number_of_children' => 0, 'payment_method' => 'cash',
     ])->assertStatus(422)->assertJsonPath('message', 'The selected departure does not belong to this tour.');
+
+    $this->assertDatabaseCount('tour_bookings', 0);
+    expect($schedule->fresh()->reserved_seats)->toBe(0);
+});
+
+it('completes the customer booking and cancellation cycle while keeping seat inventory correct', function () {
+    $customer = Customer::create(['name' => 'Cycle Customer', 'phone' => '9000000043']);
+    $tour = Tour::create([
+        'title' => 'Cycle Tour', 'slug' => 'cycle-tour', 'price_per_person' => 2000, 'child_price' => 1000,
+        'available_from' => now(), 'available_to' => now()->addMonth(), 'is_active' => true,
+    ]);
+    $schedule = TourSchedule::create([
+        'tour_id' => $tour->id, 'departure_date' => now()->addWeek(), 'return_date' => now()->addDays(8),
+        'total_seats' => 6, 'status' => 'open',
+    ]);
+    TourSchedule::create([
+        'tour_id' => $tour->id, 'departure_date' => now()->addDays(2), 'return_date' => now()->addDays(3),
+        'total_seats' => 2, 'booked_seats' => 2, 'status' => 'open',
+    ]);
+    Sanctum::actingAs($customer);
+
+    $this->getJson("/api/customer-app/public/tours/{$tour->id}")
+        ->assertOk()
+        ->assertJsonPath('data.schedules.0.id', $schedule->id);
+    $this->getJson("/api/customer-app/public/tours/{$tour->id}/schedules")
+        ->assertOk()
+        ->assertJsonPath('data.0.id', $schedule->id);
+
+    $response = $this->postJson('/api/customer-app/tours/book', [
+        'tour_id' => $tour->id,
+        'tour_schedule_id' => $schedule->id,
+        'number_of_adults' => 2,
+        'number_of_children' => 1,
+        'payment_method' => 'cash',
+        'pickup_option' => 'Hotel pickup',
+    ])->assertCreated()
+        ->assertJsonPath('success', true)
+        ->assertJsonPath('receipt.service_type', 'tour')
+        ->assertJsonPath('receipt.amount', 5000);
+
+    $bookingId = $response->json('data.id');
+    expect($schedule->fresh()->reserved_seats)->toBe(3)
+        ->and($schedule->fresh()->booked_seats)->toBe(0);
+
+    $this->getJson("/api/customer-app/tour-bookings/{$bookingId}/next-steps")
+        ->assertOk()
+        ->assertJsonPath('data.service_type', 'tour')
+        ->assertJsonPath('data.actions.can_check_in', true);
+
+    $this->postJson("/api/customer-app/tour-bookings/{$bookingId}/cancel", [
+        'reason' => 'Plans changed',
+    ])->assertOk()
+        ->assertJsonPath('data.booking.status', 'cancelled');
+
+    expect($schedule->fresh()->reserved_seats)->toBe(0)
+        ->and($schedule->fresh()->booked_seats)->toBe(0);
+});
+
+it('rejects an open departure whose date has already passed', function () {
+    $customer = Customer::create(['name' => 'Past Tour Customer', 'phone' => '9000000044']);
+    $tour = Tour::create([
+        'title' => 'Past Tour', 'slug' => 'past-tour', 'price_per_person' => 1000, 'child_price' => 500,
+        'available_from' => now()->subMonth(), 'available_to' => now()->addMonth(), 'is_active' => true,
+    ]);
+    $schedule = TourSchedule::create([
+        'tour_id' => $tour->id, 'departure_date' => now()->subDay(), 'return_date' => now(),
+        'total_seats' => 5, 'status' => 'open',
+    ]);
+    Sanctum::actingAs($customer);
+
+    $this->postJson('/api/customer-app/tours/book', [
+        'tour_id' => $tour->id,
+        'tour_schedule_id' => $schedule->id,
+        'number_of_adults' => 1,
+        'number_of_children' => 0,
+        'payment_method' => 'cash',
+    ])->assertStatus(422)
+        ->assertJsonPath('message', 'This departure has already left. Select a future departure.');
 
     $this->assertDatabaseCount('tour_bookings', 0);
     expect($schedule->fresh()->reserved_seats)->toBe(0);

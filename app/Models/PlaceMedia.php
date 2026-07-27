@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Support\MediaUrl;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
@@ -66,7 +67,7 @@ class PlaceMedia extends Model
 
     public function getUrlAttribute(): string
     {
-        return asset('storage/' . ltrim($this->path, '/'));
+        return MediaUrl::resolve($this->path) ?? '';
     }
 
     public function isImage(): bool { return $this->type === 'image'; }

@@ -47,6 +47,13 @@ interface Driver {
     vehicle_model?: string | null;
     vehicle_color?: string | null;
     vehicle_year?: number | null;
+    vehicle?: {
+        id: number;
+        registration_number: string;
+        make: string;
+        model: string;
+        category?: { name: string } | null;
+    } | null;
     date_of_birth?: string | null;
     gender?: 'male' | 'female' | 'other' | null;
     license_number?: string | null;
@@ -82,6 +89,7 @@ type DriverForm = {
     vehicle_model: string;
     vehicle_color: string;
     vehicle_year: string;
+    vehicle_id: string;
     status: 'pending' | 'active' | 'suspended' | 'rejected';
     can_short_ride: boolean;
     can_long_ride: boolean;
@@ -103,6 +111,7 @@ const emptyDriverForm: DriverForm = {
     vehicle_model: '',
     vehicle_color: '',
     vehicle_year: '',
+    vehicle_id: '',
     status: 'pending',
     can_short_ride: true,
     can_long_ride: true,
@@ -123,9 +132,17 @@ interface DriversProps {
         search: string;
         status: string;
     };
+    vehicles: Array<{
+        id: number;
+        driver_id: number | null;
+        registration_number: string;
+        make: string;
+        model: string;
+        driver?: { id: number; name: string } | null;
+    }>;
 }
 
-export default function Drivers({ title, drivers, filters }: DriversProps) {
+export default function Drivers({ title, drivers, filters, vehicles }: DriversProps) {
     const [search, setSearch] = useState(filters.search || '');
     const [status, setStatus] = useState(filters.status || '');
     const [formOpened, setFormOpened] = useState(false);
@@ -181,6 +198,7 @@ export default function Drivers({ title, drivers, filters }: DriversProps) {
             vehicle_model: driver.vehicle_model || '',
             vehicle_color: driver.vehicle_color || '',
             vehicle_year: driver.vehicle_year ? String(driver.vehicle_year) : '',
+            vehicle_id: driver.vehicle?.id ? String(driver.vehicle.id) : '',
             status: driver.status,
             can_short_ride: driver.can_short_ride ?? true,
             can_long_ride: driver.can_long_ride ?? true,
@@ -292,9 +310,11 @@ export default function Drivers({ title, drivers, filters }: DriversProps) {
                                             <Table.Td>
                                                 <Stack gap={0}>
                                                     <Badge variant="outline" color="gray" size="sm" mb={4}>
-                                                        {driver.vehicle_number}
+                                                        {driver.vehicle?.registration_number || driver.vehicle_number || 'Unassigned'}
                                                     </Badge>
-                                                    <Text size="xs" color="dimmed">{driver.vehicle_type || 'Sedan'}</Text>
+                                                    <Text size="xs" color="dimmed">
+                                                        {driver.vehicle ? `${driver.vehicle.make} ${driver.vehicle.model}` : driver.vehicle_type || 'No fleet vehicle'}
+                                                    </Text>
                                                 </Stack>
                                             </Table.Td>
                                             <Table.Td>
@@ -510,9 +530,24 @@ export default function Drivers({ title, drivers, filters }: DriversProps) {
                         <Divider />
                         <div>
                             <Text fw={700}>Licence and vehicle summary</Text>
-                            <Text size="sm" c="dimmed">The complete vehicle record and compliance documents can be managed under Vehicles.</Text>
+                            <Text size="sm" c="dimmed">Assign an available fleet vehicle here, or manage the same relationship under Vehicles.</Text>
                         </div>
                         <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="md">
+                            <Select
+                                label="Assigned fleet vehicle"
+                                placeholder="No vehicle assigned"
+                                searchable
+                                clearable
+                                data={vehicles
+                                    .filter((vehicle) => !vehicle.driver_id || vehicle.driver_id === editingDriver?.id)
+                                    .map((vehicle) => ({
+                                        value: String(vehicle.id),
+                                        label: `${vehicle.registration_number} · ${vehicle.make} ${vehicle.model}${vehicle.driver ? ` · ${vehicle.driver.name}` : ''}`,
+                                    }))}
+                                value={form.data.vehicle_id || null}
+                                onChange={(value) => form.setData('vehicle_id', value || '')}
+                                error={form.errors.vehicle_id}
+                            />
                             <TextInput
                                 label="Driving licence number"
                                 value={form.data.license_number}

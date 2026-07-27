@@ -1,6 +1,7 @@
 import React from 'react';
 import { Head, Link, router } from '@inertiajs/react';
 import AdminLayout from '../../../layouts/AdminLayout';
+import { resolveMediaUrl } from '@/lib/utils';
 import { 
     Paper, 
     Stack, 
@@ -37,6 +38,7 @@ interface Place {
     media: Array<{
         id: number;
         file_path: string;
+        url?: string;
         file_type: string;
     }>;
 }
@@ -44,9 +46,11 @@ interface Place {
 interface Itinerary {
     id: number;
     day_index: number;
+    stop_order: number;
     time: string | null;
     details: string;
-    place: Place;
+    title?: string | null;
+    place: Place | null;
 }
 
 interface Tour {
@@ -65,7 +69,7 @@ interface TourItinerariesProps {
 
 export default function TourItineraries({ title, tour, itineraries }: TourItinerariesProps) {
     const deleteDay = (itinerary: Itinerary) => {
-        if (confirm(`Delete Day ${itinerary.day_index}? Later days will be renumbered and the tour duration will be recalculated.`)) {
+        if (confirm(`Delete this visit from Day ${itinerary.day_index}? If it is the day's last visit, later days will be renumbered.`)) {
             router.delete(`/admin/tours/${tour.id}/itineraries/${itinerary.id}`);
         }
     };
@@ -82,6 +86,7 @@ export default function TourItineraries({ title, tour, itineraries }: TourItiner
     const sortedDays = Object.keys(groupedItineraries)
         .map(Number)
         .sort((a, b) => a - b);
+    const nextDay = (sortedDays.at(-1) ?? 0) + 1;
 
     return (
         <AdminLayout title={title}>
@@ -97,7 +102,7 @@ export default function TourItineraries({ title, tour, itineraries }: TourItiner
                             <Text size="xs" fw={700} color="dimmed" tt="uppercase">Tour Journey Map</Text>
                         </Group>
                         <Text size="h3" fw={800}>{tour.title}</Text>
-                        <Text size="sm" fw={700} c="blue">{tour.duration_days} days / {tour.duration_nights} nights · calculated from {itineraries.length} itinerary days</Text>
+                        <Text size="sm" fw={700} c="blue">{tour.duration_days} days / {tour.duration_nights} nights · {itineraries.length} place visits</Text>
                         <Text size="sm" color="dimmed" lineClamp={1}>{tour.description}</Text>
                     </Stack>
                     <Group gap="sm">
@@ -118,7 +123,7 @@ export default function TourItineraries({ title, tour, itineraries }: TourItiner
                             leftSection={<Plus size={16} />}
                             radius="md"
                         >
-                            Add Day {itineraries.length + 1}
+                            Add Day {nextDay}
                         </Button>
                     </Group>
                 </Group>
@@ -154,14 +159,16 @@ export default function TourItineraries({ title, tour, itineraries }: TourItiner
                                             <Text size="xs" color="dimmed" fw={700} tt="uppercase">Daily Schedule</Text>
                                         </Stack>
                                     </Group>
-                                    <Badge variant="light" size="lg" radius="sm">
-                                        {groupedItineraries[day].length} Locations
-                                    </Badge>
+                                    <Group gap="sm">
+                                        <Button component={Link} href={`/admin/tours/${tour.id}/itineraries/create?day=${day}`} variant="light" size="xs" leftSection={<Plus size={14} />}>Add place</Button>
+                                        <Badge variant="light" size="lg" radius="sm">{groupedItineraries[day].length} visit{groupedItineraries[day].length === 1 ? '' : 's'}</Badge>
+                                    </Group>
                                 </Group>
 
                                 <Timeline bulletSize={32} lineWidth={2}>
                                     {groupedItineraries[day]
                                         .sort((a, b) => {
+                                            if (a.stop_order !== b.stop_order) return a.stop_order - b.stop_order;
                                             if (!a.time && !b.time) return 0;
                                             if (!a.time) return 1;
                                             if (!b.time) return -1;
@@ -175,13 +182,13 @@ export default function TourItineraries({ title, tour, itineraries }: TourItiner
                                                     <Group justify="space-between" align="flex-start">
                                                         <Box>
                                                             <Group gap={8}>
-                                                                <Text fw={800} size="lg">{itinerary.place.name}</Text>
+                                                                <Text fw={800} size="lg">{itinerary.place?.name ?? itinerary.title ?? `Day ${itinerary.day_index}`}</Text>
                                                                 {itinerary.time && (
                                                                     <Badge variant="dot" size="sm" color="blue">{itinerary.time}</Badge>
                                                                 )}
                                                             </Group>
                                                             <Text size="sm" color="dimmed" mt={4} lineClamp={2}>
-                                                                {itinerary.place.description}
+                                                                {itinerary.place?.description ?? 'The linked place is no longer available. Edit this day to choose another point of interest.'}
                                                             </Text>
                                                         </Box>
                                                         <Group gap={4}>
@@ -205,8 +212,8 @@ export default function TourItineraries({ title, tour, itineraries }: TourItiner
                                                                     <Eye size={14} />
                                                                 </ActionIcon>
                                                             </Tooltip>
-                                                            <Tooltip label="Delete itinerary day">
-                                                                <ActionIcon onClick={() => deleteDay(itinerary)} variant="light" color="red" aria-label={`Delete Day ${itinerary.day_index}`}>
+                                                            <Tooltip label="Delete place visit">
+                                                                <ActionIcon onClick={() => deleteDay(itinerary)} variant="light" color="red" aria-label={`Delete visit ${itinerary.stop_order} from Day ${itinerary.day_index}`}>
                                                                     <Trash2 size={14} />
                                                                 </ActionIcon>
                                                             </Tooltip>
@@ -224,12 +231,12 @@ export default function TourItineraries({ title, tour, itineraries }: TourItiner
                                                         </Paper>
                                                     )}
 
-                                                    {itinerary.place.media && itinerary.place.media.length > 0 && (
+                                                    {itinerary.place?.media && itinerary.place.media.length > 0 && (
                                                         <Group gap="xs">
                                                             {itinerary.place.media.slice(0, 4).map((media) => (
                                                                 <Box key={media.id} pos="relative">
                                                                     <Image
-                                                                        src={`/storage/${media.file_path}`}
+                                                                        src={resolveMediaUrl(media.url || media.file_path)}
                                                                         radius="sm"
                                                                         w={80}
                                                                         h={60}

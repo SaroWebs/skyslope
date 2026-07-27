@@ -14,7 +14,9 @@ class InsuranceClaim extends Model
         'insurance_policy_id',
         'customer_id',
         'claim_number',
+        'incident_date',
         'description',
+        'documents',
         'claim_amount',
         'approved_amount',
         'status',
@@ -26,6 +28,8 @@ class InsuranceClaim extends Model
         'claim_amount'    => 'decimal:2',
         'approved_amount' => 'decimal:2',
         'resolved_at'     => 'datetime',
+        'incident_date'   => 'date',
+        'documents'       => 'array',
     ];
 
     public function policy(): BelongsTo

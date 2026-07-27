@@ -14,6 +14,7 @@ use App\Models\TourBookingReview;
 use App\Models\TourDriverAssignment;
 use App\Models\Vehicle;
 use App\Models\Wallet;
+use App\Services\DriverDispatchService;
 use Database\Seeders\DemoServerSeeder;
 
 it('seeds connected demo server data idempotently', function () {
@@ -43,5 +44,6 @@ it('seeds connected demo server data idempotently', function () {
         ->and($driver->languages)->toContain('English')
         ->and($place->google_place_id)->toBe('demo-google-amber-fort')
         ->and($place->google_reviews)->not->toBeEmpty()
-        ->and($place->google_photos)->not->toBeEmpty();
+        ->and($place->google_photos)->not->toBeEmpty()
+        ->and(app(DriverDispatchService::class)->hasActiveWorkload($driver))->toBeFalse();
 });

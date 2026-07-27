@@ -15,6 +15,7 @@ class ItineraryStopResource extends JsonResource
             'place_id' => $this->place_id,
             'day_number' => (int) ($this->day_number ?? $this->day_index ?? 0),
             'day_index' => (int) ($this->day_index ?? $this->day_number ?? 0),
+            'stop_order' => (int) ($this->stop_order ?? 1),
             'time' => $this->time,
             'title' => $this->title,
             'description' => $this->description,

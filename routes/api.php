@@ -3,12 +3,14 @@
 use App\Http\Controllers\AdminCustomerController;
 use App\Http\Controllers\AdminDriverController;
 use App\Http\Controllers\Api\CustomerAppController;
+use App\Http\Controllers\Api\CmsController;
 use App\Http\Controllers\Api\CustomerOtpController;
 use App\Http\Controllers\Api\DriverAppController;
 use App\Http\Controllers\Api\DriverController;
 use App\Http\Controllers\Api\DriverOtpController;
 use App\Http\Controllers\Api\InsuranceController;
 use App\Http\Controllers\Api\LocationController;
+use App\Http\Controllers\Api\SupportTicketController;
 use App\Http\Controllers\Api\TrackingController;
 use App\Http\Controllers\Api\VehicleTrackerController;
 use App\Http\Controllers\Api\WalletController;
@@ -18,6 +20,7 @@ use Illuminate\Support\Facades\Route;
 Route::post('/razorpay/webhook', [WalletController::class, 'handleRazorpayWebhook']);
 Route::post('/tracker/v1/location', [VehicleTrackerController::class, 'location'])
     ->middleware('throttle:240,1');
+Route::get('/cms/{app}', [CmsController::class, 'show'])->where('app', '[a-z0-9-]+');
 
 /*
 |--------------------------------------------------------------------------
@@ -26,12 +29,16 @@ Route::post('/tracker/v1/location', [VehicleTrackerController::class, 'location'
 */
 Route::prefix('customer-app')->group(function () {
     // Public routes
+    Route::get('/public/cms/{app}', [CmsController::class, 'show'])->where('app', '[a-z0-9-]+');
     Route::get('/public/bootstrap', [CustomerAppController::class, 'publicBootstrap']);
     Route::get('/public/tours', [CustomerAppController::class, 'publicTours']);
     Route::get('/public/tours/{tour}', [CustomerAppController::class, 'publicTour']);
     Route::get('/public/tours/{tour}/schedules', [CustomerAppController::class, 'tourSchedules']);
     Route::get('/public/destinations', [CustomerAppController::class, 'publicDestinations']);
     Route::get('/public/destinations/{place}', [CustomerAppController::class, 'publicDestination']);
+    Route::get('/public/google-place-photo', [CustomerAppController::class, 'publicGooglePlacePhoto'])
+        ->middleware(['signed', 'throttle:120,1'])
+        ->name('customer-app.google-place-photo');
     Route::get('/public/places', [CustomerAppController::class, 'publicPlaces']);
     Route::get('/public/places/popular', [CustomerAppController::class, 'publicPopularPlaces']);
     Route::get('/public/places/{place}', [CustomerAppController::class, 'publicDestination']);
@@ -76,6 +83,9 @@ Route::prefix('customer-app')->group(function () {
         Route::post('/places/{place}/media', [CustomerAppController::class, 'uploadPlaceMedia'])->middleware('throttle:customer-write');
         Route::post('/tour-bookings/{booking}/cancel', [CustomerAppController::class, 'cancelTour'])->middleware('throttle:customer-write');
         Route::post('/tour-bookings/{booking}/review', [CustomerAppController::class, 'submitTourReview'])->middleware('throttle:customer-write');
+        Route::get('/support/tickets', [SupportTicketController::class, 'index']);
+        Route::post('/support/tickets', [SupportTicketController::class, 'store'])->middleware('throttle:support-write');
+        Route::post('/support/tickets/{ticket}/messages', [SupportTicketController::class, 'reply'])->middleware('throttle:support-write');
         Route::post('/support/requests', [CustomerAppController::class, 'storeSupportRequest'])->middleware('throttle:support-write');
         Route::get('/rides/{booking}/next-steps', [CustomerAppController::class, 'rideNextSteps']);
         Route::post('/rides/{booking}/check-in', [CustomerAppController::class, 'rideCheckIn'])->middleware('throttle:customer-write');
@@ -90,6 +100,7 @@ Route::prefix('customer-app')->group(function () {
         Route::get('/wallet/transactions', [WalletController::class, 'getTransactions']);
         Route::post('/wallet/topup/order', [WalletController::class, 'createTopUpOrder'])->middleware('throttle:payment-write');
         Route::post('/wallet/topup/verify', [WalletController::class, 'verifyTopUp'])->middleware('throttle:payment-write');
+        Route::get('/insurance/plans', [InsuranceController::class, 'getPlans']);
         Route::get('/insurance/policies', [InsuranceController::class, 'getPolicies']);
         Route::get('/insurance/policies/{id}', [InsuranceController::class, 'getPolicy']);
         Route::post('/insurance/policies', [InsuranceController::class, 'createPolicy'])->middleware('throttle:customer-write');
@@ -109,6 +120,7 @@ Route::prefix('customer-app')->group(function () {
 |--------------------------------------------------------------------------
 */
 Route::prefix('driver-app')->group(function () {
+    Route::get('/public/cms/{app}', [CmsController::class, 'show'])->where('app', '[a-z0-9-]+');
     // OTP Auth routes
     Route::post('/otp/send', [DriverOtpController::class, 'sendOtp'])->middleware('throttle:otp-send');
     Route::post('/register', [DriverOtpController::class, 'register'])->middleware('throttle:otp-send');
@@ -124,6 +136,7 @@ Route::prefix('driver-app')->group(function () {
             ->whereIn('kind', ['ride', 'tour', 'rental'])
             ->whereNumber('id');
         Route::get('/vehicle', [DriverAppController::class, 'vehicle']);
+        Route::get('/insurance/policies', [InsuranceController::class, 'getDriverPolicies']);
         Route::put('/vehicle', [DriverAppController::class, 'upsertVehicle'])->middleware('throttle:customer-write');
         Route::put('/availability', [DriverAppController::class, 'updateAvailability'])->middleware('throttle:customer-write');
         Route::get('/active-ride', [DriverController::class, 'activeRide']);

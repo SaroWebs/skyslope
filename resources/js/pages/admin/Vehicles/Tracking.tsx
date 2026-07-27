@@ -45,12 +45,13 @@ interface Tracker {
 }
 
 interface LocationPoint {
-    id: number;
+    id: number | string;
     latitude: string;
     longitude: string;
     speed_kmh?: string | null;
     heading?: string | null;
     ignition_on?: boolean | null;
+    accuracy_m?: string | null;
     recorded_at: string;
 }
 
@@ -69,6 +70,9 @@ interface Props {
     vehicle: Vehicle;
     tracker: Tracker | null;
     locations: LocationPoint[];
+    is_online?: boolean;
+    location_source?: 'vehicle_gps' | 'vehicle_gps_stale' | 'driver_app' | 'unavailable';
+    latest_location?: LocationPoint | null;
     google_maps_api_key?: string | null;
 }
 
@@ -91,10 +95,12 @@ function TrailPolyline({ points }: { points: LocationPoint[] }) {
     return null;
 }
 
-export default function VehicleTracking({ title, vehicle, tracker: initialTracker, locations: initialLocations, google_maps_api_key }: Props) {
+export default function VehicleTracking({ title, vehicle, tracker: initialTracker, locations: initialLocations, is_online = false, location_source = 'unavailable', latest_location = null, google_maps_api_key }: Props) {
     const [tracker, setTracker] = useState(initialTracker);
     const [locations, setLocations] = useState(initialLocations);
-    const [online, setOnline] = useState(false);
+    const [online, setOnline] = useState(is_online);
+    const [locationSource, setLocationSource] = useState(location_source);
+    const [latestLocation, setLatestLocation] = useState(latest_location);
 
     useEffect(() => {
         let mounted = true;
@@ -109,6 +115,8 @@ export default function VehicleTracking({ title, vehicle, tracker: initialTracke
                 setTracker(data.tracker);
                 setLocations(data.locations || []);
                 setOnline(Boolean(data.is_online));
+                setLocationSource(data.location_source || 'unavailable');
+                setLatestLocation(data.latest_location || null);
             } catch {
                 // Keep the last known position visible during temporary network interruptions.
             }
@@ -123,12 +131,21 @@ export default function VehicleTracking({ title, vehicle, tracker: initialTracke
     }, [vehicle.id]);
 
     const latest = useMemo(() => {
-        if (tracker?.latitude && tracker?.longitude) {
-            return { lat: Number(tracker.latitude), lng: Number(tracker.longitude) };
+        if (latestLocation?.latitude && latestLocation?.longitude) {
+            return { lat: Number(latestLocation.latitude), lng: Number(latestLocation.longitude) };
         }
         const point = locations.at(-1);
         return point ? { lat: Number(point.latitude), lng: Number(point.longitude) } : null;
-    }, [locations, tracker?.latitude, tracker?.longitude]);
+    }, [latestLocation?.latitude, latestLocation?.longitude, locations]);
+
+    const sourceLabel = locationSource === 'vehicle_gps'
+        ? 'Vehicle GPS'
+        : locationSource === 'driver_app'
+            ? 'Driver phone'
+            : locationSource === 'vehicle_gps_stale'
+                ? 'Last vehicle GPS fix'
+                : 'No location source';
+    const sourceColor = locationSource === 'vehicle_gps' ? 'green' : locationSource === 'driver_app' ? 'blue' : locationSource === 'vehicle_gps_stale' ? 'yellow' : 'gray';
 
     const provision = () => router.post(`/admin/vehicles/${vehicle.id}/tracker/provision`);
     const mapsUrl = latest ? `https://www.google.com/maps?q=${latest.lat},${latest.lng}` : null;
@@ -145,8 +162,8 @@ export default function VehicleTracking({ title, vehicle, tracker: initialTracke
                         <div>
                             <Group gap="sm">
                                 <Title order={2}>{vehicle.registration_number}</Title>
-                                <Badge color={online ? 'green' : tracker?.status === 'active' ? 'yellow' : 'gray'} variant="light" leftSection={<Radio size={12} />}>
-                                    {online ? 'Live' : tracker?.status === 'active' ? 'Signal stale' : 'Not provisioned'}
+                                <Badge color={sourceColor} variant="light" leftSection={<Radio size={12} />}>
+                                    {online ? `Live · ${sourceLabel}` : sourceLabel}
                                 </Badge>
                             </Group>
                             <Text c="dimmed" size="sm">{vehicle.make} {vehicle.model} · {vehicle.category?.name || 'Uncategorized'} · {vehicle.driver?.name || 'No driver assigned'}</Text>
@@ -168,9 +185,15 @@ export default function VehicleTracking({ title, vehicle, tracker: initialTracke
                     </Alert>
                 )}
 
+                {locationSource === 'driver_app' && (
+                    <Alert color="blue" title="Using the driver's phone location" icon={<Navigation size={18} />}>
+                        The vehicle GPS is unavailable or stale, so this map is following {vehicle.driver?.name || 'the assigned driver'} from the driver app. Hardware GPS takes priority automatically when it reports again.
+                    </Alert>
+                )}
+
                 <SimpleGrid cols={{ base: 2, sm: 4 }} spacing="md">
-                    <Metric icon={Gauge} label="Speed" value={`${Number(tracker?.speed_kmh || 0).toFixed(0)} km/h`} />
-                    <Metric icon={Navigation} label="Heading" value={tracker?.heading ? `${Number(tracker.heading).toFixed(0)}°` : '—'} />
+                    <Metric icon={Gauge} label="Speed" value={`${Number(latestLocation?.speed_kmh ?? tracker?.speed_kmh ?? 0).toFixed(0)} km/h`} />
+                    <Metric icon={Navigation} label="Heading" value={(latestLocation?.heading ?? tracker?.heading) ? `${Number(latestLocation?.heading ?? tracker?.heading).toFixed(0)}°` : '—'} />
                     <Metric icon={Battery} label="Tracker battery" value={tracker?.battery_percent != null ? `${tracker.battery_percent}%` : '—'} />
                     <Metric icon={Power} label="Ignition" value={tracker?.ignition_on == null ? 'Unknown' : tracker.ignition_on ? 'On' : 'Off'} />
                 </SimpleGrid>
@@ -214,7 +237,11 @@ export default function VehicleTracking({ title, vehicle, tracker: initialTracke
                                 </div>
                                 <div>
                                     <Text size="xs" fw={800} tt="uppercase" c="dimmed">Accuracy</Text>
-                                    <Text mt={4} fw={600}>{tracker?.accuracy_m ? `${Number(tracker.accuracy_m).toFixed(0)} metres` : 'Unknown'}</Text>
+                                    <Text mt={4} fw={600}>{(latestLocation?.accuracy_m ?? tracker?.accuracy_m) ? `${Number(latestLocation?.accuracy_m ?? tracker?.accuracy_m).toFixed(0)} metres` : 'Unknown'}</Text>
+                                </div>
+                                <div>
+                                    <Text size="xs" fw={800} tt="uppercase" c="dimmed">Active location source</Text>
+                                    <Badge mt={6} color={sourceColor} variant="light">{sourceLabel}</Badge>
                                 </div>
                                 <div>
                                     <Text size="xs" fw={800} tt="uppercase" c="dimmed">Latest coordinates</Text>
@@ -229,8 +256,8 @@ export default function VehicleTracking({ title, vehicle, tracker: initialTracke
                 <Paper p="lg" radius="lg" withBorder>
                     <Group justify="space-between" mb="md">
                         <div>
-                            <Text fw={800}>Recent GPS trail</Text>
-                            <Text size="sm" c="dimmed">Most recent 100 hardware-reported positions</Text>
+                            <Text fw={800}>Recent location trail</Text>
+                            <Text size="sm" c="dimmed">Most recent 100 positions from {locationSource === 'driver_app' ? 'the assigned driver app' : 'the vehicle tracker'}</Text>
                         </div>
                         <Badge variant="light">{locations.length} points</Badge>
                     </Group>
