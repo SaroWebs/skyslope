@@ -353,12 +353,16 @@ export default function WalletsIndex({ title, wallets, filters }: Props) {
 
                             <NumberInput
                                 label="Amount (₹)"
-                                placeholder="0.00"
-                                decimalScale={2}
-                                fixedDecimalScale
-                                min={0.01}
+                                placeholder="0"
+                                min={0}
                                 value={data.amount}
-                                onChange={(val) => setData('amount', typeof val === 'number' ? val : 0)}
+                                onChange={(val) => {
+                                    let amt = Number(val);
+                                    if(isNaN(amt) || amt < 0) {
+                                        setData('amount', 0);
+                                    };
+                                    setData('amount', amt);
+                                }}
                                 error={errors.amount}
                                 required
                                 hideControls

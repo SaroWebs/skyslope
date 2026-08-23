@@ -49,7 +49,7 @@ interface Destination {
     description: string | null;
     state: string;
     region: string | null;
-    type: string;
+    type?: string | null;
     latitude: number | null;
     longitude: number | null;
     popular_routes: string[] | null;
@@ -87,7 +87,7 @@ export default function Destinations({ title, destinations }: DestinationsProps)
             adventure: { color: 'red', icon: <Flame size={12} /> },
             religious: { color: 'indigo', icon: <Landmark size={12} /> }
         };
-        return configs[type.toLowerCase()] || { color: 'gray', icon: <MapPin size={12} /> };
+        return configs[type && type.toLowerCase()] || { color: 'gray', icon: <MapPin size={12} /> };
     };
 
     const handleFilter = (key: string, value: string | null) => {
@@ -159,8 +159,9 @@ export default function Destinations({ title, destinations }: DestinationsProps)
                     </Group>
 
                     <SimpleGrid cols={{ base: 1, sm: 2, lg: 3 }} spacing="xl">
-                        {destinations.data.map((dest) => {
-                            const typeConfig = getTypeConfig(dest.type);
+                        {destinations.data.map((dest ) => {
+                            const destinationType = dest.type || 'destination';
+                            const typeConfig = getTypeConfig(destinationType);
                             return (
                                 <Card key={dest.id} shadow="sm" padding="xl" radius="md" withBorder>
                                     <Card.Section>
@@ -199,7 +200,7 @@ export default function Destinations({ title, destinations }: DestinationsProps)
                                                 leftSection={typeConfig.icon}
                                                 size="sm"
                                             >
-                                                {dest.type.replace('_', ' ')}
+                                                {destinationType.replace(/_/g, ' ')}
                                             </Badge>
                                             {dest.region && (
                                                 <Badge variant="outline" color="gray" size="sm">
