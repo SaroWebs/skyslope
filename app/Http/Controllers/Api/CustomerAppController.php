@@ -358,8 +358,8 @@ class CustomerAppController extends Controller
         $validator = Validator::make($request->all(), [
             'tour_id' => 'required|exists:tours,id',
             'tour_schedule_id' => 'required|exists:tour_schedules,id',
-            'number_of_adults' => 'required|integer|min:1|max:10',
-            'number_of_children' => 'nullable|integer|min:0|max:10',
+            'number_of_adults' => 'required|integer|min:1|max:200',
+            'number_of_children' => 'nullable|integer|min:0|max:200',
             'payment_method' => 'required|in:cash,card,wallet,upi',
             'special_requests' => 'nullable|string|max:1000',
             'pickup_option' => 'nullable|string|max:120',
@@ -379,6 +379,11 @@ class CustomerAppController extends Controller
 
         $totalPax = (int) $request->number_of_adults + (int) ($request->number_of_children ?? 0);
 
+        if ((int) $request->number_of_adults > (int) setting('tour.max_adults_per_booking', 10)
+            || (int) ($request->number_of_children ?? 0) > (int) setting('tour.max_children_per_booking', 10)) {
+            return response()->json(['success' => false, 'message' => 'The requested group exceeds the configured traveller limit.'], 422);
+        }
+
         try {
             $booking = DB::transaction(function () use ($request, $customer, $totalPax) {
                 $schedule = TourSchedule::with('tour')->lockForUpdate()->findOrFail($request->tour_schedule_id);
@@ -392,6 +397,15 @@ class CustomerAppController extends Controller
                 }
 
                 $tour = $schedule->tour;
+                $leadHours = (int) setting('tour.min_lead_time_hours', 0);
+                if ($leadHours > 0 && now()->addHours($leadHours)->gt($schedule->departure_date->startOfDay())) {
+                    throw new \RuntimeException('This departure is too soon to book.');
+                }
+                if (setting('tour.enforce_group_size', false)
+                    && (($tour->min_group_size && $totalPax < $tour->min_group_size)
+                        || ($tour->max_group_size && $totalPax > $tour->max_group_size))) {
+                    throw new \RuntimeException('The requested group size is outside this tour\'s limits.');
+                }
                 if (! $tour->is_active
                     || ($tour->available_from && $tour->available_from->isFuture())
                     || ($tour->available_to && $tour->available_to->lt(now()->startOfDay()))) {
@@ -415,7 +429,8 @@ class CustomerAppController extends Controller
                 }
 
                 $discountAmount = (float) ($couponResult['discount_amount'] ?? 0);
-                $totalPrice = max(0, round((float) $subtotal - $discountAmount, 2));
+                $feePricing = app(\App\Support\Pricing\PricingService::class)->applyFees((float) $subtotal - $discountAmount);
+                $totalPrice = $feePricing['total'];
 
                 $booking = TourBooking::create([
                     'customer_id' => $customer->id,
@@ -431,6 +446,8 @@ class CustomerAppController extends Controller
                     'price_per_child' => $schedule->getEffectiveChildPrice(),
                     'subtotal' => $subtotal,
                     'discount_amount' => $discountAmount,
+                    'tax_amount' => $feePricing['tax'],
+                    'service_fee_amount' => $feePricing['service_fee'],
                     'total_price' => $totalPrice,
                     'payment_method' => $request->payment_method,
                     'coupon_code' => $couponResult['eligible'] ? $couponResult['code'] : null,
@@ -558,6 +575,15 @@ class CustomerAppController extends Controller
         $startDate = \Carbon\Carbon::parse($request->start_date);
         $endDate = \Carbon\Carbon::parse($request->end_date);
         $numberOfDays = $startDate->diffInDays($endDate) + 1;
+        $minDays = (int) setting('rental.min_days', 1, ['category_id' => $category->id]);
+        $maxDays = (int) setting('rental.max_days', 0, ['category_id' => $category->id]);
+        $leadHours = (int) setting('rental.min_lead_time_hours', 0);
+        if ($numberOfDays < $minDays || ($maxDays > 0 && $numberOfDays > $maxDays)) {
+            return response()->json(['success' => false, 'message' => 'The rental duration is outside the configured limits.'], 422);
+        }
+        if ($leadHours > 0 && now()->addHours($leadHours)->gt($startDate->startOfDay())) {
+            return response()->json(['success' => false, 'message' => 'This rental pickup is too soon to book.'], 422);
+        }
         $distanceKm = (float) ($request->distance_km ?? 0);
         $pricing = $category->calculatePrice($numberOfDays, $distanceKm);
         $couponResult = app(CustomerCouponService::class)->preview($customer, $request->input('coupon_code'), 'rental', (float) $pricing['subtotal']);
@@ -584,7 +610,12 @@ class CustomerAppController extends Controller
                 }
 
                 $discountAmount = (float) ($couponResult['discount_amount'] ?? 0);
-                $totalPrice = max(0, round((float) $pricing['subtotal'] - $discountAmount, 2));
+                $feePricing = app(\App\Support\Pricing\PricingService::class)->applyFees(
+                    (float) $pricing['subtotal'] - $discountAmount,
+                    ['category_id' => $category->id]
+                );
+                $deposit = (float) setting('rental.security_deposit_flat', 0.0, ['category_id' => $category->id]);
+                $totalPrice = round($feePricing['total'] + $deposit, 2);
 
                 $rental = CarRental::create([
                     'customer_id' => $customer->id,
@@ -611,6 +642,9 @@ class CustomerAppController extends Controller
                     'distance_price' => $pricing['distance_price'],
                     'extras_price' => 0,
                     'discount_amount' => $discountAmount,
+                    'tax_amount' => $feePricing['tax'],
+                    'service_fee_amount' => $feePricing['service_fee'],
+                    'security_deposit' => $deposit,
                     'total_price' => $totalPrice,
                     'status' => $selectedVehicle ? 'driver_assigned' : 'pending',
                     'payment_status' => 'pending',
@@ -822,7 +856,11 @@ class CustomerAppController extends Controller
         try {
             $ride = DB::transaction(function () use ($request, $customer, $estimate, $couponResult) {
                 $discountAmount = (float) ($couponResult['discount_amount'] ?? 0);
-                $totalFare = max(0, round((float) $estimate['pricing']['subtotal'] - $discountAmount, 2));
+                $feePricing = app(\App\Support\Pricing\PricingService::class)->applyFees(
+                    (float) $estimate['pricing']['subtotal'] - $discountAmount,
+                    ['lat' => (float) $request->pickup_lat, 'lng' => (float) $request->pickup_lng]
+                );
+                $totalFare = $feePricing['total'];
 
                 $ride = RideBooking::create([
                     'booking_number' => RideBooking::generateBookingNumber(),
@@ -851,6 +889,8 @@ class CustomerAppController extends Controller
                     'sharing_discount_percent' => $estimate['pricing']['sharing_discount_percent'],
                     'sharing_savings' => $estimate['pricing']['sharing_savings'],
                     'discount_amount' => $discountAmount,
+                    'tax_amount' => $feePricing['tax'],
+                    'service_fee_amount' => $feePricing['service_fee'],
                     'total_fare' => $totalFare,
                     'payment_method' => $request->payment_method,
                     'coupon_code' => $couponResult['eligible'] ? $couponResult['code'] : null,
@@ -888,7 +928,7 @@ class CustomerAppController extends Controller
             (float) $request->pickup_lat,
             (float) $request->pickup_lng,
             null,
-            10,
+            null,
             $ride->car_category_id ? (int) $ride->car_category_id : null,
             (bool) $ride->sharing_requested
         );

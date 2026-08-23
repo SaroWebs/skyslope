@@ -14,8 +14,11 @@ Artisan::command('dispatch:expire-ride-attempts', function (DriverDispatchServic
     $this->info("Expired {$count} ride dispatch attempt(s).");
 })->purpose('Expire unaccepted ride dispatch attempts');
 
-Artisan::command('dispatch:expire-stale-availability {--seconds=300 : Age in seconds after which an online driver with no location update is taken offline}', function (DriverDispatchService $dispatchService) {
-    $count = $dispatchService->expireStaleAvailability((int) $this->option('seconds'));
+Artisan::command('dispatch:expire-stale-availability {--seconds= : Age in seconds after which an online driver with no location update is taken offline}', function (DriverDispatchService $dispatchService) {
+    $seconds = $this->option('seconds') !== null
+        ? (int) $this->option('seconds')
+        : null;
+    $count = $dispatchService->expireStaleAvailability($seconds);
     $this->info("Marked {$count} stale driver availability record(s) offline.");
 })->purpose('Take drivers offline when their location tracking goes stale');
 

@@ -114,12 +114,12 @@ class BookingCancellationService
         }
 
         if ($this->isAlreadyActive($booking, $serviceType)) {
-            return round($totalAmount * 0.2, 2);
+            return round($totalAmount * (float) setting('cancellation.active_fee_percent', 0.20), 2);
         }
 
         $startAt = $this->bookingStartAt($booking);
-        if ($startAt && now()->diffInHours($startAt, false) < 24) {
-            return round($totalAmount * 0.1, 2);
+        if ($startAt && now()->diffInHours($startAt, false) < (int) setting('cancellation.late_window_hours', 24)) {
+            return round($totalAmount * (float) setting('cancellation.late_fee_percent', 0.10), 2);
         }
 
         return 0.0;

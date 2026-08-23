@@ -169,27 +169,39 @@ class RideEstimateService
         $serviceType = $this->normalizeServiceType($serviceType);
         $sharingEligible = $serviceType === 'point_to_point';
         $sharingRequested = $sharingEligible && $sharingRequested;
-        $reservedSeats = max(1, min(self::MAX_SHARED_SEATS_PER_BOOKING, $reservedSeats));
+        $context = ['lat' => $pickupLat, 'lng' => $pickupLng];
+        $maxSharedSeats = (int) setting('ride.pricing.max_shared_seats', self::MAX_SHARED_SEATS_PER_BOOKING);
+        $reservedSeats = max(1, min($maxSharedSeats, $reservedSeats));
         $distance = ($dropoffLat !== null && $dropoffLng !== null)
             ? $this->distanceKm($pickupLat, $pickupLng, (float) $dropoffLat, (float) $dropoffLng)
             : 0.0;
 
-        $nearbyDrivers = $this->nearbyDriverCount($pickupLat, $pickupLng);
-        $nearbyDriverLocations = $this->nearbyDriverLocations($pickupLat, $pickupLng);
+        $radiusKm = (float) setting('ride.dispatch.pickup_radius_km', DriverDispatchService::DEFAULT_PICKUP_RADIUS_KM, $context);
+        $nearbyDrivers = $this->nearbyDriverCount($pickupLat, $pickupLng, $radiusKm);
+        $nearbyDriverLocations = $this->nearbyDriverLocations($pickupLat, $pickupLng, $radiusKm);
         $nearbySharingDrivers = $sharingEligible
             ? $this->nearbySharingDriverCount($pickupLat, $pickupLng)
             : 0;
-        $surgeMultiplier = $nearbyDrivers < self::SURGE_DRIVER_THRESHOLD
-            ? self::SURGE_MULTIPLIER
+        $surgeThreshold = (int) setting('ride.pricing.surge_driver_threshold', self::SURGE_DRIVER_THRESHOLD, $context);
+        $configuredSurge = (float) setting('ride.pricing.surge_multiplier', self::SURGE_MULTIPLIER, $context);
+        $surgeMultiplier = $nearbyDrivers < $surgeThreshold
+            ? $configuredSurge
             : 1.0;
 
-        $vehicleClass = array_key_exists($vehicleClass, self::VEHICLE_MULTIPLIERS) ? $vehicleClass : 'comfort';
-        $vehicleMultiplier = self::VEHICLE_MULTIPLIERS[$vehicleClass];
-        $distanceFare = $distance * self::PER_KM_RATE;
-        $privateSubtotal = round((self::BASE_FARE + $distanceFare) * $surgeMultiplier * $vehicleMultiplier, 2);
+        $vehicleMultipliers = [
+            'mini' => (float) setting('ride.pricing.vehicle_multiplier_mini', self::VEHICLE_MULTIPLIERS['mini']),
+            'comfort' => (float) setting('ride.pricing.vehicle_multiplier_comfort', self::VEHICLE_MULTIPLIERS['comfort']),
+            'xl' => (float) setting('ride.pricing.vehicle_multiplier_xl', self::VEHICLE_MULTIPLIERS['xl']),
+        ];
+        $vehicleClass = array_key_exists($vehicleClass, $vehicleMultipliers) ? $vehicleClass : 'comfort';
+        $vehicleMultiplier = $vehicleMultipliers[$vehicleClass];
+        $baseFare = (float) setting('ride.pricing.base_fare', self::BASE_FARE, $context);
+        $distanceFare = $distance * (float) setting('ride.pricing.per_km_rate', self::PER_KM_RATE, $context);
+        $privateSubtotal = round(($baseFare + $distanceFare) * $surgeMultiplier * $vehicleMultiplier, 2);
         $sharedMultiplier = min(
             0.95,
-            self::SHARED_BASE_MULTIPLIER + (($reservedSeats - 1) * self::SHARED_EXTRA_SEAT_MULTIPLIER)
+            (float) setting('ride.pricing.shared_base_multiplier', self::SHARED_BASE_MULTIPLIER)
+            + (($reservedSeats - 1) * (float) setting('ride.pricing.shared_extra_seat_multiplier', self::SHARED_EXTRA_SEAT_MULTIPLIER))
         );
         $subtotal = $sharingRequested
             ? round($privateSubtotal * $sharedMultiplier, 2)
@@ -201,7 +213,7 @@ class RideEstimateService
             'distance_km' => round($distance, 2),
             'estimated_distance_km' => round($distance, 2),
             'estimated_duration' => $distance > 0
-                ? (int) ceil($distance / self::AVERAGE_SPEED_KMH * 60)
+                ? (int) ceil($distance / (float) setting('ride.pricing.avg_speed_kmh', self::AVERAGE_SPEED_KMH) * 60)
                 : 30,
             'service_type' => $serviceType,
             'ride_classification' => $this->classify($serviceType, $distance),
@@ -219,7 +231,7 @@ class RideEstimateService
                     : null,
             ],
             'pricing' => [
-                'base_fare' => (float) self::BASE_FARE,
+                'base_fare' => $baseFare,
                 'distance_fare' => round($distanceFare, 2),
                 'surge_multiplier' => $surgeMultiplier,
                 'vehicle_multiplier' => $vehicleMultiplier,
@@ -245,6 +257,8 @@ class RideEstimateService
             return 'long_ride';
         }
 
-        return $distanceKm < self::SHORT_RIDE_THRESHOLD_KM ? 'short_ride' : 'long_ride';
+        return $distanceKm < (float) setting('ride.pricing.short_ride_threshold_km', self::SHORT_RIDE_THRESHOLD_KM)
+            ? 'short_ride'
+            : 'long_ride';
     }
 }

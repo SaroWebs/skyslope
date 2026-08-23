@@ -21,6 +21,12 @@ class Setting extends Model
         'scope_zone_id' => 'integer',
     ];
 
+    protected static function booted(): void
+    {
+        static::saved(fn () => app(\App\Support\Settings\SettingsService::class)->forget());
+        static::deleted(fn () => app(\App\Support\Settings\SettingsService::class)->forget());
+    }
+
     public function category()
     {
         return $this->belongsTo(CarCategory::class, 'scope_category_id');

@@ -18,10 +18,12 @@ class DriverDispatchService
         float $pickupLat,
         float $pickupLng,
         ?string $role = null,
-        int $limit = 10,
+        ?int $limit = null,
         ?int $carCategoryId = null,
         bool $preferSharingEnabled = false
     ) {
+        $limit ??= (int) setting('ride.dispatch.max_candidates', 10);
+
         return $this->nearbyAvailability($pickupLat, $pickupLng)
             ->filter(function (DriverAvailability $availability) use ($serviceType, $role, $carCategoryId, $pickupLat, $pickupLng) {
                 $driver = $availability->driver;
@@ -41,20 +43,26 @@ class DriverDispatchService
                 $driver = $availability->driver;
                 $rating = (float) ($driver->rating ?? 0);
                 $distance = (float) ($availability->distance ?? 999);
-                $capabilityFit = $driver->canHandleService($serviceType, $role) ? 25 : 0;
-                $workloadPenalty = $this->workloadScore($driver) * 2;
-                $acceptanceBonus = $this->acceptanceRate($driver) * 10;
-                $sharingPreferenceBonus = $preferSharingEnabled && $availability->sharing_enabled ? 18 : 0;
+                $capabilityFit = $driver->canHandleService($serviceType, $role)
+                    ? (float) setting('ride.dispatch.weight_capability', 25.0)
+                    : 0;
+                $workloadPenalty = $this->workloadScore($driver) * (float) setting('ride.dispatch.weight_workload_penalty', 2.0);
+                $acceptanceBonus = $this->acceptanceRate($driver) * (float) setting('ride.dispatch.weight_acceptance', 10.0);
+                $sharingPreferenceBonus = $preferSharingEnabled && $availability->sharing_enabled
+                    ? (float) setting('ride.dispatch.weight_sharing', 18.0)
+                    : 0;
 
-                return $capabilityFit + ($rating * 10) + $acceptanceBonus + $sharingPreferenceBonus
-                    - ($distance * 2) - $workloadPenalty;
+                return $capabilityFit + ($rating * (float) setting('ride.dispatch.weight_rating', 10.0))
+                    + $acceptanceBonus + $sharingPreferenceBonus
+                    - ($distance * (float) setting('ride.dispatch.weight_distance_penalty', 2.0)) - $workloadPenalty;
             })
             ->take($limit)
             ->values();
     }
 
-    public function createRideAttempts(RideBooking $rideBooking, $candidates, int $ttlSeconds = 90): void
+    public function createRideAttempts(RideBooking $rideBooking, $candidates, ?int $ttlSeconds = null): void
     {
+        $ttlSeconds ??= (int) setting('ride.dispatch.offer_ttl_seconds', 90);
         $expiresAt = now()->addSeconds($ttlSeconds);
 
         $candidates->values()->each(function (DriverAvailability $availability, int $index) use ($rideBooking, $expiresAt) {
@@ -146,8 +154,9 @@ class DriverDispatchService
      *
      * @return int number of availabilities taken offline
      */
-    public function expireStaleAvailability(int $staleAfterSeconds = 300): int
+    public function expireStaleAvailability(?int $staleAfterSeconds = null): int
     {
+        $staleAfterSeconds ??= (int) setting('ride.dispatch.stale_availability_seconds', 300);
         return DriverAvailability::query()
             ->where('status', 'online')
             ->whereNotNull('last_updated')
@@ -194,8 +203,12 @@ class DriverDispatchService
         ?int $vehicleId = null,
         ?float $pickupLat = null,
         ?float $pickupLng = null,
-        float $radiusKm = self::DEFAULT_PICKUP_RADIUS_KM
+        ?float $radiusKm = null
     ): array {
+        $radiusKm ??= (float) setting('ride.dispatch.pickup_radius_km', self::DEFAULT_PICKUP_RADIUS_KM, array_filter([
+            'lat' => $pickupLat,
+            'lng' => $pickupLng,
+        ], fn ($value) => $value !== null));
         $failures = [];
 
         if (! $driver->isApproved() || ! $driver->is_active || $driver->status !== 'active') {
@@ -268,13 +281,17 @@ class DriverDispatchService
         return null;
     }
 
-    private function nearbyAvailability(float $pickupLat, float $pickupLng)
+    private function nearbyAvailability(float $pickupLat, float $pickupLng, ?float $radiusKm = null)
     {
+        $radiusKm ??= (float) setting('ride.dispatch.pickup_radius_km', self::DEFAULT_PICKUP_RADIUS_KM, [
+            'lat' => $pickupLat,
+            'lng' => $pickupLng,
+        ]);
         if (DB::connection()->getDriverName() !== 'sqlite') {
             return DriverAvailability::query()
                 ->with('driver')
                 ->active()
-                ->nearLocation($pickupLat, $pickupLng, self::DEFAULT_PICKUP_RADIUS_KM)
+                ->nearLocation($pickupLat, $pickupLng, $radiusKm)
                 ->get();
         }
 
@@ -294,7 +311,7 @@ class DriverDispatchService
 
                 return $availability;
             })
-            ->filter(fn (DriverAvailability $availability) => (float) $availability->distance <= self::DEFAULT_PICKUP_RADIUS_KM);
+            ->filter(fn (DriverAvailability $availability) => (float) $availability->distance <= $radiusKm);
     }
 
     public function hasActiveWorkload(Driver $driver): bool
@@ -345,11 +362,11 @@ class DriverDispatchService
             return 0.0;
         }
 
-        return round(((float) ($driver->rating ?? 0) * 10)
-            + ($this->acceptanceRate($driver) * 10)
-            + ($preferSharingEnabled && $availability->sharing_enabled ? 18 : 0)
-            - ((float) ($availability->distance ?? 999) * 2)
-            - ($this->workloadScore($driver) * 2), 2);
+        return round(((float) ($driver->rating ?? 0) * (float) setting('ride.dispatch.weight_rating', 10.0))
+            + ($this->acceptanceRate($driver) * (float) setting('ride.dispatch.weight_acceptance', 10.0))
+            + ($preferSharingEnabled && $availability->sharing_enabled ? (float) setting('ride.dispatch.weight_sharing', 18.0) : 0)
+            - ((float) ($availability->distance ?? 999) * (float) setting('ride.dispatch.weight_distance_penalty', 2.0))
+            - ($this->workloadScore($driver) * (float) setting('ride.dispatch.weight_workload_penalty', 2.0)), 2);
     }
 
     private function distanceKm(float $lat1, float $lng1, float $lat2, float $lng2): float

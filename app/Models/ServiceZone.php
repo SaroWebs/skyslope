@@ -24,6 +24,12 @@ class ServiceZone extends Model
         'is_active' => 'boolean',
     ];
 
+    protected static function booted(): void
+    {
+        static::saved(fn () => app(\App\Support\Settings\ZoneResolver::class)->forget());
+        static::deleted(fn () => app(\App\Support\Settings\ZoneResolver::class)->forget());
+    }
+
     public function scopeActive($query)
     {
         return $query->where('is_active', true);

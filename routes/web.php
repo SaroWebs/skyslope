@@ -8,6 +8,8 @@ use App\Http\Controllers\AdminDriverController;
 use App\Http\Controllers\AdminFinancialController;
 use App\Http\Controllers\AdminRoleController;
 use App\Http\Controllers\AdminVehicleController;
+use App\Http\Controllers\Admin\ServiceZoneController;
+use App\Http\Controllers\Admin\SettingsController;
 use App\Http\Controllers\AuthController;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Auth;
@@ -239,5 +241,14 @@ Route::middleware(['auth', 'role:admin'])->prefix('admin')->name('admin.')->grou
     Route::patch('/media/{media}/approve', [AdminController::class, 'approveMedia'])->name('media.approve');
     Route::patch('/media/{media}/reject', [AdminController::class, 'rejectMedia'])->name('media.reject');
     Route::delete('/media/{media}', [AdminController::class, 'deleteMedia'])->name('media.delete');
-    Route::get('/settings', [AdminController::class, 'settings'])->name('settings');
+    Route::controller(SettingsController::class)->group(function () {
+        Route::get('/settings', 'index')->name('settings');
+        Route::post('/settings', 'update')->name('settings.update');
+    });
+    Route::controller(ServiceZoneController::class)->prefix('service-zones')->name('service-zones.')->group(function () {
+        Route::get('/', 'index')->name('index');
+        Route::post('/', 'store')->name('store');
+        Route::put('/{serviceZone}', 'update')->name('update');
+        Route::delete('/{serviceZone}', 'destroy')->name('destroy');
+    });
 });

@@ -631,10 +631,12 @@ const AdminLayout = ({ children, title = 'Admin Panel' }: AdminLayoutProps) => {
             current:
                 url.startsWith('/admin/cms') ||
                 url.startsWith('/admin/roles') ||
-                url.startsWith('/admin/settings'),
+                url.startsWith('/admin/settings') ||
+                url.startsWith('/admin/service-zones'),
             children: [
                 { name: 'Frontend CMS', href: '/admin/cms' },
                 { name: 'System Settings', href: '/admin/settings' },
+                { name: 'Service Zones', href: '/admin/service-zones' },
                 { name: 'Roles & Permissions', href: '/admin/roles' },
             ],
         },

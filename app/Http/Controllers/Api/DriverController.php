@@ -74,7 +74,10 @@ class DriverController extends Controller
         if ($availability?->current_lat && $availability?->current_lng) {
             $lat = (float) $availability->current_lat;
             $lng = (float) $availability->current_lng;
-            $radiusKm = DriverDispatchService::DEFAULT_PICKUP_RADIUS_KM;
+            $radiusKm = (float) setting('ride.dispatch.pickup_radius_km', DriverDispatchService::DEFAULT_PICKUP_RADIUS_KM, [
+                'lat' => $lat,
+                'lng' => $lng,
+            ]);
 
             $latDelta = $radiusKm / 111.32;
             $lngDelta = $radiusKm / (111.32 * cos(deg2rad($lat)));

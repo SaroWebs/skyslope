@@ -25,9 +25,9 @@ class CommissionService
     public function calculateRideCommission(RideBooking $booking): float
     {
         $baseRate = match ($booking->service_type) {
-            'hourly' => 0.25,
-            'round_trip' => 0.18,
-            default => 0.20,
+            'hourly' => (float) setting('commission.ride.hourly', 0.25),
+            'round_trip' => (float) setting('commission.ride.round_trip', 0.18),
+            default => (float) setting('commission.ride.default', 0.20),
         };
 
         return round(((float) $booking->total_fare) * $baseRate * (float) ($booking->surge_multiplier ?? 1), 2);
@@ -35,12 +35,14 @@ class CommissionService
 
     public function calculateRentalCommission(CarRental $rental): float
     {
-        return round(((float) $rental->total_price) * 0.20, 2);
+        return round(((float) $rental->total_price) * (float) setting('commission.rental', 0.20, [
+            'category_id' => $rental->car_category_id,
+        ]), 2);
     }
 
     public function calculateTourCommission(TourBooking $booking): float
     {
-        return round(((float) $booking->total_price) * 0.15, 2);
+        return round(((float) $booking->total_price) * (float) setting('commission.tour', 0.15), 2);
     }
 
     public function settleBooking(Model $booking): bool
