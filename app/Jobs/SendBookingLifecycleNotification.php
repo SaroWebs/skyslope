@@ -3,6 +3,7 @@
 namespace App\Jobs;
 
 use App\Models\CarRental;
+use App\Models\OutboxMessage;
 use App\Models\RideBooking;
 use App\Models\TourBooking;
 use App\Services\NotificationService;
@@ -13,7 +14,6 @@ use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Log;
-use RuntimeException;
 use Throwable;
 
 class SendBookingLifecycleNotification implements ShouldQueue
@@ -48,36 +48,16 @@ class SendBookingLifecycleNotification implements ShouldQueue
         $content = $this->contentFor($booking);
         $channels = $this->channelsFor($booking);
 
-        $results = $notifications->notify($booking->customer, $channels, $content);
-        $failed = collect($channels)
-            ->filter(fn (string $channel) => array_key_exists($channel, $results)
-                && $results[$channel] === false
-                && $notifications->isChannelConfigured($channel))
-            ->values()
-            ->all();
-        $skipped = collect($channels)
-            ->filter(fn (string $channel) => array_key_exists($channel, $results)
-                && $results[$channel] === false
-                && ! $notifications->isChannelConfigured($channel))
-            ->values()
-            ->all();
+        // Write durable outbox rows rather than delivering inline. Delivery,
+        // retry/backoff and dead-lettering are owned by ProcessOutboxMessage;
+        // the dedup key makes a job redelivery enqueue each channel exactly once.
+        $messages = $notifications->enqueue($booking->customer, $channels, $content, [
+            'dedup_key' => "booking:{$this->bookingType}:{$this->bookingId}:{$this->action}",
+        ]);
 
-        if ($skipped !== []) {
-            Log::warning('Booking notification channel skipped: provider not configured', $this->logContext([
-                'skipped_channels' => $skipped,
-            ]));
-        }
-
-        if ($failed !== []) {
-            Log::warning('Booking notification delivery failed', $this->logContext([
-                'failed_channels' => $failed,
-            ]));
-
-            throw new RuntimeException('Booking notification failed for channels: '.implode(', ', $failed));
-        }
-
-        Log::info('Booking notification queued delivery completed', $this->logContext([
-            'channels' => array_keys($results),
+        Log::info('Booking notification enqueued to outbox', $this->logContext([
+            'channels' => array_map(fn (OutboxMessage $message) => $message->channel, $messages),
+            'outbox_ids' => array_map(fn (OutboxMessage $message) => $message->id, $messages),
         ]));
     }
 

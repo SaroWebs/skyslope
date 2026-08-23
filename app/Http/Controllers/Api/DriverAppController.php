@@ -3,9 +3,10 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
-use App\Models\CarRental;
 use App\Models\CarCategory;
+use App\Models\CarRental;
 use App\Models\DriverAvailability;
+use App\Models\DriverDocument;
 use App\Models\RideBooking;
 use App\Models\TourBooking;
 use App\Models\TourDriverAssignment;
@@ -13,13 +14,17 @@ use App\Models\Vehicle;
 use App\Services\BookingLifecycleNotifier;
 use App\Services\CommissionService;
 use App\Services\DriverDispatchService;
+use App\Rules\FileIsClean;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
 
 class DriverAppController extends Controller
 {
+    private const REQUIRED_DOCUMENTS = ['driving_license', 'government_id', 'police_verification'];
+
     public function dashboard(Request $request)
     {
         $driver = $request->user();
@@ -27,14 +32,15 @@ class DriverAppController extends Controller
             ['driver_id' => $driver->id],
             ['status' => 'offline', 'is_available' => true]
         );
-        $vehicle = $driver->vehicle()->with('category:id,name,vehicle_type,seats')->first();
+        $vehicle = $driver->vehicle()->with('category:id,name,vehicle_type,seats,base_fare,price_per_km,price_per_minute,min_fare,base_price_per_day,extra_km_charge')->first();
 
         return response()->json([
             'success' => true,
             'driver' => $driver,
             'availability' => $availability,
             'vehicle' => $vehicle,
-            'vehicle_readiness' => $this->vehicleReadiness($vehicle),
+            'vehicle_readiness' => $this->vehicleReadiness($vehicle, $driver),
+            'document_verification' => $this->documentVerification($driver),
             'stats' => [
                 'active_rides' => RideBooking::where('driver_id', $driver->id)
                     ->whereIn('status', ['driver_assigned', 'driver_arriving', 'pickup', 'in_transit'])
@@ -93,7 +99,7 @@ class DriverAppController extends Controller
 
         if ($validated['is_online']) {
             $vehicle = $request->user()->vehicle()->first();
-            $readiness = $this->vehicleReadiness($vehicle);
+            $readiness = $this->vehicleReadiness($vehicle, $request->user());
 
             if (! $readiness['can_go_online']) {
                 return response()->json([
@@ -133,16 +139,68 @@ class DriverAppController extends Controller
 
     public function vehicle(Request $request)
     {
-        $vehicle = $request->user()->vehicle()->with('category:id,name,vehicle_type,seats')->first();
+        $vehicle = $request->user()->vehicle()->with('category:id,name,vehicle_type,seats,base_fare,price_per_km,price_per_minute,min_fare,base_price_per_day,extra_km_charge')->first();
 
         return response()->json([
             'success' => true,
             'vehicle' => $vehicle,
-            'vehicle_readiness' => $this->vehicleReadiness($vehicle),
+            'vehicle_readiness' => $this->vehicleReadiness($vehicle, $request->user()),
+            'document_verification' => $this->documentVerification($request->user()),
             'categories' => CarCategory::query()
                 ->where('is_active', true)
                 ->orderBy('sort_order')
-                ->get(['id', 'name', 'vehicle_type', 'seats']),
+                ->get([
+                    'id', 'name', 'vehicle_type', 'seats',
+                    'base_fare', 'price_per_km', 'price_per_minute', 'min_fare',
+                    'base_price_per_day', 'extra_km_charge',
+                ]),
+        ]);
+    }
+
+    public function documents(Request $request)
+    {
+        $documents = $request->user()->documents()->latest()->get();
+
+        return response()->json([
+            'success' => true,
+            'data' => $documents,
+            'verification' => $this->documentVerification($request->user()),
+        ]);
+    }
+
+    public function upsertDocument(Request $request)
+    {
+        $validated = $request->validate([
+            'type' => ['required', Rule::in(['driving_license', 'government_id', 'police_verification', 'tax_id'])],
+            'document_number' => ['nullable', 'string', 'max:120'],
+            'expires_at' => ['nullable', 'date', 'after:today'],
+            'file' => ['required', 'file', 'mimes:jpg,jpeg,png,pdf', 'max:10240', new FileIsClean()],
+        ]);
+
+        $existing = $request->user()->documents()->where('type', $validated['type'])->first();
+        $path = $request->file('file')->store('driver-documents/'.$request->user()->id, 'public');
+
+        if ($existing?->file_path) {
+            Storage::disk('public')->delete($existing->file_path);
+        }
+
+        $document = DriverDocument::updateOrCreate(
+            ['driver_id' => $request->user()->id, 'type' => $validated['type']],
+            [
+                'document_number' => $validated['document_number'] ?? null,
+                'expires_at' => $validated['expires_at'] ?? null,
+                'file_path' => $path,
+                'status' => 'pending',
+                'rejection_reason' => null,
+                'reviewed_at' => null,
+                'reviewed_by' => null,
+            ]
+        );
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Document submitted for verification.',
+            'data' => $document,
         ]);
     }
 
@@ -185,6 +243,7 @@ class DriverAppController extends Controller
         $validated['registration_number'] = strtoupper(preg_replace('/\s+/', '', $validated['registration_number']));
         $validated['driver_id'] = $driver->id;
         $validated['is_active'] = false;
+        $validated['is_available_for_rent'] = false;
         $validated['approval_status'] = 'pending';
         $validated['reviewed_at'] = null;
         $validated['reviewed_by'] = null;
@@ -208,23 +267,81 @@ class DriverAppController extends Controller
             'last_updated' => now(),
         ]);
 
-        $vehicle->load('category:id,name,vehicle_type,seats');
+        $vehicle->load('category:id,name,vehicle_type,seats,base_fare,price_per_km,price_per_minute,min_fare,base_price_per_day,extra_km_charge');
 
         return response()->json([
             'success' => true,
             'message' => 'Your car was submitted for admin approval.',
             'vehicle' => $vehicle,
-            'vehicle_readiness' => $this->vehicleReadiness($vehicle),
+            'vehicle_readiness' => $this->vehicleReadiness($vehicle, $driver),
         ]);
     }
 
-    private function vehicleReadiness(?Vehicle $vehicle): array
+    public function updateRentalAvailability(Request $request)
+    {
+        $validated = $request->validate([
+            'is_available_for_rent' => ['required', 'boolean'],
+        ]);
+
+        $driver = $request->user();
+        $vehicle = $driver->vehicle()->first();
+        if (! $vehicle) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Add and verify your vehicle before listing it for rent.',
+            ], 422);
+        }
+
+        $availableForRent = (bool) $validated['is_available_for_rent'];
+        if ($availableForRent && (
+            ! $driver->can_rental_delivery
+            || $driver->status !== 'active'
+            || ! $driver->is_active
+            || ! $driver->is_approved
+            || ! $vehicle->isApprovedForService()
+        )) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Your driver account and vehicle must be approved before the car can be listed for rent.',
+            ], 422);
+        }
+
+        $vehicle->update(['is_available_for_rent' => $availableForRent]);
+
+        return response()->json([
+            'success' => true,
+            'message' => $availableForRent
+                ? 'Your vehicle is now visible in car rentals.'
+                : 'Your vehicle has been removed from car rentals.',
+            'vehicle' => $vehicle->fresh('category'),
+        ]);
+    }
+
+    private function vehicleReadiness(?Vehicle $vehicle, $driver = null): array
     {
         if (! $vehicle) {
             return [
                 'status' => 'missing',
                 'can_go_online' => false,
                 'message' => 'Add your car before going online.',
+            ];
+        }
+
+        $verification = $driver ? $this->documentVerification($driver) : null;
+        if ($verification && ! $verification['is_complete']) {
+            return [
+                'status' => 'documents_required',
+                'can_go_online' => false,
+                'message' => 'Submit all required driver documents and wait for admin verification.',
+                'action' => 'documents',
+            ];
+        }
+
+        if ($driver && ($driver->status !== 'active' || ! $driver->is_approved || ! $driver->is_active)) {
+            return [
+                'status' => 'driver_pending',
+                'can_go_online' => false,
+                'message' => 'Your driver profile is waiting for admin activation.',
             ];
         }
 
@@ -256,6 +373,23 @@ class DriverAppController extends Controller
             'status' => 'approved',
             'can_go_online' => true,
             'message' => 'Your car is approved and ready for trips.',
+        ];
+    }
+
+    private function documentVerification($driver): array
+    {
+        $approvedTypes = $driver->documents()
+            ->where('status', 'approved')
+            ->where(fn ($query) => $query
+                ->whereNull('expires_at')
+                ->orWhereDate('expires_at', '>=', today()))
+            ->pluck('type');
+        $missing = collect(self::REQUIRED_DOCUMENTS)->diff($approvedTypes)->values();
+
+        return [
+            'required_types' => self::REQUIRED_DOCUMENTS,
+            'missing_or_unverified' => $missing,
+            'is_complete' => $missing->isEmpty(),
         ];
     }
 

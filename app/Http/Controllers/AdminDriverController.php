@@ -2,23 +2,30 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\CarRental;
 use App\Models\Driver;
 use App\Models\DriverAvailability;
+use App\Models\DriverDocument;
+use App\Models\RideBooking;
+use App\Models\TourDriverAssignment;
 use App\Models\Vehicle;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 
 class AdminDriverController extends Controller
 {
+    private const REQUIRED_DOCUMENTS = ['driving_license', 'government_id', 'police_verification'];
+
     /**
      * List all drivers with pagination and search.
      */
     public function index(Request $request)
     {
-        $query = Driver::query();
+        $query = $request->boolean('deleted') ? Driver::onlyTrashed() : Driver::query();
 
         if ($search = $request->input('search')) {
             $query->where(function ($q) use ($search) {
@@ -61,7 +68,10 @@ class AdminDriverController extends Controller
                 ->with('driver:id,name')
                 ->orderBy('registration_number')
                 ->get(['id', 'driver_id', 'registration_number', 'make', 'model']),
-            'filters' => $request->only(['search', 'status']),
+            'filters' => [
+                ...$request->only(['search', 'status']),
+                'deleted' => $request->boolean('deleted'),
+            ],
         ]);
     }
 
@@ -71,6 +81,11 @@ class AdminDriverController extends Controller
     public function store(Request $request)
     {
         $validated = $this->validateDriver($request);
+        if ($validated['status'] === 'active') {
+            throw ValidationException::withMessages([
+                'status' => 'Create the driver as pending, verify the required documents, then activate the account.',
+            ]);
+        }
 
         $driver = DB::transaction(function () use ($validated) {
             $vehicleId = $validated['vehicle_id'] ?? null;
@@ -98,6 +113,9 @@ class AdminDriverController extends Controller
     public function update(Request $request, Driver $driver)
     {
         $validated = $this->validateDriver($request, $driver);
+        if ($validated['status'] === 'active') {
+            $this->ensureRequiredDocumentsAreApproved($driver);
+        }
 
         DB::transaction(function () use ($validated, $driver) {
             $vehicleId = $validated['vehicle_id'] ?? null;
@@ -135,6 +153,7 @@ class AdminDriverController extends Controller
             'wallet',
             'vehicle.category',
             'vehicle.tracker',
+            'documents.reviewer:id,name',
             'tourDriverAssignments.schedule.tour' => fn ($q) => $q->select('id', 'title'),
         ]);
 
@@ -192,6 +211,11 @@ class AdminDriverController extends Controller
             'driver' => $driver,
             'stats' => $stats,
             'reviews' => $reviews,
+            'available_vehicles' => Vehicle::query()
+                ->with('category:id,name')
+                ->where(fn ($query) => $query->whereNull('driver_id')->orWhere('driver_id', $driver->id))
+                ->orderBy('registration_number')
+                ->get(),
         ]);
     }
 
@@ -215,6 +239,8 @@ class AdminDriverController extends Controller
      */
     public function approve(Driver $driver)
     {
+        $this->ensureRequiredDocumentsAreApproved($driver);
+
         $driver->update([
             'status' => 'active',
             'is_active' => true,
@@ -267,6 +293,8 @@ class AdminDriverController extends Controller
      */
     public function activate(Driver $driver)
     {
+        $this->ensureRequiredDocumentsAreApproved($driver);
+
         $driver->update([
             'status' => 'active',
             'is_active' => true,
@@ -299,6 +327,92 @@ class AdminDriverController extends Controller
         return redirect()->back()->with('success', filled($validated['vehicle_id'] ?? null)
             ? 'Vehicle assigned to driver successfully.'
             : 'Vehicle unassigned from driver successfully.');
+    }
+
+    public function reviewVehicle(Request $request, Driver $driver)
+    {
+        $vehicle = $driver->vehicle()->firstOrFail();
+        $validated = $request->validate([
+            'approval_status' => ['required', Rule::in(['approved', 'rejected', 'pending'])],
+            'condition' => ['required', Rule::in(['excellent', 'good', 'fair', 'under_maintenance'])],
+            'rejection_reason' => ['nullable', 'string', 'max:1000', Rule::requiredIf($request->input('approval_status') === 'rejected')],
+        ]);
+
+        $vehicle->update([
+            ...$validated,
+            'is_active' => $validated['approval_status'] === 'approved' && $validated['condition'] !== 'under_maintenance',
+            'rejection_reason' => $validated['approval_status'] === 'rejected' ? $validated['rejection_reason'] : null,
+            'reviewed_at' => now(),
+            'reviewed_by' => Auth::id(),
+        ]);
+
+        return redirect()->back()->with('success', 'Driver vehicle review updated.');
+    }
+
+    public function reviewDocument(Request $request, Driver $driver, DriverDocument $document)
+    {
+        abort_unless((int) $document->driver_id === (int) $driver->id, 404);
+        $validated = $request->validate([
+            'status' => ['required', Rule::in(['approved', 'rejected'])],
+            'rejection_reason' => ['nullable', 'string', 'max:1000', Rule::requiredIf($request->input('status') === 'rejected')],
+        ]);
+
+        $document->update([
+            'status' => $validated['status'],
+            'rejection_reason' => $validated['status'] === 'rejected' ? $validated['rejection_reason'] : null,
+            'reviewed_at' => now(),
+            'reviewed_by' => Auth::id(),
+        ]);
+
+        return redirect()->back()->with('success', 'Driver document review updated.');
+    }
+
+    public function destroy(Driver $driver)
+    {
+        $hasActiveWork = RideBooking::where('driver_id', $driver->id)
+            ->whereIn('status', ['driver_assigned', 'driver_arriving', 'pickup', 'in_transit'])
+            ->exists()
+            || CarRental::where('driver_id', $driver->id)
+                ->whereIn('status', ['driver_assigned', 'in_progress'])
+                ->exists()
+            || TourDriverAssignment::where('driver_id', $driver->id)
+                ->whereIn('status', ['assigned', 'accepted'])
+                ->exists();
+
+        if ($hasActiveWork) {
+            throw ValidationException::withMessages([
+                'driver' => 'Complete or reassign this driver’s active work before deleting the account.',
+            ]);
+        }
+
+        $driver->tokens()->delete();
+        $driver->driverAvailability()->update([
+            'status' => 'offline',
+            'is_available' => false,
+            'last_updated' => now(),
+        ]);
+        $driver->update(['is_online' => false, 'is_active' => false]);
+        $driver->delete();
+
+        return redirect()->route('admin.drivers')->with('success', 'Driver moved to deleted drivers.');
+    }
+
+    public function restore(int $driver)
+    {
+        $record = Driver::onlyTrashed()->findOrFail($driver);
+        $record->restore();
+
+        return redirect()->back()->with('success', 'Driver restored. Review status before activation.');
+    }
+
+    public function forceDestroy(int $driver)
+    {
+        $record = Driver::onlyTrashed()->findOrFail($driver);
+        $documentPaths = $record->documents()->pluck('file_path')->filter()->all();
+        $record->forceDelete();
+        Storage::disk('public')->delete($documentPaths);
+
+        return redirect()->back()->with('success', 'Driver permanently deleted.');
     }
 
     public function updateCapabilities(Request $request, Driver $driver)
@@ -401,5 +515,24 @@ class AdminDriverController extends Controller
             ->update(['driver_id' => null]);
 
         $vehicle?->update(['driver_id' => $driver->id]);
+    }
+
+    private function ensureRequiredDocumentsAreApproved(Driver $driver): void
+    {
+        $approvedTypes = $driver->documents()
+            ->where('status', 'approved')
+            ->where(fn ($query) => $query
+                ->whereNull('expires_at')
+                ->orWhereDate('expires_at', '>=', today()))
+            ->pluck('type');
+        $missing = collect(self::REQUIRED_DOCUMENTS)->diff($approvedTypes);
+
+        if ($missing->isNotEmpty()) {
+            throw ValidationException::withMessages([
+                'documents' => 'Approve all required, unexpired driver documents first: '
+                    .$missing->map(fn (string $type) => str($type)->replace('_', ' ')->title())->join(', ')
+                    .'.',
+            ]);
+        }
     }
 }

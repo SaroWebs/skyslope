@@ -84,9 +84,9 @@ it('does not create or expose development otps in production when sms credential
     config([
         'app.env' => 'production',
         'services.otp.allow_dev_delivery' => false,
-        'services.twilio.sid' => 'your_twilio_account_sid',
-        'services.twilio.token' => 'your_twilio_auth_token',
-        'services.twilio.from' => '+1234567890',
+        'services.mtalkz.api_key' => 'your_mtalkz_api_key',
+        'services.mtalkz.sender_id' => null,
+        'services.mtalkz.entity_id' => null,
     ]);
 
     $response = $this->postJson('/api/customer-app/otp/send', [
@@ -174,6 +174,11 @@ it('lets approved drivers verify otp and access protected driver app routes', fu
     ])->assertOk()
         ->assertJsonPath('success', true)
         ->assertJsonPath('driver.id', $driver->id);
+
+    $this->getJson('/api/driver-app/wallet', [
+        'Authorization' => 'Bearer '.$response->json('token'),
+    ])->assertOk()
+        ->assertJsonPath('data.balance', '0.00');
 });
 
 it('returns a development otp when an existing driver requests a login code', function () {
@@ -194,7 +199,7 @@ it('returns a development otp when an existing driver requests a login code', fu
         ->assertJsonPath('dev_otp', '123456');
 });
 
-it('redirects an unknown driver into registration and creates a pending service profile', function () {
+it('verifies an unknown driver before profile completion and enters the dashboard', function () {
     $phone = '8500000100';
 
     $this->postJson('/api/driver-app/otp/send', [
@@ -202,11 +207,23 @@ it('redirects an unknown driver into registration and creates a pending service 
     ])->assertOk()
         ->assertJsonPath('success', true)
         ->assertJsonPath('driver_exists', false)
-        ->assertJsonMissingPath('dev_otp');
+        ->assertJsonPath('next_step', 'verify_registration')
+        ->assertJsonPath('dev_otp', '123456');
 
     $this->assertDatabaseMissing('drivers', ['phone' => $phone]);
 
-    $this->postJson('/api/driver-app/register', [
+    $verify = $this->postJson('/api/driver-app/otp/verify', [
+        'phone' => $phone,
+        'code' => '123456',
+    ]);
+
+    $verify->assertOk()
+        ->assertJsonPath('success', true)
+        ->assertJsonPath('requires_profile', true)
+        ->assertJsonStructure(['registration_token']);
+
+    $complete = $this->postJson('/api/driver-app/otp/register-complete', [
+        'registration_token' => $verify->json('registration_token'),
         'phone' => $phone,
         'name' => 'New Service Driver',
         'email' => 'new-service-driver@example.com',
@@ -216,11 +233,15 @@ it('redirects an unknown driver into registration and creates a pending service 
         'vehicle_number' => 'KA01TEST100',
         'vehicle_model' => 'Test SUV',
         'service_types' => ['ride', 'tour', 'rental'],
-    ])->assertCreated()
+    ]);
+
+    $complete->assertCreated()
         ->assertJsonPath('success', true)
         ->assertJsonPath('driver_created', true)
         ->assertJsonPath('driver_status', 'pending')
-        ->assertJsonPath('dev_otp', '123456');
+        ->assertJsonPath('requires_profile', false)
+        ->assertJsonPath('driver.phone', $phone)
+        ->assertJsonStructure(['token']);
 
     $this->assertDatabaseHas('drivers', [
         'phone' => $phone,
@@ -233,14 +254,39 @@ it('redirects an unknown driver into registration and creates a pending service 
         'can_rental_delivery' => true,
     ]);
 
-    $this->postJson('/api/driver-app/otp/verify', [
-        'phone' => $phone,
-        'code' => '123456',
-    ])->assertForbidden()
-        ->assertJsonPath('phone_verified', true)
-        ->assertJsonPath('driver_status', 'pending');
+    $headers = ['Authorization' => 'Bearer '.$complete->json('token')];
 
-    expect(Driver::where('phone', $phone)->firstOrFail()->phone_verified_at)->not->toBeNull();
+    $this->getJson('/api/driver-app/me', $headers)
+        ->assertOk()
+        ->assertJsonPath('driver.phone', $phone);
+
+    $this->getJson('/api/driver-app/dashboard', $headers)
+        ->assertOk()
+        ->assertJsonPath('driver.phone', $phone);
+
+    $this->getJson('/api/driver-app/wallet', $headers)
+        ->assertOk()
+        ->assertJsonPath('data.balance', '0.00');
+
+    $this->getJson('/api/driver-app/wallet/transactions', $headers)
+        ->assertOk()
+        ->assertJsonPath('data.data', []);
+
+    $this->getJson('/api/driver-app/history', $headers)
+        ->assertOk()
+        ->assertJsonPath('data.data', []);
+
+    $this->getJson('/api/driver-app/tour-assignments', $headers)
+        ->assertOk()
+        ->assertJsonPath('data.data', []);
+
+    $this->getJson('/api/driver-app/rental-assignments', $headers)
+        ->assertOk()
+        ->assertJsonPath('data.data', []);
+
+    $driver = Driver::where('phone', $phone)->firstOrFail();
+    expect($driver->phone_verified_at)->not->toBeNull();
+    expect($driver->is_approved)->toBeFalse();
 });
 
 it('blocks customers from accessing another customer ride booking', function () {
@@ -275,7 +321,7 @@ it('blocks customers from accessing another customer ride booking', function () 
     ])->assertForbidden();
 });
 
-it('lets customers cancel their own pending ride booking', function () {
+it('removes a customer point ride cancelled before pickup', function () {
     $customer = Customer::create(['name' => 'Cancel Customer', 'phone' => '9500000005']);
 
     $ride = RideBooking::create([
@@ -303,9 +349,62 @@ it('lets customers cancel their own pending ride booking', function () {
         'reason' => 'Plans changed',
     ])->assertOk()
         ->assertJsonPath('success', true)
-        ->assertJsonPath('data.booking.status', 'cancelled')
-        ->assertJsonPath('data.booking.cancellation_reason', 'Plans changed')
-        ->assertJsonPath('data.refund', null);
+        ->assertJsonPath('data.id', $ride->id)
+        ->assertJsonPath('data.removed', true)
+        ->assertJsonPath('data.refund_amount', 0);
+
+    $this->assertDatabaseMissing('ride_bookings', ['id' => $ride->id]);
+    $this->getJson('/api/customer-app/rides')
+        ->assertOk()
+        ->assertJsonPath('data.data', []);
+});
+
+it('removes a point ride while the assigned driver is en route', function () {
+    $customer = Customer::create(['name' => 'En Route Customer', 'phone' => '9500000007']);
+    $driver = Driver::create([
+        'name' => 'En Route Driver',
+        'phone' => '8500000007',
+        'status' => 'active',
+        'is_active' => true,
+        'is_approved' => true,
+    ]);
+    DriverAvailability::create([
+        'driver_id' => $driver->id,
+        'is_available' => false,
+        'status' => 'on_ride',
+    ]);
+    $ride = RideBooking::create([
+        'customer_id' => $customer->id,
+        'driver_id' => $driver->id,
+        'service_type' => 'point_to_point',
+        'customer_name' => $customer->name,
+        'customer_phone' => $customer->phone,
+        'pickup_location' => 'Point A',
+        'pickup_lat' => 12.9716,
+        'pickup_lng' => 77.5946,
+        'dropoff_location' => 'Point B',
+        'dropoff_lat' => 12.9816,
+        'dropoff_lng' => 77.6046,
+        'scheduled_at' => now()->addDay(),
+        'estimated_distance_km' => 10,
+        'total_fare' => 250,
+        'status' => 'driver_arriving',
+        'payment_status' => 'pending',
+        'payment_method' => 'cash',
+    ]);
+
+    Sanctum::actingAs($customer);
+
+    $this->postJson("/api/customer-app/rides/{$ride->id}/cancel")
+        ->assertOk()
+        ->assertJsonPath('data.removed', true);
+
+    $this->assertDatabaseMissing('ride_bookings', ['id' => $ride->id]);
+    $this->assertDatabaseHas('driver_availabilities', [
+        'driver_id' => $driver->id,
+        'is_available' => true,
+        'status' => 'online',
+    ]);
 });
 
 it('lets customers create a support incident for their own ride booking', function () {

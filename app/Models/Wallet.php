@@ -15,13 +15,15 @@ class Wallet extends Model
         'owner_type',
         'owner_id',
         'balance',
+        'balance_minor',
         'currency',
         'is_active',
     ];
 
     protected $casts = [
-        'balance'   => 'decimal:2',
-        'is_active' => 'boolean',
+        'balance'       => 'decimal:2',
+        'balance_minor' => 'integer',
+        'is_active'     => 'boolean',
     ];
 
     // ── Relationships ──────────────────────────────────────────────
@@ -70,6 +72,22 @@ class Wallet extends Model
         return (float) $this->balance;
     }
 
+    /**
+     * Authoritative balance in integer minor units (paise). Falls back to the
+     * decimal mirror for wallets seeded before the ledger existed.
+     */
+    public function getBalanceMinor(): int
+    {
+        return $this->balance_minor !== null
+            ? (int) $this->balance_minor
+            : \App\Support\Money::toMinor((float) $this->balance);
+    }
+
+    public function hasSufficientBalanceMinor(int $amountMinor): bool
+    {
+        return $this->getBalanceMinor() >= $amountMinor;
+    }
+
     public function isActive(): bool
     {
         return $this->is_active;
@@ -82,5 +100,21 @@ class Wallet extends Model
     {
         return $query->where('owner_type', get_class($user))
                      ->where('owner_id', $user->id);
+    }
+
+    /**
+     * Scope to filter all customer wallets.
+     */
+    public function scopeForCustomers($query)
+    {
+        return $query->where('owner_type', 'App\Models\Customer');
+    }
+
+    /**
+     * Scope to filter all driver wallets.
+     */
+    public function scopeForDrivers($query)
+    {
+        return $query->where('owner_type', 'App\Models\Driver');
     }
 }

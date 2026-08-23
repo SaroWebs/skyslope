@@ -4,7 +4,6 @@ namespace App\Services;
 
 use App\Models\Otp;
 use Illuminate\Support\Facades\Log;
-use Twilio\Rest\Client;
 
 class OtpService
 {
@@ -17,6 +16,17 @@ class OtpService
      * Throttle: minimum seconds between OTP sends to the same phone.
      */
     protected int $throttleSeconds = 60;
+
+    /**
+     * Maximum incorrect verification attempts for a single OTP code before it is
+     * burned and the caller must request a fresh one (brute-force lockout).
+     */
+    protected int $maxVerifyAttempts;
+
+    public function __construct()
+    {
+        $this->maxVerifyAttempts = (int) config('services.otp.max_verify_attempts', 5);
+    }
 
     /**
      * Generate and send an OTP to the given phone number with a specific account type.
@@ -105,6 +115,20 @@ class OtpService
         }
 
         if ($otp->code !== $code) {
+            $otp->increment('attempts');
+
+            // Burn the code once the attempt cap is reached so a brute-force run
+            // can't keep guessing against the same OTP; force a fresh request.
+            if ($otp->attempts >= $this->maxVerifyAttempts) {
+                $otp->update(['is_used' => true]);
+
+                return [
+                    'success' => false,
+                    'message' => 'Too many incorrect attempts. Request a new code.',
+                    'status_code' => 429,
+                ];
+            }
+
             return ['success' => false, 'message' => 'Invalid OTP code.'];
         }
 
@@ -130,32 +154,21 @@ class OtpService
             return ['sent' => true, 'dev' => true];
         }
 
-        $sid = config('services.twilio.sid', env('TWILIO_SID'));
-        $token = config('services.twilio.token', env('TWILIO_TOKEN'));
-        $from = config('services.twilio.from', env('TWILIO_FROM'));
+        $sms = app(MtalkzSmsService::class);
 
-        if (! $this->hasTwilioCredentials($sid, $token, $from)) {
-            Log::error('OTP delivery blocked because Twilio credentials are not configured.', [
-                'phone' => $phone,
+        if (! $sms->isConfigured()) {
+            Log::error('OTP delivery blocked because the SMS provider is not configured.', [
                 'environment' => app()->environment(),
             ]);
 
             return ['sent' => false, 'dev' => false];
         }
 
-        try {
-            $client = new Client($sid, $token);
-            $client->messages->create($phone, [
-                'from' => $from,
-                'body' => "Your HappyMiles verification code is: {$code}. Valid for {$this->expiryMinutes} minutes.",
-            ]);
+        $body = "Your HappyMiles verification code is: {$code}. Valid for {$this->expiryMinutes} minutes.";
 
-            return ['sent' => true, 'dev' => false];
-        } catch (\Exception $e) {
-            Log::error("Failed to send OTP to {$phone}: ".$e->getMessage());
+        $sent = $sms->send($phone, $body, config('services.mtalkz.templates.otp'));
 
-            return ['sent' => false, 'dev' => false];
-        }
+        return ['sent' => $sent, 'dev' => false];
     }
 
     private function devDeliveryAllowed(): bool
@@ -169,15 +182,5 @@ class OtpService
         $code = (string) config('services.otp.mock_code', '123456');
 
         return preg_match('/^\d{6}$/', $code) === 1 ? $code : '123456';
-    }
-
-    private function hasTwilioCredentials(?string $sid, ?string $token, ?string $from): bool
-    {
-        return filled($sid)
-            && filled($token)
-            && filled($from)
-            && $sid !== 'your_twilio_account_sid'
-            && $token !== 'your_twilio_auth_token'
-            && $from !== '+1234567890';
     }
 }

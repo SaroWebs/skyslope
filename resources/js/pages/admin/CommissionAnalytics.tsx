@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { Head } from '@inertiajs/react';
+import { Head, Link } from '@inertiajs/react';
 import AdminLayout from '@/layouts/AdminLayout';
 import { 
-    Card, 
+    Card,
+    Avatar,
     Badge, 
     Table, 
     Select, 

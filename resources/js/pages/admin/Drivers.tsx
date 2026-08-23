@@ -33,7 +33,9 @@ import {
     Phone,
     UserPlus,
     Star,
-    Pencil
+    Pencil,
+    RotateCcw,
+    Trash2
 } from 'lucide-react';
 
 interface Driver {
@@ -67,6 +69,7 @@ interface Driver {
     average_rating: number | null;
     ratings_count: number;
     created_at: string;
+    deleted_at?: string | null;
     driver_availability?: {
         is_online: boolean;
         is_available: boolean;
@@ -131,6 +134,7 @@ interface DriversProps {
     filters: {
         search: string;
         status: string;
+        deleted: boolean;
     };
     vehicles: Array<{
         id: number;
@@ -145,22 +149,42 @@ interface DriversProps {
 export default function Drivers({ title, drivers, filters, vehicles }: DriversProps) {
     const [search, setSearch] = useState(filters.search || '');
     const [status, setStatus] = useState(filters.status || '');
+    const [deleted, setDeleted] = useState(Boolean(filters.deleted));
     const [formOpened, setFormOpened] = useState(false);
     const [editingDriver, setEditingDriver] = useState<Driver | null>(null);
     const form = useForm<DriverForm>({ ...emptyDriverForm });
 
     const handleSearch = (value: string) => {
         setSearch(value);
-        router.get('/admin/drivers', { search: value, status }, { preserveState: true, replace: true });
+        router.get('/admin/drivers', { search: value, status, deleted }, { preserveState: true, replace: true });
     };
 
     const handleStatusFilter = (value: string | null) => {
         setStatus(value || '');
-        router.get('/admin/drivers', { search, status: value }, { preserveState: true, replace: true });
+        router.get('/admin/drivers', { search, status: value, deleted }, { preserveState: true, replace: true });
     };
 
     const handlePageChange = (page: number) => {
-        router.get('/admin/drivers', { search, status, page }, { preserveState: true });
+        router.get('/admin/drivers', { search, status, deleted, page }, { preserveState: true });
+    };
+
+    const toggleDeleted = () => {
+        const next = !deleted;
+        setDeleted(next);
+        router.get('/admin/drivers', { search, status, deleted: next }, { preserveState: true, replace: true });
+    };
+
+    const deleteDriver = (driver: Driver) => {
+        if (window.confirm(`Move ${driver.name} to deleted drivers? They will be signed out immediately.`)) {
+            router.delete(`/admin/drivers/${driver.id}`, { preserveScroll: true });
+        }
+    };
+
+    const restoreDriver = (driver: Driver) => router.post(`/admin/drivers/deleted/${driver.id}/restore`, {}, { preserveScroll: true });
+    const permanentlyDeleteDriver = (driver: Driver) => {
+        if (window.confirm(`Permanently delete ${driver.name}? This cannot be undone.`)) {
+            router.delete(`/admin/drivers/deleted/${driver.id}/force`, { preserveScroll: true });
+        }
     };
 
     const handleApprove = (driver: Driver) => {
@@ -265,9 +289,12 @@ export default function Drivers({ title, drivers, filters, vehicles }: DriversPr
                                 style={{ width: 180 }}
                             />
                         </Group>
-                        <Button color="blue" radius="md" leftSection={<UserPlus size={16} />} onClick={openCreateForm}>
-                            Add Driver
-                        </Button>
+                        <Group gap="sm">
+                            <Button variant={deleted ? 'filled' : 'light'} color="red" radius="md" leftSection={<Trash2 size={16} />} onClick={toggleDeleted}>
+                                {deleted ? 'Viewing deleted' : 'Deleted drivers'}
+                            </Button>
+                            {!deleted && <Button color="blue" radius="md" leftSection={<UserPlus size={16} />} onClick={openCreateForm}>Add Driver</Button>}
+                        </Group>
                     </Group>
 
                     <Table.ScrollContainer minWidth={800}>
@@ -356,7 +383,7 @@ export default function Drivers({ title, drivers, filters, vehicles }: DriversPr
                                             </Table.Td>
                                             <Table.Td>
                                                 <Group gap={4} justify="flex-end">
-                                                    <Tooltip label="View Dashboard">
+                                                    {!deleted && <Tooltip label="View Dashboard">
                                                         <ActionIcon 
                                                             variant="light" 
                                                             color="blue" 
@@ -365,7 +392,7 @@ export default function Drivers({ title, drivers, filters, vehicles }: DriversPr
                                                         >
                                                             <Eye size={16} />
                                                         </ActionIcon>
-                                                    </Tooltip>
+                                                    </Tooltip>}
                                                     
                                                     <Menu shadow="md" width={200} position="bottom-end">
                                                         <Menu.Target>
@@ -375,6 +402,13 @@ export default function Drivers({ title, drivers, filters, vehicles }: DriversPr
                                                         </Menu.Target>
 
                                                         <Menu.Dropdown>
+                                                            {deleted ? (
+                                                                <>
+                                                                    <Menu.Label>Deleted driver</Menu.Label>
+                                                                    <Menu.Item color="green" leftSection={<RotateCcw size={14} />} onClick={() => restoreDriver(driver)}>Restore driver</Menu.Item>
+                                                                    <Menu.Item color="red" leftSection={<Trash2 size={14} />} onClick={() => permanentlyDeleteDriver(driver)}>Delete permanently</Menu.Item>
+                                                                </>
+                                                            ) : <>
                                                             <Menu.Label>Driver profile</Menu.Label>
                                                             <Menu.Item
                                                                 leftSection={<Pencil size={14} />}
@@ -420,6 +454,11 @@ export default function Drivers({ title, drivers, filters, vehicles }: DriversPr
                                                             <Menu.Item leftSection={<Phone size={14} />}>
                                                                 Contact Driver
                                                             </Menu.Item>
+                                                            <Menu.Divider />
+                                                            <Menu.Item color="red" leftSection={<Trash2 size={14} />} onClick={() => deleteDriver(driver)}>
+                                                                Delete Driver
+                                                            </Menu.Item>
+                                                            </>}
                                                         </Menu.Dropdown>
                                                     </Menu>
                                                 </Group>

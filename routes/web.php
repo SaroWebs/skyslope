@@ -125,11 +125,16 @@ Route::middleware(['auth', 'role:admin'])->prefix('admin')->name('admin.')->grou
         Route::get('/drivers/{driver}', 'show')->name('drivers.show');
         Route::put('/drivers/{driver}', 'update')->name('drivers.update');
         Route::put('/drivers/{driver}/vehicle', 'assignVehicle')->name('drivers.vehicle');
+        Route::put('/drivers/{driver}/vehicle/review', 'reviewVehicle')->name('drivers.vehicle.review');
+        Route::put('/drivers/{driver}/documents/{document}', 'reviewDocument')->name('drivers.documents.review');
         Route::post('/drivers/{driver}/approve', 'approve')->name('drivers.approve');
         Route::post('/drivers/{driver}/suspend', 'suspend')->name('drivers.suspend');
         Route::post('/drivers/{driver}/activate', 'activate')->name('drivers.activate');
         Route::put('/drivers/{driver}/capabilities', 'updateCapabilities')->name('drivers.capabilities');
         Route::put('/drivers/{driver}/sharing', 'updateSharing')->name('drivers.sharing');
+        Route::delete('/drivers/{driver}', 'destroy')->name('drivers.destroy');
+        Route::post('/drivers/deleted/{driver}/restore', 'restore')->name('drivers.restore');
+        Route::delete('/drivers/deleted/{driver}/force', 'forceDestroy')->name('drivers.force-destroy');
     });
 
     Route::match(['get', 'post'], '/guides/{any?}', function () {

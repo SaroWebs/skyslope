@@ -12,6 +12,7 @@ use App\Policies\CarRentalPolicy;
 use App\Policies\PlaceReviewPolicy;
 use App\Policies\RideBookingPolicy;
 use App\Policies\TourBookingPolicy;
+use App\Services\Security\MalwareScanner;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Event;
@@ -27,7 +28,12 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
-        //
+        // Bind (not singleton) so each resolution re-reads config('services.antivirus'):
+        // lets the driver be flipped per-request/per-test, and the scan is I/O-bound so
+        // rebuilding the tiny value object per upload costs nothing. Without this binding
+        // the container cannot construct MalwareScanner (primitive constructor args) and
+        // every FileIsClean-guarded upload 500s.
+        $this->app->bind(MalwareScanner::class, fn () => MalwareScanner::fromConfig());
     }
 
     /**

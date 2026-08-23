@@ -7,13 +7,14 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\Relations\MorphMany;
 use Illuminate\Database\Eloquent\Relations\MorphOne;
+use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Laravel\Sanctum\HasApiTokens;
 
 class Driver extends Authenticatable
 {
-    use HasApiTokens, HasFactory, Notifiable;
+    use HasApiTokens, HasFactory, Notifiable, SoftDeletes;
 
     protected $table = 'drivers';
 
@@ -151,6 +152,11 @@ class Driver extends Authenticatable
     public function tourReviews(): HasMany
     {
         return $this->hasMany(TourBookingReview::class, 'driver_id');
+    }
+
+    public function documents(): HasMany
+    {
+        return $this->hasMany(DriverDocument::class);
     }
 
     // ── Helpers ────────────────────────────────────────────────────

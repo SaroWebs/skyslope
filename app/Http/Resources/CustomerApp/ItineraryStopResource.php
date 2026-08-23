@@ -18,12 +18,18 @@ class ItineraryStopResource extends JsonResource
             'stop_order' => (int) ($this->stop_order ?? 1),
             'time' => $this->time,
             'title' => $this->title,
+            'start_location' => $this->start_location,
+            'end_location' => $this->end_location,
             'description' => $this->description,
             'details' => $this->details,
             'activities' => $this->activities ?? [],
             'accommodation' => $this->accommodation,
             'meals_included' => $this->meals_included ?? [],
             'distance_km' => $this->distance_km === null ? null : (float) $this->distance_km,
+            'travel_time' => $this->travel_time,
+            'key_stops' => $this->key_stops ?? [],
+            'inclusions' => $this->inclusions ?? [],
+            'exclusions' => $this->exclusions ?? [],
             'place' => new PlaceSummaryResource($this->whenLoaded('place')),
             'media' => $this->place && $this->place->relationLoaded('media')
                 ? PlaceMediaResource::collection($this->place->media)

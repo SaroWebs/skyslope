@@ -139,7 +139,7 @@ class BookingCancellationService
         return $wallet->credit(
             $amount,
             ucfirst($serviceType) . ' booking refund',
-            $this->serviceTypeFor($booking),
+            $this->serviceTypeFor($booking) . '_refund',
             (string) $booking->id
         );
     }

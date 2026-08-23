@@ -2,12 +2,18 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Payout;
 use App\Models\Wallet;
 use App\Models\WalletTransaction;
 use App\Models\WithdrawalRequest;
+use App\Services\LedgerService;
+use App\Services\PaymentService;
+use App\Services\RazorpayService;
+use App\Support\Money;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Inertia\Inertia;
 
 class AdminFinancialController extends Controller
@@ -26,13 +32,13 @@ class AdminFinancialController extends Controller
         if ($ownerType === 'driver') {
             $query->where('owner_type', 'App\Models\Driver');
         } elseif ($ownerType === 'customer') {
-            $query->where('owner_type', 'App\Models\User'); // Customer is User model
+            $query->where('owner_type', 'App\Models\Customer');
         }
 
         $wallets = $query->paginate(15)->appends($request->all());
 
         return Inertia::render('admin/Financials/Wallets', [
-            'title' => 'Driver & User Wallets',
+            'title' => 'Driver & Customer Wallets',
             'user' => Auth::user(),
             'wallets' => $wallets,
             'filters' => [
@@ -103,17 +109,76 @@ class AdminFinancialController extends Controller
     }
 
     /**
-     * Approve a pending withdrawal request.
+     * Approve a pending withdrawal request: open a Payout and initiate it at the
+     * provider. Funds were already held (wallet → system:payout_clearing) when the
+     * request was created, so approval moves no money — it only fires the payout.
+     * The payout.processed webhook (or manual completion) settles it later.
      */
-    public function approveWithdrawal(Request $request, WithdrawalRequest $withdrawal)
+    public function approveWithdrawal(Request $request, WithdrawalRequest $withdrawal, PaymentService $payments, RazorpayService $razorpay)
     {
         if (!$withdrawal->isPending()) {
             return back()->with('error', 'Only pending requests can be approved.');
         }
 
-        $withdrawal->approve(Auth::id(), $request->input('admin_notes'));
+        $details = $withdrawal->account_details ?? [];
+        $payout = null;
 
-        return back()->with('success', 'Withdrawal request approved successfully.');
+        try {
+            // Reuse a still-live payout on a re-click; open a fresh one otherwise
+            // (a prior attempt that failed is terminal, so we start clean).
+            $payout = $withdrawal->payout;
+            if (!$payout || $payout->isTerminal()) {
+                $payout = $payments->createPayout($withdrawal, Money::toMinor((float) $withdrawal->amount));
+            }
+
+            // Ensure a provider fund account exists for the payee's bank details.
+            $fundAccountId = $withdrawal->razorpay_fund_account_id;
+            if (!$fundAccountId) {
+                $owner = $withdrawal->owner;
+                $contact = $razorpay->createContact(
+                    (string) ($owner->name ?? 'Payee'),
+                    (string) ($owner->email ?? ''),
+                    (string) ($owner->phone ?? ''),
+                    'vendor'
+                );
+                $fundAccount = $razorpay->createFundAccount(
+                    (string) $contact['id'],
+                    (string) ($details['name'] ?? $owner->name ?? ''),
+                    (string) ($details['ifsc'] ?? ''),
+                    (string) ($details['account_number'] ?? ''),
+                );
+                $fundAccountId = $fundAccount['id'];
+                $withdrawal->update(['razorpay_fund_account_id' => $fundAccountId]);
+            }
+
+            // Initiate the payout at the provider (amount in major units / INR).
+            $providerPayout = $razorpay->createPayout(
+                (float) $withdrawal->amount,
+                (string) $fundAccountId,
+                'payout',
+                $payout->payout_number,
+            );
+
+            $providerPayoutId = $providerPayout['id'] ?? null;
+            $payout->markQueued($providerPayoutId);
+            $withdrawal->update(['razorpay_payout_id' => $providerPayoutId]);
+            $withdrawal->markAsProcessing();
+
+            return back()->with('success', 'Withdrawal approved — payout initiated to the payee.');
+        } catch (\Throwable $e) {
+            // Provider rejected the payout before it was queued: fail this attempt
+            // but keep the request pending (funds stay held) so an admin can retry
+            // or reject. Only a not-yet-queued payout is failed here.
+            if ($payout && $payout->status === Payout::STATUS_CREATED) {
+                $payout->markFailed('approval_error', $e->getMessage());
+            }
+            Log::error('Withdrawal approval / payout initiation failed', [
+                'withdrawal_id' => $withdrawal->id,
+                'exception' => $e::class,
+            ]);
+
+            return back()->with('error', 'Payout initiation failed: ' . $e->getMessage());
+        }
     }
 
     /**
@@ -137,9 +202,15 @@ class AdminFinancialController extends Controller
                             ->first();
 
             if ($wallet) {
+                // Release the hold back to the wallet. The 'driver_withdrawal' ref
+                // nets system:payout_clearing to zero; the shared release key makes
+                // a double-reject (or a later payout.failed webhook) a no-op.
                 $wallet->credit(
                     (float) $withdrawal->amount,
-                    'Refund: Withdrawal request rejected - ID #' . $withdrawal->id
+                    'Refund: Withdrawal request rejected - ID #' . $withdrawal->id,
+                    'driver_withdrawal',
+                    (string) $withdrawal->id,
+                    'withdrawal_release:' . $withdrawal->id
                 );
             }
 
@@ -154,20 +225,55 @@ class AdminFinancialController extends Controller
     }
 
     /**
-     * Mark withdrawal request as completed with a UTR transaction number.
+     * Mark a processing withdrawal as completed with a UTR. Settles the held
+     * funds (system:payout_clearing → system:bank_settlement) via the payout —
+     * the same idempotent path the payout.processed webhook uses — so a manual
+     * confirmation and a provider webhook can never double-settle.
      */
-    public function completeWithdrawal(Request $request, WithdrawalRequest $withdrawal)
+    public function completeWithdrawal(Request $request, WithdrawalRequest $withdrawal, PaymentService $payments, LedgerService $ledger)
     {
-        if ($withdrawal->status !== 'approved' && $withdrawal->status !== 'processing') {
-            return back()->with('error', 'Only approved or processing requests can be completed.');
+        if (!$withdrawal->isProcessing()) {
+            return back()->with('error', 'Only processing requests can be completed.');
         }
 
         $validated = $request->validate([
             'utr_number' => 'required|string|max:100',
         ]);
 
-        $withdrawal->markAsCompleted($validated['utr_number']);
+        DB::beginTransaction();
+        try {
+            $payout = $withdrawal->payout;
 
-        return back()->with('success', 'Withdrawal marked as completed successfully.');
+            if ($payout) {
+                // Idempotent: posts the settlement pair and completes the request.
+                $payments->markPayoutProcessed($payout, $validated['utr_number']);
+            } else {
+                // No payout row (out-of-band manual transfer): settle clearing →
+                // bank directly, then complete.
+                $ledger->post(
+                    'system:payout_clearing',
+                    'system:bank_settlement',
+                    Money::toMinor((float) $withdrawal->amount),
+                    [
+                        'reference_type' => 'payout',
+                        'reference_id' => (string) $withdrawal->id,
+                        'description' => 'Manual driver payout settlement — withdrawal #' . $withdrawal->id,
+                    ]
+                );
+                $withdrawal->markAsCompleted($validated['utr_number']);
+            }
+
+            DB::commit();
+
+            return back()->with('success', 'Withdrawal marked as completed successfully.');
+        } catch (\Throwable $e) {
+            DB::rollBack();
+            Log::error('Withdrawal completion failed', [
+                'withdrawal_id' => $withdrawal->id,
+                'exception' => $e::class,
+            ]);
+
+            return back()->with('error', 'Completion failed: ' . $e->getMessage());
+        }
     }
 }

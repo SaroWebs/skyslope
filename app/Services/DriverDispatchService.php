@@ -134,6 +134,30 @@ class DriverDispatchService
             ]);
     }
 
+    /**
+     * Take idle drivers offline once their location tracking has gone stale
+     * (SKY-MRD-001 §13.3). A driver who reported a location and then went
+     * silent past the threshold is no longer reachable for a live pickup, so
+     * leaving them `online`/`is_available` makes them a dispatch black hole —
+     * ranked as a candidate, offered rides, then timing out. Only currently
+     * `online` rows are swept; `on_ride`/`on_tour` drivers are mid-service and
+     * follow their own lifecycle, and rows that never reported a location
+     * (`last_updated` null) are left for the driver to bring online.
+     *
+     * @return int number of availabilities taken offline
+     */
+    public function expireStaleAvailability(int $staleAfterSeconds = 300): int
+    {
+        return DriverAvailability::query()
+            ->where('status', 'online')
+            ->whereNotNull('last_updated')
+            ->where('last_updated', '<=', now()->subSeconds($staleAfterSeconds))
+            ->update([
+                'status' => 'offline',
+                'is_available' => false,
+            ]);
+    }
+
     public function acceptanceRate(Driver $driver): float
     {
         $total = $driver->rideDispatchAttempts()

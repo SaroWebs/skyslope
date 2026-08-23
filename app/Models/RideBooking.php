@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\HasPaymentRelations;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -10,6 +11,8 @@ use Illuminate\Support\Str;
 
 class RideBooking extends Model
 {
+    use HasPaymentRelations;
+
     protected $table = 'ride_bookings';
 
     protected $fillable = [
@@ -239,6 +242,12 @@ class RideBooking extends Model
     public function isCancelled(): bool
     {
         return $this->status === 'cancelled';
+    }
+
+    public function isPrePickupPointRide(): bool
+    {
+        return $this->service_type === 'point_to_point'
+            && in_array($this->status, ['pending', 'confirmed', 'driver_assigned', 'driver_arriving'], true);
     }
 
     public function isPaid(): bool

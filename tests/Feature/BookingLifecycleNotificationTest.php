@@ -2,11 +2,11 @@
 
 use App\Jobs\SendBookingLifecycleNotification;
 use App\Models\Customer;
+use App\Models\OutboxMessage;
 use App\Models\RideBooking;
 use App\Services\NotificationService;
-use Illuminate\Support\Facades\Log;
 
-it('delivers booking lifecycle notifications through enabled channels', function () {
+it('enqueues booking lifecycle notifications to the outbox for enabled channels', function () {
     $customer = Customer::create([
         'name' => 'Lifecycle Customer',
         'phone' => '9400000001',
@@ -31,35 +31,23 @@ it('delivers booking lifecycle notifications through enabled channels', function
         'email_notification' => true,
     ]);
 
-    $service = new class extends NotificationService
-    {
-        public array $calls = [];
+    (new SendBookingLifecycleNotification('ride', $ride->id, 'payment.paid'))
+        ->handle(app(NotificationService::class));
 
-        public function notify(object $user, array $channels, array $content): array
-        {
-            $this->calls[] = compact('user', 'channels', 'content');
+    // One durable row per enabled channel, all pending (nothing delivered inline
+    // under the sync queue), carrying the right recipients and content.
+    $messages = OutboxMessage::orderBy('id')->get();
 
-            return array_fill_keys($channels, true);
-        }
-    };
-
-    (new SendBookingLifecycleNotification('ride', $ride->id, 'payment.paid'))->handle($service);
-
-    expect($service->calls)->toHaveCount(1)
-        ->and($service->calls[0]['channels'])->toBe(['sms', 'whatsapp', 'email'])
-        ->and($service->calls[0]['content']['sms'])->toContain('Payment received');
+    expect($messages->pluck('channel')->all())->toBe(['sms', 'whatsapp', 'email'])
+        ->and($messages->pluck('status')->unique()->values()->all())->toBe([OutboxMessage::STATUS_PENDING])
+        ->and($messages->firstWhere('channel', 'sms')->body)->toContain('Payment received')
+        ->and($messages->firstWhere('channel', 'sms')->recipient)->toBe('9400000001')
+        ->and($messages->firstWhere('channel', 'email')->recipient)->toBe('lifecycle@example.com');
 });
 
-it('retries and logs failed booking lifecycle notification channels', function () {
-    Log::spy();
-    config([
-        'services.twilio.sid' => 'test-sid',
-        'services.twilio.token' => 'test-token',
-        'services.twilio.from' => '+15550000000',
-    ]);
-
+it('does not double-enqueue the same booking lifecycle event on redelivery', function () {
     $customer = Customer::create([
-        'name' => 'Failed Lifecycle Customer',
+        'name' => 'Dedup Customer',
         'phone' => '9400000002',
     ]);
 
@@ -80,30 +68,15 @@ it('retries and logs failed booking lifecycle notification channels', function (
         'email_notification' => false,
     ]);
 
-    $service = new class extends NotificationService
-    {
-        public function notify(object $user, array $channels, array $content): array
-        {
-            return ['sms' => false];
-        }
-    };
-
     $job = new SendBookingLifecycleNotification('ride', $ride->id, 'booking.created');
+    $service = app(NotificationService::class);
 
-    expect($job->tries)->toBe(3)
+    $job->handle($service);
+    $job->handle($service); // a redelivered job must not enqueue a second time
+
+    expect(OutboxMessage::where('channel', 'sms')->count())->toBe(1)
+        ->and($job->tries)->toBe(3)
         ->and($job->backoff)->toBe([60, 300, 900]);
-
-    expect(fn () => $job->handle($service))
-        ->toThrow(RuntimeException::class, 'Booking notification failed for channels: sms');
-
-    Log::shouldHaveReceived('warning')
-        ->with('Booking notification delivery failed', Mockery::on(
-            fn (array $context) => $context['booking_type'] === 'ride'
-                && $context['booking_id'] === $ride->id
-                && $context['action'] === 'booking.created'
-                && $context['failed_channels'] === ['sms']
-        ))
-        ->once();
 });
 
 it('renders lifecycle email content without colliding with the mail message variable', function () {

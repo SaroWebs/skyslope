@@ -3,14 +3,15 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Jobs\ProcessRazorpayWebhookEvent;
+use App\Models\RazorpayWebhookEvent;
+use App\Models\RideBooking;
 use App\Models\Wallet;
 use App\Models\WalletTransaction;
-use App\Models\RideBooking;
 use App\Services\CommissionService;
 use App\Services\RazorpayService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
 class WalletController extends Controller
@@ -27,14 +28,7 @@ class WalletController extends Controller
      */
     public function getWallet(Request $request)
     {
-        $wallet = Wallet::forOwner($request->user())->first();
-
-        if (!$wallet) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Wallet not found',
-            ], 404);
-        }
+        $wallet = $this->walletFor($request);
 
         $walletData = $wallet->toArray();
         if ($request->user()->isDriver()) {
@@ -57,14 +51,7 @@ class WalletController extends Controller
      */
     public function getTransactions(Request $request)
     {
-        $wallet = Wallet::forOwner($request->user())->first();
-
-        if (!$wallet) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Wallet not found',
-            ], 404);
-        }
+        $wallet = $this->walletFor($request);
 
         $transactions = WalletTransaction::where('wallet_id', $wallet->id)
             ->latest()
@@ -101,7 +88,7 @@ class WalletController extends Controller
             ]
         );
 
-        if (!$wallet->isActive()) {
+        if (! $wallet->isActive()) {
             return response()->json([
                 'success' => false,
                 'message' => 'Wallet is not active',
@@ -109,8 +96,8 @@ class WalletController extends Controller
         }
 
         try {
-            $receipt = 'WALLET_' . $request->user()->id . '_' . Str::random(8);
-            
+            $receipt = 'WALLET_'.$request->user()->id.'_'.Str::random(8);
+
             $order = $this->razorpay->createOrder(
                 $request->amount,
                 $receipt,
@@ -134,7 +121,7 @@ class WalletController extends Controller
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to create payment order: ' . $e->getMessage(),
+                'message' => 'Failed to create payment order: '.$e->getMessage(),
             ], 500);
         }
     }
@@ -165,7 +152,7 @@ class WalletController extends Controller
             $request->razorpay_signature
         );
 
-        if (!$isValid) {
+        if (! $isValid) {
             return response()->json([
                 'success' => false,
                 'message' => 'Invalid payment signature',
@@ -205,7 +192,7 @@ class WalletController extends Controller
                 ->where('owner_id', $request->user()->id)
                 ->first();
 
-            if (!$wallet) {
+            if (! $wallet) {
                 return response()->json([
                     'success' => false,
                     'message' => 'Wallet not found',
@@ -250,66 +237,6 @@ class WalletController extends Controller
     }
 
     /**
-     * Top up wallet (legacy method - kept for backward compatibility)
-     */
-    public function topUp(Request $request)
-    {
-        $validator = Validator::make($request->all(), [
-            'amount' => 'required|numeric|min:100',
-            'payment_method' => 'required|in:card,upi,bank_transfer,razorpay',
-        ]);
-
-        if ($validator->fails()) {
-            return response()->json([
-                'success' => false,
-                'errors' => $validator->errors(),
-            ], 422);
-        }
-
-        $wallet = Wallet::forOwner($request->user())->first();
-
-        if (!$wallet) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Wallet not found',
-            ], 404);
-        }
-
-        if (!$wallet->isActive()) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Wallet is not active',
-            ], 400);
-        }
-
-        // For Razorpay, redirect to create order
-        if ($request->payment_method === 'razorpay') {
-            return $this->createTopUpOrder($request);
-        }
-
-        // Legacy: Simulate payment processing for other methods
-        $paymentSuccess = $this->processPayment($request->amount, $request->payment_method);
-
-        if (!$paymentSuccess) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Payment processing failed',
-            ], 400);
-        }
-
-        $wallet->credit(
-            $request->amount,
-            'Wallet top-up via ' . $request->payment_method,
-            null
-        );
-
-        return response()->json([
-            'success' => true,
-            'message' => 'Wallet topped up successfully',
-        ]);
-    }
-
-    /**
      * Withdraw from wallet
      */
     public function withdraw(Request $request)
@@ -328,14 +255,14 @@ class WalletController extends Controller
 
         $wallet = Wallet::forOwner($request->user())->first();
 
-        if (!$wallet) {
+        if (! $wallet) {
             return response()->json([
                 'success' => false,
                 'message' => 'Wallet not found',
             ], 404);
         }
 
-        if (!$wallet->isActive()) {
+        if (! $wallet->isActive()) {
             return response()->json([
                 'success' => false,
                 'message' => 'Wallet is not active',
@@ -350,14 +277,14 @@ class WalletController extends Controller
         }
 
         // Process withdrawal
-        $commissionService = new CommissionService();
+        $commissionService = new CommissionService;
         $success = $commissionService->processDriverWithdrawal(
             $request->user()->id,
             $request->amount,
-            'Withdrawal to bank account: ' . $request->bank_account
+            'Withdrawal to bank account: '.$request->bank_account
         );
 
-        if (!$success) {
+        if (! $success) {
             return response()->json([
                 'success' => false,
                 'message' => 'Withdrawal failed',
@@ -377,14 +304,14 @@ class WalletController extends Controller
     {
         $wallet = Wallet::forOwner($request->user())->first();
 
-        if (!$wallet) {
+        if (! $wallet) {
             return response()->json([
                 'success' => false,
                 'message' => 'Wallet not found',
             ], 404);
         }
 
-        $commissionService = new CommissionService();
+        $commissionService = new CommissionService;
         $stats = $request->user()->isDriver()
             ? $commissionService->getDriverCommissionStats($request->user()->id)
             : null;
@@ -414,30 +341,69 @@ class WalletController extends Controller
         $signature = $request->header('X-Razorpay-Signature');
         $payload = $request->getContent();
 
-        if (!$signature || !$this->razorpay->verifyWebhook($payload, $signature)) {
+        if (! $signature || ! $this->razorpay->verifyWebhook($payload, $signature)) {
             return response()->json([
                 'success' => false,
                 'message' => 'Invalid webhook signature',
             ], 400);
         }
 
+        $data = json_decode($payload, true) ?: [];
+        $eventType = $data['event'] ?? 'unknown';
+
+        // Idempotency key: prefer Razorpay's delivery id header, else derive one
+        // deterministically from the event + entity so redeliveries still dedupe.
+        $eventId = $request->header('X-Razorpay-Event-Id')
+            ?: $this->deriveWebhookEventId($eventType, $data);
+
+        // Persist the raw event before any side effect (§8.7). Unique on
+        // (provider, event_id) so a redelivery resolves to the same row.
+        $event = RazorpayWebhookEvent::firstOrCreate(
+            ['provider' => 'razorpay', 'event_id' => $eventId],
+            [
+                'event_type' => $eventType,
+                'payload' => $data,
+                'signature' => $signature,
+                'status' => RazorpayWebhookEvent::STATUS_RECEIVED,
+            ]
+        );
+
+        // Only kick off processing on first receipt; redeliveries are a no-op.
+        if ($event->wasRecentlyCreated) {
+            ProcessRazorpayWebhookEvent::dispatch($event->id);
+        }
+
+        // Return 2xx fast — processing is async (queued) in production.
         return response()->json([
             'success' => true,
-            'message' => 'Webhook verified.',
-            'event' => $request->input('event'),
-        ]);
+            'message' => 'Webhook received.',
+            'event' => $eventType,
+        ], 200);
     }
 
-    /**
-     * Simulate payment processing (legacy)
-     */
-    private function processPayment(float $amount, string $method): bool
+    /** Deterministic dedup key when Razorpay omits its X-Razorpay-Event-Id header. */
+    private function deriveWebhookEventId(string $eventType, array $data): string
     {
-        // Simulate payment gateway integration
-        // In real implementation, this would integrate with actual payment providers
-        sleep(1); // Simulate processing time
-        
-        // Simulate 95% success rate
-        return rand(1, 100) <= 95;
+        $entityId = data_get($data, 'payload.payment.entity.id')
+            ?? data_get($data, 'payload.refund.entity.id')
+            ?? data_get($data, 'payload.payout.entity.id')
+            ?? data_get($data, 'payload.order.entity.id')
+            ?? '';
+
+        return $eventType.':'.$entityId.':'.substr(hash('sha256', json_encode($data)), 0, 16);
+    }
+
+    private function walletFor(Request $request): Wallet
+    {
+        $owner = $request->user();
+
+        return Wallet::firstOrCreate([
+            'owner_type' => $owner::class,
+            'owner_id' => $owner->id,
+        ], [
+            'balance' => 0,
+            'currency' => 'INR',
+            'is_active' => true,
+        ]);
     }
 }

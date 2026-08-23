@@ -2,6 +2,11 @@
 
 namespace App\Services;
 
+use App\Exceptions\ProviderUnavailableException;
+use App\Support\CircuitBreaker;
+use Closure;
+use Illuminate\Http\Client\PendingRequest;
+use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Exception;
@@ -12,6 +17,10 @@ class RazorpayService
     protected string $apiSecret;
     protected string $baseUrl;
     protected string $webhookSecret;
+    protected int $connectTimeout;
+    protected int $timeout;
+    protected int $getRetries;
+    protected int $retryDelayMs;
 
     public function __construct()
     {
@@ -19,6 +28,55 @@ class RazorpayService
         $this->apiSecret = config('services.razorpay.secret');
         $this->webhookSecret = config('services.razorpay.webhook_secret');
         $this->baseUrl = 'https://api.razorpay.com/v1';
+        $this->connectTimeout = (int) config('resilience.http.razorpay.connect_timeout', 5);
+        $this->timeout = (int) config('resilience.http.razorpay.timeout', 20);
+        $this->getRetries = (int) config('resilience.http.razorpay.get_retries', 2);
+        $this->retryDelayMs = (int) config('resilience.http.razorpay.retry_delay_ms', 250);
+    }
+
+    /**
+     * Base HTTP client for Razorpay: authenticated and always time-bounded so a
+     * slow gateway can never pin a request thread or queue worker. Read-only
+     * (`$retryable`) calls retry a dropped connection; state-changing POSTs do
+     * not (see send() callers) to avoid double-submitting money operations.
+     */
+    private function client(bool $retryable = false): PendingRequest
+    {
+        $request = Http::withBasicAuth($this->apiKey, $this->apiSecret)
+            ->connectTimeout($this->connectTimeout)
+            ->timeout($this->timeout);
+
+        if ($retryable && $this->getRetries > 0) {
+            // No ->throw(), so retry only fires on ConnectionException (transport
+            // failures) — never on a 4xx/5xx response body.
+            $request->retry($this->getRetries, $this->retryDelayMs);
+        }
+
+        return $request;
+    }
+
+    /**
+     * Run a Razorpay HTTP call under the circuit breaker. A connection failure
+     * or a 5xx response counts as a provider failure (and can trip the breaker);
+     * a 4xx is returned to the caller to handle as a domain error without
+     * tripping the breaker.
+     */
+    private function send(string $operation, Closure $request): Response
+    {
+        return CircuitBreaker::for('razorpay')->run(function () use ($operation, $request) {
+            $response = $request();
+
+            if ($response->serverError()) {
+                Log::error("Razorpay {$operation} provider error", [
+                    'status' => $response->status(),
+                    'body' => $response->body(),
+                ]);
+
+                throw new ProviderUnavailableException("Razorpay {$operation} failed with status {$response->status()}.");
+            }
+
+            return $response;
+        });
     }
 
     /**
@@ -33,7 +91,7 @@ class RazorpayService
     public function createOrder(float $amount, string $receipt, array $notes = []): array
     {
         try {
-            $response = Http::withBasicAuth($this->apiKey, $this->apiSecret)
+            $response = $this->send('order creation', fn () => $this->client()
                 ->post("{$this->baseUrl}/orders", [
                     'amount' => (int) ($amount * 100), // Convert to paise
                     'currency' => 'INR',
@@ -43,7 +101,7 @@ class RazorpayService
                         'created_at' => now()->toIso8601String(),
                     ], $notes),
                     'payment_capture' => 1, // Auto capture
-                ]);
+                ]));
 
             if (!$response->successful()) {
                 Log::error('Razorpay order creation failed', [
@@ -89,8 +147,8 @@ class RazorpayService
     public function fetchPayment(string $paymentId): array
     {
         try {
-            $response = Http::withBasicAuth($this->apiKey, $this->apiSecret)
-                ->get("{$this->baseUrl}/payments/{$paymentId}");
+            $response = $this->send('fetch payment', fn () => $this->client(retryable: true)
+                ->get("{$this->baseUrl}/payments/{$paymentId}"));
 
             if (!$response->successful()) {
                 throw new Exception('Failed to fetch payment details');
@@ -116,8 +174,8 @@ class RazorpayService
     public function fetchOrder(string $orderId): array
     {
         try {
-            $response = Http::withBasicAuth($this->apiKey, $this->apiSecret)
-                ->get("{$this->baseUrl}/orders/{$orderId}");
+            $response = $this->send('fetch order', fn () => $this->client(retryable: true)
+                ->get("{$this->baseUrl}/orders/{$orderId}"));
 
             if (!$response->successful()) {
                 throw new Exception('Failed to fetch order details');
@@ -127,6 +185,42 @@ class RazorpayService
         } catch (Exception $e) {
             Log::error('Razorpay fetch order exception', [
                 'order_id' => $orderId,
+                'message' => $e->getMessage(),
+            ]);
+            throw $e;
+        }
+    }
+
+    /**
+     * Fetch settlements credited to the merchant account in a time window.
+     * Read-only, so it uses the retryable client. Consumed by the reconciliation
+     * sweep to cross-check provider settlement against our ledger
+     * (SKY-MRD-001 §13.3).
+     *
+     * @param  int  $fromTs  Unix timestamp, inclusive
+     * @param  int  $toTs    Unix timestamp, inclusive
+     * @return array Razorpay settlement collection payload ({entity, count, items})
+     * @throws Exception on provider failure (caller records provider_unreachable)
+     */
+    public function fetchSettlements(int $fromTs, int $toTs, int $count = 100): array
+    {
+        try {
+            $response = $this->send('fetch settlements', fn () => $this->client(retryable: true)
+                ->get("{$this->baseUrl}/settlements", [
+                    'from' => $fromTs,
+                    'to' => $toTs,
+                    'count' => $count,
+                ]));
+
+            if (!$response->successful()) {
+                throw new Exception('Failed to fetch settlements');
+            }
+
+            return $response->json();
+        } catch (Exception $e) {
+            Log::error('Razorpay fetch settlements exception', [
+                'from' => $fromTs,
+                'to' => $toTs,
                 'message' => $e->getMessage(),
             ]);
             throw $e;
@@ -156,8 +250,8 @@ class RazorpayService
                 $payload['amount'] = (int) ($amount * 100); // Convert to paise
             }
 
-            $response = Http::withBasicAuth($this->apiKey, $this->apiSecret)
-                ->post("{$this->baseUrl}/payments/{$paymentId}/refund", $payload);
+            $response = $this->send('refund', fn () => $this->client()
+                ->post("{$this->baseUrl}/payments/{$paymentId}/refund", $payload));
 
             if (!$response->successful()) {
                 throw new Exception('Failed to process refund');
@@ -200,7 +294,7 @@ class RazorpayService
     public function createPayout(float $amount, string $fundAccountId, string $purpose, string $referenceId): array
     {
         try {
-            $response = Http::withBasicAuth($this->apiKey, $this->apiSecret)
+            $response = $this->send('payout creation', fn () => $this->client()
                 ->post("{$this->baseUrl}/payouts", [
                     'account_number' => config('services.razorpay.merchant_account'),
                     'fund_account_id' => $fundAccountId,
@@ -211,7 +305,7 @@ class RazorpayService
                     'queue_if_low_balance' => true,
                     'reference_id' => $referenceId,
                     'narration' => 'HappyMiles Driver Payout',
-                ]);
+                ]));
 
             if (!$response->successful()) {
                 Log::error('Razorpay payout creation failed', [
@@ -245,7 +339,7 @@ class RazorpayService
     public function createFundAccount(string $contactId, string $accountName, string $ifsc, string $accountNumber): array
     {
         try {
-            $response = Http::withBasicAuth($this->apiKey, $this->apiSecret)
+            $response = $this->send('fund account creation', fn () => $this->client()
                 ->post("{$this->baseUrl}/fund_accounts", [
                     'contact_id' => $contactId,
                     'account_type' => 'bank_account',
@@ -254,7 +348,7 @@ class RazorpayService
                         'ifsc' => $ifsc,
                         'account_number' => $accountNumber,
                     ],
-                ]);
+                ]));
 
             if (!$response->successful()) {
                 throw new Exception('Failed to create fund account');
@@ -282,14 +376,14 @@ class RazorpayService
     public function createContact(string $name, string $email, string $phone, string $type = 'vendor'): array
     {
         try {
-            $response = Http::withBasicAuth($this->apiKey, $this->apiSecret)
+            $response = $this->send('contact creation', fn () => $this->client()
                 ->post("{$this->baseUrl}/contacts", [
                     'name' => $name,
                     'email' => $email,
                     'contact' => $phone,
                     'type' => $type,
                     'reference_id' => 'contact_' . uniqid(),
-                ]);
+                ]));
 
             if (!$response->successful()) {
                 throw new Exception('Failed to create contact');

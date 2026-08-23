@@ -4,6 +4,7 @@ use App\Models\CarCategory;
 use App\Models\Customer;
 use App\Models\Driver;
 use App\Models\DriverAvailability;
+use App\Models\DriverDocument;
 use App\Models\RideBooking;
 use App\Models\Vehicle;
 use Illuminate\Database\QueryException;
@@ -23,7 +24,7 @@ function singleVehicleCategory(): CarCategory
 
 function singleVehicleDriver(): Driver
 {
-    return Driver::create([
+    $driver = Driver::create([
         'name' => 'One Car Driver',
         'phone' => '88'.random_int(10000000, 99999999),
         'status' => 'active',
@@ -31,6 +32,17 @@ function singleVehicleDriver(): Driver
         'is_approved' => true,
         'can_short_ride' => true,
     ]);
+
+    foreach (['driving_license', 'government_id', 'police_verification'] as $type) {
+        DriverDocument::create([
+            'driver_id' => $driver->id,
+            'type' => $type,
+            'file_path' => "test/{$type}.pdf",
+            'status' => 'approved',
+        ]);
+    }
+
+    return $driver;
 }
 
 function vehicleData(CarCategory $category, array $overrides = []): array
@@ -55,6 +67,7 @@ it('enforces one vehicle row per driver at database level', function () {
     Vehicle::create(vehicleData($category, [
         'driver_id' => $driver->id,
         'is_active' => true,
+        'is_available_for_rent' => true,
         'approval_status' => 'approved',
     ]));
 
@@ -63,6 +76,28 @@ it('enforces one vehicle row per driver at database level', function () {
         'is_active' => true,
         'approval_status' => 'approved',
     ])))->toThrow(QueryException::class);
+});
+
+it('exposes rental category details and counts approved available cars', function () {
+    $driver = singleVehicleDriver();
+    $category = singleVehicleCategory();
+    $category->update([
+        'price_per_km' => 18,
+        'extra_km_charge' => 22,
+    ]);
+    Vehicle::create(vehicleData($category, [
+        'driver_id' => $driver->id,
+        'is_active' => true,
+        'is_available_for_rent' => true,
+        'approval_status' => 'approved',
+    ]));
+
+    $this->getJson("/api/customer-app/public/car-categories/{$category->id}")
+        ->assertOk()
+        ->assertJsonPath('data.id', $category->id)
+        ->assertJsonPath('data.available_vehicles_count', 1)
+        ->assertJsonPath('data.base_fare', 1800)
+        ->assertJsonPath('data.extra_km_charge', '22.00');
 });
 
 it('uses a single upsert endpoint and sends every driver edit for approval', function () {

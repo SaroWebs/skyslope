@@ -219,6 +219,8 @@ export default function Dashboard({ title, user, stats, recent_users, upcoming_t
                                             </Table.Td>
                                             <Table.Td>
                                                 <Button
+                                                    component={Link}
+                                                    href={`/admin/tour-bookings/${booking.id}`}
                                                     variant="subtle"
                                                     size="xs"
                                                     style={{ color: 'rgba(255,255,255,0.4)' }}
@@ -422,7 +424,6 @@ export default function Dashboard({ title, user, stats, recent_users, upcoming_t
                                     <Stack
                                         key={tour.id}
                                         p="sm"
-                                        radius="md"
                                         style={{
                                             background: 'rgba(255,255,255,0.02)',
                                             border: '1px solid rgba(255,255,255,0.06)',

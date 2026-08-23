@@ -166,7 +166,7 @@ class MarketplaceSeeder extends Seeder
         $rows = [
             ['assam-rhino-river', 'Assam Rhino & River Trail', 'wildlife-journeys', 4, 3, 18900, ['guwahati', 'kaziranga-national-park', 'majuli'], 'Assam'],
             ['meghalaya-waterfall-circuit', 'Meghalaya Waterfall Circuit', 'weekend-breaks', 4, 3, 16900, ['shillong', 'sohra', 'dawki-shnongpdeng', 'mawlynnong'], 'Meghalaya'],
-            ['tawang-high-road', 'The Tawang High Road', 'mountain-escapes', 7, 6, 32900, ['guwahati', 'dirang', 'tawang'], 'Arunachal Pradesh'],
+            ['tawang-high-road', 'Tawang Tales: The High Road', 'mountain-escapes', 7, 6, 32900, ['guwahati', 'dirang', 'tawang'], 'Arunachal Pradesh'],
             ['ziro-apatani-stories', 'Ziro & Apatani Stories', 'cultural-circuits', 5, 4, 24500, ['guwahati', 'ziro-valley'], 'Arunachal Pradesh'],
             ['sikkim-valleys-monasteries', 'Sikkim Valleys & Monasteries', 'mountain-escapes', 6, 5, 28900, ['gangtok', 'yumthang-valley', 'pelling'], 'Sikkim'],
             ['nagaland-hills-heritage', 'Nagaland Hills & Heritage', 'cultural-circuits', 5, 4, 23900, ['kohima', 'dzukou-valley'], 'Nagaland'],
@@ -183,8 +183,15 @@ class MarketplaceSeeder extends Seeder
                     'description' => "A locally planned {$days}-day journey through {$region}, with reliable hill transport, realistic travel times, and thoughtfully paced stops.",
                     'short_description' => "A {$days}-day locally planned route through {$region}.",
                     'highlights' => collect($placeSlugs)->map(fn ($placeSlug) => $places[$placeSlug]->name)->all(),
-                    'inclusions' => ['Verified vehicle and driver', 'Accommodation', 'Daily breakfast', 'Local coordination'],
-                    'exclusions' => ['Flights or trains', 'Personal expenses', 'Monument and activity tickets'],
+                    'inclusions' => $slug === 'tawang-high-road'
+                        ? ['Private vehicle from Guwahati and return', 'Inner-line permit arrangements', 'Accommodation', 'Breakfast and dinner', 'Entry fees', 'Local guide where listed', '24/7 trip support']
+                        : ['Verified vehicle and driver', 'Accommodation', 'Daily breakfast', 'Local coordination'],
+                    'exclusions' => $slug === 'tawang-high-road'
+                        ? ['Flights or trains to Guwahati', 'Lunch except where listed', 'Personal expenses', 'Travel or medical insurance', 'Tips and room service', 'Costs caused by weather or route changes']
+                        : ['Flights or trains', 'Personal expenses', 'Monument and activity tickets'],
+                    'cancellation_policy' => $slug === 'tawang-high-road'
+                        ? 'Booking is confirmed after advance payment. Date changes and cancellations are subject to supplier commitments; weather-affected travel will be rescheduled or adjusted with the operations team wherever possible.'
+                        : 'Cancellation and date-change charges depend on the departure date and confirmed supplier commitments. The exact refundable amount is shown before payment.',
                     'duration_days' => $days,
                     'duration_nights' => $nights,
                     'min_group_size' => 2,
@@ -193,7 +200,7 @@ class MarketplaceSeeder extends Seeder
                     'child_price' => round($price * 0.65),
                     'discount' => $tourIndex % 3 === 0 ? 7 : 0,
                     'start_location' => $places[$placeSlugs[0]]->name,
-                    'end_location' => $places[$placeSlugs[count($placeSlugs) - 1]]->name,
+                    'end_location' => $slug === 'tawang-high-road' ? 'Guwahati' : $places[$placeSlugs[count($placeSlugs) - 1]]->name,
                     'region' => $region,
                     'difficulty' => $days >= 7 ? 'moderate' : 'easy',
                     'cover_image' => $places[$placeSlugs[min(1, count($placeSlugs) - 1)]]->cover_image,
@@ -205,22 +212,26 @@ class MarketplaceSeeder extends Seeder
                 ],
             );
 
-            foreach ($placeSlugs as $stop => $placeSlug) {
-                $day = min($stop + 1, $days);
-                TourItinerary::updateOrCreate(
-                    ['tour_id' => $tour->id, 'day_number' => $day, 'stop_order' => 1],
-                    [
-                        'place_id' => $places[$placeSlug]->id,
-                        'day_index' => $day,
-                        'time' => '09:00',
-                        'title' => "Explore {$places[$placeSlug]->name}",
-                        'description' => $places[$placeSlug]->short_description,
-                        'details' => $places[$placeSlug]->description,
-                        'activities' => ['Guided orientation', 'Local experience', 'Scenic transfer'],
-                        'meals_included' => ['breakfast'],
-                        'distance_km' => (string) (70 + ($stop * 45)),
-                    ],
-                );
+            if ($slug === 'tawang-high-road') {
+                $this->seedTawangBrief($tour, $places);
+            } else {
+                foreach ($placeSlugs as $stop => $placeSlug) {
+                    $day = min($stop + 1, $days);
+                    TourItinerary::updateOrCreate(
+                        ['tour_id' => $tour->id, 'day_number' => $day, 'stop_order' => 1],
+                        [
+                            'place_id' => $places[$placeSlug]->id,
+                            'day_index' => $day,
+                            'time' => '09:00',
+                            'title' => "Explore {$places[$placeSlug]->name}",
+                            'description' => $places[$placeSlug]->short_description,
+                            'details' => $places[$placeSlug]->description,
+                            'activities' => ['Guided orientation', 'Local experience', 'Scenic transfer'],
+                            'meals_included' => ['breakfast'],
+                            'distance_km' => (string) (70 + ($stop * 45)),
+                        ],
+                    );
+                }
             }
 
             foreach ([14, 35, 63] as $scheduleIndex => $daysFromNow) {
@@ -237,6 +248,73 @@ class MarketplaceSeeder extends Seeder
                     ],
                 );
             }
+        }
+    }
+
+    private function seedTawangBrief(Tour $tour, array $places): void
+    {
+        $days = [
+            [1, 'dirang', 'Guwahati to Dirang', 'Guwahati', 'Dirang', '315', '8-9 hours', 'My Village Cottage', ['dinner'], ['Via Balemu Bhutan Border'], [
+                ['name' => 'Tippi Orchid Research Centre', 'description' => 'A conservation centre known for rare orchid species.'],
+                ['name' => 'Nechiphu Waterfall', 'description' => 'A scenic roadside waterfall on the climb into the hills.'],
+                ['name' => 'Nag Mandir', 'description' => 'A small revered shrine maintained by the Indian Army.'],
+            ], ['Inner-line permit', 'Dinner', 'Stay', 'Entry fees', 'Transportation'], ['Breakfast', 'Lunch', 'Personal expenses']],
+            [2, 'tawang', 'Dirang to Tawang', 'Dirang', 'Tawang', '135', '7-8 hours', 'Tseten Homestay', ['breakfast', 'dinner'], ['High-altitude transfer', 'Heritage stops'], [
+                ['name' => 'Dirang Monastery', 'description' => 'A serene Buddhist learning centre above the valley.'],
+                ['name' => 'Sela Pass and Sela Lake', 'description' => 'The dramatic 13,700 ft gateway to Tawang.'],
+                ['name' => 'Jaswant Garh War Memorial', 'description' => 'A memorial to Rifleman Jaswant Singh Rawat.'],
+                ['name' => 'Tawang Market', 'description' => 'An evening introduction to the town and local shops.'],
+            ], ['Breakfast', 'Dinner', 'Stay', 'Entry fees', 'Transportation'], ['Lunch', 'Personal expenses']],
+            [3, 'tawang', 'Tawang high-altitude lakes and Bum La', 'Tawang', 'Tawang', '80', '6-7 hours', 'Tseten Homestay', ['breakfast', 'dinner'], ['Border excursion', 'Lake circuit'], [
+                ['name' => 'Bum La Pass', 'description' => 'The Indo-China border excursion, subject to a separate local permit.'],
+                ['name' => 'Sangetsar Lake', 'description' => 'A high-altitude lake known for upright tree trunks in the water.'],
+                ['name' => 'PTSO and Nagula lakes', 'description' => 'A chain of alpine lakes along the high road.'],
+                ['name' => 'Tawang War Memorial', 'description' => 'Evening light and sound show, subject to the operating schedule.'],
+            ], ['Breakfast', 'Dinner', 'Stay', 'Entry fees', 'Bum La permit support', 'Transportation'], ['Lunch', 'Personal expenses']],
+            [4, 'tawang', 'Monasteries, craft and Tawang town', 'Tawang', 'Tawang', '25', '2-3 hours', 'Hotel Vajra', ['breakfast', 'dinner'], ['Culture and local market'], [
+                ['name' => 'Tawang Monastery', 'description' => 'The landmark hilltop monastery and its cultural precinct.'],
+                ['name' => 'Urgelling Monastery', 'description' => 'A quiet historic monastery associated with the sixth Dalai Lama.'],
+                ['name' => 'Craft Centre and Emporium', 'description' => 'Regional weaving, crafts and locally made souvenirs.'],
+                ['name' => 'Giant Buddha and Tawang Market', 'description' => 'Panoramic town views followed by time in the market.'],
+            ], ['Breakfast', 'Dinner', 'Stay', 'Entry fees', 'Transportation'], ['Lunch', 'Personal expenses']],
+            [5, 'dirang', 'Tawang to Sangti Valley', 'Tawang', 'Sangti Valley', '145', '7-8 hours', 'Lanjom Homestay', ['breakfast', 'dinner'], ['Waterfalls and valley transfer'], [
+                ['name' => 'Chagzam Bridge', 'description' => 'A historic iron suspension bridge in the Tawang region.'],
+                ['name' => 'Jang Waterfalls', 'description' => 'A powerful mountain waterfall also known as Nuranang Falls.'],
+                ['name' => 'Sela Pass and Sela Tunnel', 'description' => 'Return through the high pass and all-weather tunnel corridor.'],
+                ['name' => 'Sangti Valley', 'description' => 'A gentle riverside valley near Dirang.'],
+            ], ['Breakfast', 'Dinner', 'Stay', 'Local guide', 'Entry fees', 'Transportation'], ['Lunch', 'Personal expenses']],
+            [6, 'dirang', 'Sangti Valley to Shergaon', 'Sangti Valley', 'Shergaon', '110', '4-5 hours', 'Acorn Homestay', ['breakfast', 'lunch', 'dinner'], ['Village and food experience'], [
+                ['name' => 'Sangti Valley footbridge', 'description' => 'A quiet walking stop beside the river and farms.'],
+                ['name' => 'Lubrang', 'description' => 'A hosted introduction to nomadic life, food and local culture.'],
+                ['name' => 'Shergaon', 'description' => 'A forested village known for orchards and traditional homes.'],
+            ], ['Breakfast', 'Lunch', 'Dinner', 'Stay', 'Local guide', 'Entry fees', 'Transportation'], ['Personal expenses']],
+            [7, 'guwahati', 'Shergaon to Guwahati', 'Shergaon', 'Guwahati', '320', '6-7 hours', null, ['breakfast'], ['Return transfer'], [
+                ['name' => 'Scenic return drive', 'description' => 'Travel back to Guwahati with comfort and refreshment stops.'],
+            ], ['Breakfast', 'Transportation'], ['Lunch', 'Personal expenses']],
+        ];
+
+        foreach ($days as [$day, $placeSlug, $title, $from, $to, $distance, $travelTime, $stay, $meals, $activities, $keyStops, $inclusions, $exclusions]) {
+            TourItinerary::updateOrCreate(
+                ['tour_id' => $tour->id, 'day_number' => $day, 'stop_order' => 1],
+                [
+                    'place_id' => $places[$placeSlug]->id,
+                    'day_index' => $day,
+                    'time' => '08:00',
+                    'title' => $title,
+                    'start_location' => $from,
+                    'end_location' => $to,
+                    'description' => "Travel from {$from} to {$to} with a locally paced route and planned experience stops.",
+                    'details' => "Travel from {$from} to {$to} with a locally paced route and planned experience stops.",
+                    'activities' => $activities,
+                    'accommodation' => $stay,
+                    'meals_included' => $meals,
+                    'distance_km' => $distance,
+                    'travel_time' => $travelTime,
+                    'key_stops' => $keyStops,
+                    'inclusions' => $inclusions,
+                    'exclusions' => $exclusions,
+                ],
+            );
         }
     }
 

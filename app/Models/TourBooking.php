@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\HasPaymentRelations;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -10,6 +11,8 @@ use Illuminate\Support\Str;
 
 class TourBooking extends Model
 {
+    use HasPaymentRelations;
+
     protected $table = 'tour_bookings';
 
     protected $fillable = [

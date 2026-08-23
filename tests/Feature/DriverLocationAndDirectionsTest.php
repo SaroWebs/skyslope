@@ -55,7 +55,21 @@ it('shows customers the same pickup radius used by driver dispatch', function ()
     ]);
 
     expect(DriverDispatchService::DEFAULT_PICKUP_RADIUS_KM)->toBe(30.0)
-        ->and(app(RideEstimateService::class)->nearbyDriverCount(26.1445, 91.7362))->toBe(1);
+        ->and(app(RideEstimateService::class)->nearbyDriverCount(26.1445, 91.7362))->toBe(1)
+        ->and(app(RideEstimateService::class)->nearbyDriverLocations(26.1445, 91.7362))->toBe([
+            ['lat' => 26.3242, 'lng' => 91.7362],
+        ]);
+
+    $this->postJson('/api/customer-app/public/rides/estimate', [
+        'pickup_lat' => 26.1445,
+        'pickup_lng' => 91.7362,
+        'service_type' => 'point_to_point',
+        'scheduled_at' => now()->addMinutes(10)->toISOString(),
+    ])->assertOk()
+        ->assertJsonPath('nearby_drivers', 1)
+        ->assertJsonPath('nearby_driver_locations.0.lat', 26.3242)
+        ->assertJsonPath('nearby_driver_locations.0.lng', 91.7362)
+        ->assertJsonMissingPath('nearby_driver_locations.0.driver_id');
 });
 
 it('returns road route coordinates in the shape expected by react native maps', function () {

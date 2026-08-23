@@ -4,9 +4,11 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Driver;
+use App\Models\Wallet;
 use App\Services\OtpService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Crypt;
 
 class DriverOtpController extends Controller
 {
@@ -22,32 +24,25 @@ class DriverOtpController extends Controller
         ]);
 
         $phone = trim((string) $request->input('phone'));
+        $result = $this->otpService->send($phone, 'driver');
         $driver = Driver::where('phone', $phone)->first();
 
-        if (! $driver) {
-            return response()->json([
-                'success' => true,
-                'driver_exists' => false,
-                'message' => 'No driver account was found. Please complete registration.',
-            ]);
-        }
-
-        $result = $this->otpService->send($phone, 'driver');
-
         if ($result['success']) {
-            $result['driver_exists'] = true;
-            $result['driver_status'] = $driver->status;
+            $result['driver_exists'] = (bool) $driver;
+            $result['driver_status'] = $driver?->status;
+            $result['next_step'] = $driver ? 'verify_login' : 'verify_registration';
         }
 
         return response()->json($result, $result['success'] ? 200 : ($result['status_code'] ?? 429));
     }
 
     /**
-     * Register a new driver and issue the first OTP.
+     * Complete a driver profile after the phone number has been verified.
      */
-    public function register(Request $request): JsonResponse
+    public function completeRegistration(Request $request): JsonResponse
     {
         $validated = $request->validate([
+            'registration_token' => 'required|string',
             'phone' => 'required|string|min:10|max:20|unique:drivers,phone',
             'name' => 'required|string|min:2|max:255',
             'email' => 'nullable|email|max:191|unique:drivers,email',
@@ -60,8 +55,15 @@ class DriverOtpController extends Controller
             'service_types.*' => 'required|string|in:ride,tour,rental',
         ]);
 
+        if (! $this->validRegistrationToken($validated['registration_token'], $validated['phone'])) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Registration session expired. Please request a new OTP.',
+            ], 422);
+        }
+
         $serviceTypes = array_values(array_unique($validated['service_types']));
-        unset($validated['service_types']);
+        unset($validated['registration_token'], $validated['service_types']);
 
         $driver = Driver::create([
             ...$validated,
@@ -74,21 +76,28 @@ class DriverOtpController extends Controller
             'can_tour_lead' => false,
             'can_tour_transport' => in_array('tour', $serviceTypes, true),
             'can_rental_delivery' => in_array('rental', $serviceTypes, true),
+            'phone_verified_at' => now(),
         ]);
 
-        $result = $this->otpService->send($driver->phone, 'driver');
+        Wallet::firstOrCreate([
+            'owner_type' => $driver::class,
+            'owner_id' => $driver->id,
+        ], [
+            'balance' => 0,
+            'currency' => 'INR',
+            'is_active' => true,
+        ]);
 
-        if (! $result['success']) {
-            $driver->delete();
-
-            return response()->json($result, $result['status_code'] ?? 503);
-        }
+        $token = $this->issueToken($driver);
 
         return response()->json([
-            ...$result,
+            'success' => true,
             'driver_created' => true,
             'driver_status' => $driver->status,
-            'message' => 'Registration submitted. Verify your phone while your account awaits approval.',
+            'requires_profile' => false,
+            'message' => 'Registration submitted. Your profile is awaiting admin approval.',
+            'token' => $token,
+            'driver' => $driver,
         ], 201);
     }
 
@@ -108,16 +117,18 @@ class DriverOtpController extends Controller
         $result = $this->otpService->verify($phone, $code, 'driver');
 
         if (! $result['success']) {
-            return response()->json($result, 422);
+            return response()->json($result, $result['status_code'] ?? 422);
         }
 
         $driver = Driver::where('phone', $phone)->first();
 
         if (! $driver) {
             return response()->json([
-                'success' => false,
-                'message' => 'Driver account not found.',
-            ], 404);
+                'success' => true,
+                'message' => 'OTP verified. Complete your driver profile.',
+                'requires_profile' => true,
+                'registration_token' => $this->registrationToken($phone),
+            ]);
         }
 
         if (! $driver->is_active) {
@@ -131,28 +142,12 @@ class DriverOtpController extends Controller
             $driver->forceFill(['phone_verified_at' => now()])->save();
         }
 
-        if (! $driver->is_approved) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Phone verified. Your driver registration is pending admin approval.',
-                'phone_verified' => true,
-                'driver_status' => $driver->status,
-            ], 403);
-        }
-
-        // Revoke old tokens
-        $driver->tokens()->delete();
-
-        // Issue new Sanctum token
-        $token = $driver->createToken(
-            'driver-app',
-            ['*'],
-            now()->addMinutes((int) config('services.otp.token_expiration_minutes', 60 * 24 * 30))
-        )->plainTextToken;
+        $token = $this->issueToken($driver);
 
         return response()->json([
             'success' => true,
             'message' => 'Login successful.',
+            'requires_profile' => false,
             'token' => $token,
             'driver' => $driver,
         ]);
@@ -180,5 +175,36 @@ class DriverOtpController extends Controller
             'success' => true,
             'message' => 'Logged out successfully.',
         ]);
+    }
+
+    private function issueToken(Driver $driver): string
+    {
+        $driver->tokens()->delete();
+
+        return $driver->createToken(
+            'driver-app',
+            ['*'],
+            now()->addMinutes((int) config('services.otp.token_expiration_minutes', 60 * 24 * 30))
+        )->plainTextToken;
+    }
+
+    private function registrationToken(string $phone): string
+    {
+        return Crypt::encryptString(json_encode([
+            'phone' => $phone,
+            'expires_at' => now()->addMinutes(15)->timestamp,
+        ]));
+    }
+
+    private function validRegistrationToken(string $token, string $phone): bool
+    {
+        try {
+            $payload = json_decode(Crypt::decryptString($token), true, flags: JSON_THROW_ON_ERROR);
+        } catch (\Throwable) {
+            return false;
+        }
+
+        return ($payload['phone'] ?? null) === $phone
+            && (int) ($payload['expires_at'] ?? 0) >= now()->timestamp;
     }
 }

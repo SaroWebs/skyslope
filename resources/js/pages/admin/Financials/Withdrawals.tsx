@@ -86,7 +86,7 @@ export default function WithdrawalsIndex({ title, withdrawals, filters, stats }:
     };
 
     const handleApprove = (reqId: number) => {
-        if (confirm('Are you sure you want to approve this withdrawal request?')) {
+        if (confirm('Approve and initiate the payout to the driver\'s account?')) {
             router.post(`/admin/financials/withdrawals/${reqId}/approve`, {}, { preserveScroll: true });
         }
     };
@@ -186,7 +186,7 @@ export default function WithdrawalsIndex({ title, withdrawals, filters, stats }:
                             data={[
                                 { label: 'All', value: 'all' },
                                 { label: 'Pending', value: 'pending' },
-                                { label: 'Approved', value: 'approved' },
+                                { label: 'Processing', value: 'processing' },
                                 { label: 'Completed', value: 'completed' },
                                 { label: 'Rejected', value: 'rejected' },
                             ]}
@@ -310,7 +310,7 @@ export default function WithdrawalsIndex({ title, withdrawals, filters, stats }:
                                                             </Button>
                                                         </>
                                                     )}
-                                                    {(req.status === 'approved' || req.status === 'processing') && (
+                                                    {req.status === 'processing' && (
                                                         <Button
                                                             size="xs"
                                                             color="green"

@@ -50,8 +50,8 @@ export default function Create({ title }: CreatePlaceProps) {
         google_place_id: '',
         google_rating: '',
         google_review_count: '0',
-        is_active: true,
-        is_featured: false,
+        is_active: true as boolean,
+        is_featured: false as boolean,
     });
 
     const handleLocationSelect = (location: SearchResult) => {

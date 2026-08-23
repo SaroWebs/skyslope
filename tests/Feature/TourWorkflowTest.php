@@ -25,6 +25,7 @@ it('creates a tour first and derives duration from sequential itinerary days', f
         'highlights' => ['Living root bridge', 'Local village walk'],
         'inclusions' => ['Transport', 'Breakfast'],
         'exclusions' => ['Flights'],
+        'cancellation_policy' => 'Free date change until seven days before departure.',
         'min_group_size' => 2, 'max_group_size' => 6,
         'price_per_person' => 12500, 'child_price' => 8500, 'discount' => 10,
         'start_location' => 'Shillong', 'end_location' => 'Shillong', 'region' => 'Meghalaya', 'difficulty' => 'moderate',
@@ -44,9 +45,16 @@ it('creates a tour first and derives duration from sequential itinerary days', f
             'day_number' => $day,
             'time' => $time,
             'title' => $place->name,
+            'start_location' => $index === 0 ? 'Shillong' : 'Village stop',
+            'end_location' => $place->name,
             'details' => "Plan for visit ".($index + 1),
             'activities' => ['Guided visit'],
             'meals_included' => ['breakfast'],
+            'distance_km' => '85',
+            'travel_time' => '3-4 hours',
+            'key_stops' => [['name' => $place->name, 'description' => 'A planned experience stop.']],
+            'inclusions' => ['Transport', 'Breakfast'],
+            'exclusions' => ['Lunch'],
         ])->assertRedirect();
     }
 
@@ -61,7 +69,14 @@ it('creates a tour first and derives duration from sequential itinerary days', f
         ->assertJsonPath('data.itineraries.0.stop_order', 1)
         ->assertJsonPath('data.itineraries.1.day_number', 1)
         ->assertJsonPath('data.itineraries.1.stop_order', 2)
-        ->assertJsonPath('data.itineraries.2.day_number', 2);
+        ->assertJsonPath('data.itineraries.2.day_number', 2)
+        ->assertJsonPath('data.cancellation_policy', 'Free date change until seven days before departure.')
+        ->assertJsonPath('data.inclusions.0', 'Transport')
+        ->assertJsonPath('data.itineraries.0.start_location', 'Shillong')
+        ->assertJsonPath('data.itineraries.0.travel_time', '3-4 hours')
+        ->assertJsonPath('data.itineraries.0.key_stops.0.name', 'Living Root Bridge')
+        ->assertJsonPath('data.itineraries.0.inclusions.0', 'Transport')
+        ->assertJsonPath('data.itineraries.0.exclusions.0', 'Lunch');
 
     $this->actingAs($admin)->delete("/admin/tours/{$tour->id}/itineraries/{$tour->itineraries()->first()->id}")->assertRedirect();
     expect($tour->fresh()->duration_days)->toBe(2)

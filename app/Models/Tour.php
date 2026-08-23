@@ -20,6 +20,7 @@ class Tour extends Model
         'highlights',
         'inclusions',
         'exclusions',
+        'cancellation_policy',
         'faqs',
         'duration_days',
         'duration_nights',

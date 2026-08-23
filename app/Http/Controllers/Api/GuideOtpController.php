@@ -53,7 +53,7 @@ class GuideOtpController extends Controller
         $result = $this->otpService->verify($phone, $code, 'guide');
 
         if (!$result['success']) {
-            return response()->json($result, 422);
+            return response()->json($result, $result['status_code'] ?? 422);
         }
 
         $guide = Guide::where('phone', $phone)->first();

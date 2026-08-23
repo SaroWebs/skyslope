@@ -10,10 +10,10 @@ const lines = (value: string) => value.split('\n').map((item) => item.trim()).fi
 export default function Create({ title, categories }: { title: string; categories: Option[] }) {
     const { data, setData, post, processing, errors, transform } = useForm({
         tour_category_id: '', title: '', short_description: '', description: '',
-        highlights_text: '', inclusions_text: '', exclusions_text: '',
+        highlights_text: '', inclusions_text: '', exclusions_text: '', cancellation_policy: '',
         min_group_size: 1, max_group_size: 20, price_per_person: 0, child_price: 0, discount: 0,
         start_location: '', end_location: '', region: '', difficulty: 'easy', cover_image: '',
-        available_from: '', available_to: '', is_active: false, is_featured: false,
+        available_from: '', available_to: '', is_active: false as boolean, is_featured: false as boolean,
     });
 
     const submit = (event: React.FormEvent) => {
@@ -46,6 +46,7 @@ export default function Create({ title, categories }: { title: string; categorie
                         <Textarea required minRows={2} maxLength={500} label="Card summary" description="A concise promise shown in customer results." value={data.short_description} onChange={(e) => setData('short_description', e.currentTarget.value)} error={errors.short_description} />
                         <Textarea required minRows={5} label="Full description" value={data.description} onChange={(e) => setData('description', e.currentTarget.value)} error={errors.description} />
                         <SimpleGrid cols={{ base: 1, md: 3 }}><Textarea minRows={4} label="Highlights" description="One per line" value={data.highlights_text} onChange={(e) => setData('highlights_text', e.currentTarget.value)} /><Textarea minRows={4} label="Inclusions" description="One per line" value={data.inclusions_text} onChange={(e) => setData('inclusions_text', e.currentTarget.value)} /><Textarea minRows={4} label="Exclusions" description="One per line" value={data.exclusions_text} onChange={(e) => setData('exclusions_text', e.currentTarget.value)} /></SimpleGrid>
+                        <Textarea minRows={3} label="Cancellation and change policy" description="Shown to customers before checkout." value={data.cancellation_policy} onChange={(e) => setData('cancellation_policy', e.currentTarget.value)} error={errors.cancellation_policy} />
                     </Stack></Paper>
 
                     <Paper p="xl" radius="lg" withBorder><Stack gap="lg">

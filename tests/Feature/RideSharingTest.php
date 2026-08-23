@@ -1,14 +1,14 @@
 <?php
 
-use App\Models\Customer;
 use App\Models\CarCategory;
+use App\Models\Customer;
 use App\Models\Driver;
 use App\Models\DriverAvailability;
+use App\Models\DriverDocument;
 use App\Models\RideBooking;
 use App\Models\Vehicle;
 use App\Services\DriverDispatchService;
 use App\Services\RideEstimateService;
-
 use Illuminate\Support\Facades\Event;
 use Laravel\Sanctum\Sanctum;
 
@@ -96,6 +96,14 @@ it('allows a driver to publish sharing preference and seat capacity', function (
         'year' => 2024, 'color' => 'Blue', 'seats' => 4,
         'is_active' => true, 'approval_status' => 'approved',
     ]);
+    foreach (['driving_license', 'government_id', 'police_verification'] as $type) {
+        DriverDocument::create([
+            'driver_id' => $driver->id,
+            'type' => $type,
+            'file_path' => "test/{$type}.pdf",
+            'status' => 'approved',
+        ]);
+    }
 
     Sanctum::actingAs($driver);
 

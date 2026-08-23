@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\Relations\MorphTo;
 
 class WithdrawalRequest extends Model
@@ -16,7 +17,11 @@ class WithdrawalRequest extends Model
         'method',
         'account_details',
         'status',
+        'rejection_reason',
         'admin_notes',
+        'utr_number',
+        'razorpay_fund_account_id',
+        'razorpay_payout_id',
         'processed_at',
         'processed_by',
     ];
@@ -32,21 +37,20 @@ class WithdrawalRequest extends Model
         return $this->morphTo();
     }
 
+    /**
+     * The payout that carries this withdrawal out to the provider. Latest wins
+     * so a retried approval (which creates a fresh payout only if none is live)
+     * still resolves to the current attempt.
+     */
+    public function payout(): HasOne
+    {
+        return $this->hasOne(Payout::class)->latestOfMany();
+    }
+
     public function isPending(): bool    { return $this->status === 'pending'; }
     public function isProcessing(): bool { return $this->status === 'processing'; }
-    public function isApproved(): bool   { return $this->status === 'approved'; }
     public function isCompleted(): bool  { return $this->status === 'completed'; }
     public function isRejected(): bool   { return $this->status === 'rejected'; }
-
-    public function approve(int $adminId, ?string $adminNotes = null): bool
-    {
-        return $this->update([
-            'status' => 'approved',
-            'processed_by' => $adminId,
-            'processed_at' => now(),
-            'admin_notes' => $adminNotes,
-        ]);
-    }
 
     public function reject(int $adminId, string $rejectionReason, ?string $adminNotes = null): bool
     {

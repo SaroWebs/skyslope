@@ -62,10 +62,54 @@ class RideEstimateService
         return $this->nearbyAvailabilityCount($lat, $lng, $radiusKm, true);
     }
 
+    /**
+     * Return map-safe coordinates for currently available drivers near a pickup.
+     *
+     * Driver identities are deliberately omitted from the public estimate response.
+     *
+     * @return array<int, array{lat: float, lng: float}>
+     */
+    public function nearbyDriverLocations(
+        float $lat,
+        float $lng,
+        float $radiusKm = DriverDispatchService::DEFAULT_PICKUP_RADIUS_KM,
+        int $limit = 24
+    ): array {
+        $query = $this->activeAvailabilityQuery()
+            ->whereNotNull('current_lat')
+            ->whereNotNull('current_lng');
+
+        $availabilities = DB::connection()->getDriverName() === 'sqlite'
+            ? $query->get()
+                ->filter(fn (DriverAvailability $availability) => $this->distanceKm(
+                    $lat,
+                    $lng,
+                    (float) $availability->current_lat,
+                    (float) $availability->current_lng
+                ) <= $radiusKm)
+                ->sortBy(fn (DriverAvailability $availability) => $this->distanceKm(
+                    $lat,
+                    $lng,
+                    (float) $availability->current_lat,
+                    (float) $availability->current_lng
+                ))
+                ->take($limit)
+            : $query->nearLocation($lat, $lng, $radiusKm)
+                ->limit($limit)
+                ->get();
+
+        return $availabilities
+            ->map(fn (DriverAvailability $availability) => [
+                'lat' => round((float) $availability->current_lat, 5),
+                'lng' => round((float) $availability->current_lng, 5),
+            ])
+            ->values()
+            ->all();
+    }
+
     private function nearbyAvailabilityCount(float $lat, float $lng, float $radiusKm = 5, bool $sharingOnly = false): int
     {
-        $query = DriverAvailability::active()
-            ->when($sharingOnly, fn ($builder) => $builder->sharing());
+        $query = $this->activeAvailabilityQuery($sharingOnly);
 
         if (DB::connection()->getDriverName() === 'sqlite') {
             return $query
@@ -84,6 +128,16 @@ class RideEstimateService
         return $query
             ->nearLocation($lat, $lng, $radiusKm)
             ->count();
+    }
+
+    private function activeAvailabilityQuery(bool $sharingOnly = false)
+    {
+        return DriverAvailability::active()
+            ->whereHas('driver', fn ($driver) => $driver
+                ->where('status', 'active')
+                ->where('is_active', true)
+                ->where('is_approved', true))
+            ->when($sharingOnly, fn ($builder) => $builder->sharing());
     }
 
     /**
@@ -121,6 +175,7 @@ class RideEstimateService
             : 0.0;
 
         $nearbyDrivers = $this->nearbyDriverCount($pickupLat, $pickupLng);
+        $nearbyDriverLocations = $this->nearbyDriverLocations($pickupLat, $pickupLng);
         $nearbySharingDrivers = $sharingEligible
             ? $this->nearbySharingDriverCount($pickupLat, $pickupLng)
             : 0;
@@ -152,6 +207,7 @@ class RideEstimateService
             'ride_classification' => $this->classify($serviceType, $distance),
             'vehicle_class' => $vehicleClass,
             'nearby_drivers' => $nearbyDrivers,
+            'nearby_driver_locations' => $nearbyDriverLocations,
             'sharing' => [
                 'eligible' => $sharingEligible,
                 'requested' => $sharingRequested,

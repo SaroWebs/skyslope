@@ -1,6 +1,7 @@
 <?php
 
 use App\Models\Driver;
+use App\Models\DriverDocument;
 use App\Models\Role;
 use App\Models\User;
 
@@ -65,6 +66,14 @@ it('allows an admin to edit and approve a driver while preserving unique fields'
         'email' => 'existing-driver@example.com',
         'phone' => '8111111188',
     ]));
+    foreach (['driving_license', 'government_id', 'police_verification'] as $type) {
+        DriverDocument::create([
+            'driver_id' => $driver->id,
+            'type' => $type,
+            'file_path' => "test/{$type}.pdf",
+            'status' => 'approved',
+        ]);
+    }
 
     $this->actingAs($admin)
         ->put("/admin/drivers/{$driver->id}", driverPayload([

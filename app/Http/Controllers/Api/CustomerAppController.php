@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Events\NewRideRequest;
+use App\Events\RideStatusUpdated;
 use App\Http\Controllers\Controller;
 use App\Http\Resources\CustomerApp\BookingReceiptResource;
 use App\Http\Resources\CustomerApp\PlaceDetailResource;
@@ -13,6 +14,8 @@ use App\Models\CarCategory;
 use App\Models\CarRental;
 use App\Models\CarRentalReview;
 use App\Models\CmsContent;
+use App\Models\CustomerCoupon;
+use App\Models\DriverAvailability;
 use App\Models\Place;
 use App\Models\PlaceMedia;
 use App\Models\PlaceReview;
@@ -23,6 +26,7 @@ use App\Models\Tour;
 use App\Models\TourBooking;
 use App\Models\TourBookingReview;
 use App\Models\TourSchedule;
+use App\Models\Vehicle;
 use App\Models\Wallet;
 use App\Services\BookingCancellationService;
 use App\Services\BookingLifecycleNotifier;
@@ -31,6 +35,7 @@ use App\Services\DriverDispatchService;
 use App\Services\RideEstimateService;
 use App\Services\StartVerificationService;
 use App\Support\MediaUrl;
+use App\Rules\FileIsClean;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
@@ -221,11 +226,58 @@ class CustomerAppController extends Controller
         ]);
     }
 
+    public function publicCarCategory(CarCategory $carCategory)
+    {
+        abort_unless($carCategory->is_active, 404);
+
+        $carCategory->loadCount([
+            'vehicles as available_vehicles_count' => fn ($query) => $query
+                ->where('is_active', true)
+                ->where('is_available_for_rent', true)
+                ->where('approval_status', 'approved')
+                ->where(fn ($vehicleQuery) => $vehicleQuery
+                    ->whereNull('condition')
+                    ->orWhere('condition', '!=', 'under_maintenance')),
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'data' => [
+                ...$this->formatPublicCarCategory($carCategory),
+                'available_vehicles_count' => (int) $carCategory->available_vehicles_count,
+            ],
+        ]);
+    }
+
+    public function publicRentalVehicles()
+    {
+        $vehicles = $this->rentableVehicles()
+            ->orderBy('make')
+            ->orderBy('model')
+            ->get()
+            ->map(fn (Vehicle $vehicle) => $this->formatPublicRentalVehicle($vehicle));
+
+        return response()->json([
+            'success' => true,
+            'data' => $vehicles,
+        ]);
+    }
+
+    public function publicRentalVehicle(Vehicle $vehicle)
+    {
+        $vehicle = $this->rentableVehicles()->findOrFail($vehicle->id);
+
+        return response()->json([
+            'success' => true,
+            'data' => $this->formatPublicRentalVehicle($vehicle),
+        ]);
+    }
+
     public function uploadPlaceMedia(Request $request, Place $place)
     {
         abort_unless($place->is_active, 404);
         $validated = $request->validate([
-            'image' => 'required|image|mimes:jpeg,png,jpg,webp|max:10240',
+            'image' => ['required', 'image', 'mimes:jpeg,png,jpg,webp', 'max:10240', new FileIsClean()],
             'caption' => 'nullable|string|max:500',
             'is_360' => 'nullable|boolean',
         ]);
@@ -458,6 +510,7 @@ class CustomerAppController extends Controller
 
         $validator = Validator::make($request->all(), [
             'car_category_id' => 'required|exists:car_categories,id',
+            'vehicle_id' => 'nullable|integer|exists:vehicles,id',
             'start_date' => 'required|date|after:today',
             'end_date' => 'required|date|after:start_date',
             'pickup_location' => 'required|string|max:255',
@@ -487,6 +540,21 @@ class CustomerAppController extends Controller
         }
 
         $category = CarCategory::findOrFail($request->car_category_id);
+        $selectedVehicle = null;
+        if ($request->filled('vehicle_id')) {
+            $selectedVehicle = $this->rentableVehicles()
+                ->whereKey($request->integer('vehicle_id'))
+                ->where('car_category_id', $category->id)
+                ->first();
+
+            if (! $selectedVehicle) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'This vehicle is no longer available for rent.',
+                ], 422);
+            }
+        }
+
         $startDate = \Carbon\Carbon::parse($request->start_date);
         $endDate = \Carbon\Carbon::parse($request->end_date);
         $numberOfDays = $startDate->diffInDays($endDate) + 1;
@@ -499,13 +567,30 @@ class CustomerAppController extends Controller
         }
 
         try {
-            $rental = DB::transaction(function () use ($request, $customer, $category, $numberOfDays, $distanceKm, $pricing, $couponResult) {
+            $rental = DB::transaction(function () use ($request, $customer, $category, $selectedVehicle, $numberOfDays, $distanceKm, $pricing, $couponResult) {
+                if ($selectedVehicle) {
+                    Vehicle::whereKey($selectedVehicle->id)->lockForUpdate()->firstOrFail();
+
+                    $hasDateConflict = CarRental::query()
+                        ->where('vehicle_id', $selectedVehicle->id)
+                        ->whereIn('status', ['pending', 'confirmed', 'driver_assigned', 'in_progress'])
+                        ->whereDate('start_date', '<=', $request->end_date)
+                        ->whereDate('end_date', '>=', $request->start_date)
+                        ->exists();
+
+                    if ($hasDateConflict) {
+                        throw new \RuntimeException('This vehicle is already reserved for the selected dates.');
+                    }
+                }
+
                 $discountAmount = (float) ($couponResult['discount_amount'] ?? 0);
                 $totalPrice = max(0, round((float) $pricing['subtotal'] - $discountAmount, 2));
 
                 $rental = CarRental::create([
                     'customer_id' => $customer->id,
                     'car_category_id' => $category->id,
+                    'driver_id' => $selectedVehicle?->driver_id,
+                    'vehicle_id' => $selectedVehicle?->id,
                     'customer_name' => $customer->name,
                     'customer_email' => $customer->email,
                     'customer_phone' => $customer->phone,
@@ -527,7 +612,7 @@ class CustomerAppController extends Controller
                     'extras_price' => 0,
                     'discount_amount' => $discountAmount,
                     'total_price' => $totalPrice,
-                    'status' => 'pending',
+                    'status' => $selectedVehicle ? 'driver_assigned' : 'pending',
                     'payment_status' => 'pending',
                     'payment_method' => $request->payment_method ?? 'cash',
                     'coupon_code' => $couponResult['eligible'] ? $couponResult['code'] : null,
@@ -551,7 +636,10 @@ class CustomerAppController extends Controller
                         throw new \RuntimeException('Insufficient wallet balance.');
                     }
                     $wallet->debit($totalPrice, "Payment for Car Rental #{$rental->id}", 'car_rental', $rental->id);
-                    $rental->update(['payment_status' => 'paid', 'status' => 'confirmed']);
+                    $rental->update([
+                        'payment_status' => 'paid',
+                        'status' => $selectedVehicle ? 'driver_assigned' : 'confirmed',
+                    ]);
                 }
 
                 return $rental;
@@ -571,7 +659,7 @@ class CustomerAppController extends Controller
         return response()->json([
             'success' => true,
             'message' => 'Car rental booking created successfully.',
-            'data' => $rental->load('carCategory'),
+            'data' => $rental->load(['carCategory', 'vehicle']),
             'receipt' => $this->formatBookingReceipt($rental, 'rental'),
         ], 201);
     }
@@ -608,6 +696,10 @@ class CustomerAppController extends Controller
     public function cancelRide(Request $request, RideBooking $booking)
     {
         Gate::authorize('view', $booking);
+
+        if ($booking->isPrePickupPointRide()) {
+            return $this->discardPrePickupPointRide($request, $booking);
+        }
 
         return $this->cancelCustomerBooking($request, $booking, 'ride');
     }
@@ -1186,6 +1278,89 @@ class CustomerAppController extends Controller
         ]);
     }
 
+    private function discardPrePickupPointRide(Request $request, RideBooking $booking)
+    {
+        $validated = $request->validate([
+            'reason' => 'nullable|string|max:1000',
+        ]);
+
+        $discarded = DB::transaction(function () use ($booking) {
+            $locked = RideBooking::query()->lockForUpdate()->find($booking->getKey());
+
+            if (! $locked || ! $locked->isPrePickupPointRide()) {
+                return null;
+            }
+
+            $previousStatus = $locked->status;
+            $refundAmount = 0.0;
+
+            foreach ($locked->couponRedemptions()->get() as $redemption) {
+                CustomerCoupon::query()
+                    ->whereKey($redemption->customer_coupon_id)
+                    ->where('used_count', '>', 0)
+                    ->decrement('used_count');
+                $redemption->delete();
+            }
+
+            $locked->incidents()->delete();
+            $locked->auditLogs()->delete();
+            $locked->refunds()->delete();
+
+            if ($locked->payment_status === 'paid' && $locked->payment_method === 'wallet') {
+                $refundAmount = (float) $locked->total_fare;
+                $wallet = Wallet::forOwner($locked->customer)->lockForUpdate()->first();
+
+                if ($wallet && $refundAmount > 0) {
+                    $wallet->credit(
+                        $refundAmount,
+                        'Refund for cancelled point ride',
+                        'ride_booking',
+                        (string) $locked->id,
+                        "point-ride-cancel-{$locked->id}"
+                    );
+                }
+            }
+
+            $locked->delete();
+
+            return [
+                'ride' => $locked,
+                'previous_status' => $previousStatus,
+                'refund_amount' => $refundAmount,
+            ];
+        });
+
+        if (! $discarded) {
+            return $this->cancelCustomerBooking($request, $booking->fresh(), 'ride');
+        }
+
+        $ride = $discarded['ride'];
+        if ($ride->driver_id) {
+            DriverAvailability::where('driver_id', $ride->driver_id)->update([
+                'is_available' => true,
+                'status' => 'online',
+                'last_updated' => now(),
+            ]);
+        }
+
+        broadcast(new RideStatusUpdated(
+            $ride,
+            'cancelled',
+            $validated['reason'] ?? 'Ride request cancelled by customer.',
+            $discarded['previous_status']
+        ));
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Point ride request cancelled and removed.',
+            'data' => [
+                'id' => $ride->id,
+                'removed' => true,
+                'refund_amount' => $discarded['refund_amount'],
+            ],
+        ]);
+    }
+
     private function cancelCustomerBooking(Request $request, RideBooking|TourBooking|CarRental $booking, string $serviceType)
     {
         $validated = $request->validate([
@@ -1335,9 +1510,61 @@ class CustomerAppController extends Controller
         ];
     }
 
+    private function rentableVehicles()
+    {
+        return Vehicle::query()
+            ->with(['category', 'driver:id,name,rating,status,is_active,is_approved,can_rental_delivery'])
+            ->where('is_available_for_rent', true)
+            ->where('is_active', true)
+            ->where('approval_status', 'approved')
+            ->where(fn ($query) => $query
+                ->whereNull('condition')
+                ->orWhere('condition', '!=', 'under_maintenance'))
+            ->whereHas('category', fn ($query) => $query->where('is_active', true))
+            ->whereHas('driver', fn ($query) => $query
+                ->where('status', 'active')
+                ->where('is_active', true)
+                ->where('is_approved', true)
+                ->where('can_rental_delivery', true));
+    }
+
+    private function formatPublicRentalVehicle(Vehicle $vehicle): array
+    {
+        $category = $vehicle->category;
+        $images = collect($category?->images ?? [])
+            ->map(fn ($image) => MediaUrl::resolve($image))
+            ->filter()
+            ->values()
+            ->all();
+
+        return [
+            'id' => $vehicle->id,
+            'registration_number' => $vehicle->registration_number,
+            'make' => $vehicle->make,
+            'model' => $vehicle->model,
+            'year' => (int) $vehicle->year,
+            'color' => $vehicle->color,
+            'fuel_type' => $vehicle->fuel_type,
+            'seats' => (int) $vehicle->seats,
+            'is_ac' => (bool) $vehicle->is_ac,
+            'condition' => $vehicle->condition,
+            'category' => $category ? $this->formatPublicCarCategory($category) : null,
+            'driver' => $vehicle->driver ? [
+                'name' => $vehicle->driver->name,
+                'rating' => (float) ($vehicle->driver->rating ?? 0),
+            ] : null,
+            'images' => $images,
+            'cover_image' => $images[0] ?? null,
+            'base_fare' => (float) ($category?->base_price_per_day ?? 0),
+            'extra_km_charge' => (float) ($category?->extra_km_charge ?? 0),
+        ];
+    }
+
     private function formatPublicTour(Tour $tour, bool $includePlaces = false): array
     {
-        return (new TourResource($tour, $includePlaces ? $this->relatedPlacesForTour($tour) : null))->resolve(request());
+        return (new TourResource($tour))
+            ->withRelatedPlaces($includePlaces ? $this->relatedPlacesForTour($tour) : null)
+            ->resolve(request());
     }
 
     private function relatedToursForPlace(Place $place)

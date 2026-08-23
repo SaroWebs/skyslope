@@ -55,7 +55,7 @@ class CustomerOtpController extends Controller
         $result = $this->otpService->verify($phone, $code, 'customer');
 
         if (! $result['success']) {
-            return response()->json($result, 422);
+            return response()->json($result, $result['status_code'] ?? 422);
         }
 
         $customer = Customer::where('phone', $phone)->first();

@@ -13,6 +13,7 @@ use App\Models\Driver;
 use App\Models\DriverAvailability;
 use App\Models\Place;
 use App\Models\PlaceMedia;
+use App\Models\ReconciliationMismatch;
 use App\Models\RideBooking;
 use App\Models\Role;
 use App\Models\Tour;
@@ -30,6 +31,7 @@ use App\Services\BookingStatusService;
 use App\Services\CommissionService;
 use App\Services\DriverDispatchService;
 use App\Services\GooglePlaceDetailsService;
+use App\Rules\FileIsClean;
 use App\Support\MediaUrl;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -110,8 +112,42 @@ class AdminController extends Controller
                     ->latest()
                     ->take(20)
                     ->get(),
+                'reconciliation' => $this->reconciliationSummary(),
             ],
         ]);
+    }
+
+    /**
+     * Open discrepancies from the nightly reconciliation sweep (SKY-MRD-001
+     * §13.3), surfaced alongside the wallet movement summary so an operator sees
+     * ledger/payment/payout/provider drift in one place.
+     *
+     * @return array<string,mixed>
+     */
+    private function reconciliationSummary(): array
+    {
+        $open = ReconciliationMismatch::open()
+            ->orderByDesc('detected_at')
+            ->get();
+
+        return [
+            'open_count' => $open->count(),
+            'open_by_type' => $open->groupBy('type')->map->count(),
+            'last_detected_at' => optional($open->max('detected_at'))?->toIso8601String(),
+            'recent_open' => $open->take(20)->map(fn (ReconciliationMismatch $m) => [
+                'id' => $m->id,
+                'type' => $m->type,
+                'reference_type' => $m->reference_type,
+                'reference_id' => $m->reference_id,
+                'provider_reference' => $m->provider_reference,
+                'expected_minor' => $m->expected_minor,
+                'actual_minor' => $m->actual_minor,
+                'delta_minor' => (int) $m->actual_minor - (int) $m->expected_minor,
+                'currency' => $m->currency,
+                'details' => $m->details,
+                'detected_at' => optional($m->detected_at)?->toIso8601String(),
+            ])->values(),
+        ];
     }
 
     /**
@@ -337,6 +373,7 @@ class AdminController extends Controller
             'inclusions.*' => 'string|max:255',
             'exclusions' => 'nullable|array|max:30',
             'exclusions.*' => 'string|max:255',
+            'cancellation_policy' => 'nullable|string|max:5000',
             'min_group_size' => 'required|integer|min:1',
             'max_group_size' => 'required|integer|gte:min_group_size|max:200',
             'price_per_person' => 'required|numeric|min:0',
@@ -417,6 +454,13 @@ class AdminController extends Controller
             'title' => 'required|string|max:255',
             'short_description' => 'nullable|string|max:500',
             'description' => 'required|string|max:10000',
+            'highlights' => 'nullable|array|max:20',
+            'highlights.*' => 'string|max:255',
+            'inclusions' => 'nullable|array|max:30',
+            'inclusions.*' => 'string|max:255',
+            'exclusions' => 'nullable|array|max:30',
+            'exclusions.*' => 'string|max:255',
+            'cancellation_policy' => 'nullable|string|max:5000',
             'min_group_size' => 'required|integer|min:1',
             'max_group_size' => 'required|integer|gte:min_group_size|max:200',
             'price_per_person' => 'required|numeric|min:0',
@@ -503,6 +547,8 @@ class AdminController extends Controller
             'time' => 'nullable|date_format:H:i',
             'place_id' => 'required|exists:places,id',
             'title' => 'nullable|string|max:255',
+            'start_location' => 'nullable|string|max:255',
+            'end_location' => 'nullable|string|max:255',
             'details' => 'required|string|max:5000',
             'activities' => 'nullable|array|max:20',
             'activities.*' => 'string|max:255',
@@ -510,6 +556,14 @@ class AdminController extends Controller
             'meals_included' => 'nullable|array',
             'meals_included.*' => 'in:breakfast,lunch,dinner',
             'distance_km' => 'nullable|string|max:50',
+            'travel_time' => 'nullable|string|max:100',
+            'key_stops' => 'nullable|array|max:30',
+            'key_stops.*.name' => 'required|string|max:255',
+            'key_stops.*.description' => 'nullable|string|max:1000',
+            'inclusions' => 'nullable|array|max:30',
+            'inclusions.*' => 'string|max:255',
+            'exclusions' => 'nullable|array|max:30',
+            'exclusions.*' => 'string|max:255',
         ]);
         $place = Place::findOrFail($validated['place_id']);
         $maxDay = (int) $tour->itineraries()->max('day_number');
@@ -526,12 +580,18 @@ class AdminController extends Controller
             'stop_order' => $stopOrder,
             'time' => $validated['time'] ?? null,
             'title' => $validated['title'] ?? $place->name,
+            'start_location' => $validated['start_location'] ?? null,
+            'end_location' => $validated['end_location'] ?? null,
             'description' => $validated['details'],
             'details' => $validated['details'],
             'activities' => $validated['activities'] ?? [],
             'accommodation' => $validated['accommodation'] ?? null,
             'meals_included' => $validated['meals_included'] ?? [],
             'distance_km' => $validated['distance_km'] ?? null,
+            'travel_time' => $validated['travel_time'] ?? null,
+            'key_stops' => $validated['key_stops'] ?? [],
+            'inclusions' => $validated['inclusions'] ?? [],
+            'exclusions' => $validated['exclusions'] ?? [],
         ]);
         $this->syncTourDurationFromItineraries($tour);
 
@@ -591,6 +651,8 @@ class AdminController extends Controller
             'time' => 'nullable|date_format:H:i',
             'place_id' => 'sometimes|required|exists:places,id',
             'title' => 'nullable|string|max:255',
+            'start_location' => 'nullable|string|max:255',
+            'end_location' => 'nullable|string|max:255',
             'details' => 'required|string|max:5000',
             'activities' => 'nullable|array|max:20',
             'activities.*' => 'string|max:255',
@@ -598,6 +660,14 @@ class AdminController extends Controller
             'meals_included' => 'nullable|array',
             'meals_included.*' => 'in:breakfast,lunch,dinner',
             'distance_km' => 'nullable|string|max:50',
+            'travel_time' => 'nullable|string|max:100',
+            'key_stops' => 'nullable|array|max:30',
+            'key_stops.*.name' => 'required|string|max:255',
+            'key_stops.*.description' => 'nullable|string|max:1000',
+            'inclusions' => 'nullable|array|max:30',
+            'inclusions.*' => 'string|max:255',
+            'exclusions' => 'nullable|array|max:30',
+            'exclusions.*' => 'string|max:255',
         ]);
 
         $place = isset($validated['place_id']) ? Place::findOrFail($validated['place_id']) : $itinerary->place;
@@ -618,12 +688,18 @@ class AdminController extends Controller
             'stop_order' => $stopOrder,
             'time' => $validated['time'] ?? null,
             'title' => $validated['title'] ?? $place?->name ?? $itinerary->title,
+            'start_location' => $validated['start_location'] ?? null,
+            'end_location' => $validated['end_location'] ?? null,
             'description' => $validated['details'],
             'details' => $validated['details'],
             'activities' => $validated['activities'] ?? [],
             'accommodation' => $validated['accommodation'] ?? null,
             'meals_included' => $validated['meals_included'] ?? [],
             'distance_km' => $validated['distance_km'] ?? null,
+            'travel_time' => $validated['travel_time'] ?? null,
+            'key_stops' => $validated['key_stops'] ?? [],
+            'inclusions' => $validated['inclusions'] ?? [],
+            'exclusions' => $validated['exclusions'] ?? [],
         ]);
         $this->normalizeTourItineraryStops($tour);
         $this->syncTourDurationFromItineraries($tour);
@@ -1016,7 +1092,7 @@ class AdminController extends Controller
     public function storeMedia(Request $request, Place $place)
     {
         $validated = $request->validate([
-            'file' => 'nullable|required_without:url|file|mimes:jpeg,png,jpg,gif,svg,mp4,avi,mov|max:20480',
+            'file' => ['nullable', 'required_without:url', 'file', 'mimes:jpeg,png,jpg,gif,svg,mp4,avi,mov', 'max:20480', new FileIsClean()],
             'url' => 'nullable|required_without:file|url:http,https|max:2048',
             'type' => 'required|in:image,panorama,video',
             'caption' => 'nullable|string|max:500',

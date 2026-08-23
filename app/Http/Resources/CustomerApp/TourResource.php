@@ -9,9 +9,13 @@ use Illuminate\Support\Collection;
 
 class TourResource extends JsonResource
 {
-    public function __construct($resource, protected ?Collection $relatedPlaces = null)
+    protected ?Collection $relatedPlaces = null;
+
+    public function withRelatedPlaces(?Collection $relatedPlaces): static
     {
-        parent::__construct($resource);
+        $this->relatedPlaces = $relatedPlaces;
+
+        return $this;
     }
 
     public function toArray(Request $request): array
@@ -33,8 +37,12 @@ class TourResource extends JsonResource
             'highlights' => $this->highlights ?? [],
             'inclusions' => $this->inclusions ?? [],
             'exclusions' => $this->exclusions ?? [],
+            'cancellation_policy' => $this->cancellation_policy,
+            'faqs' => $this->faqs ?? [],
             'duration_days' => (int) ($this->duration_days ?? 0),
             'duration_nights' => (int) ($this->duration_nights ?? 0),
+            'min_group_size' => (int) ($this->min_group_size ?? 1),
+            'max_group_size' => (int) ($this->max_group_size ?? 1),
             'price_per_person' => $this->price_per_person === null ? null : (float) $this->price_per_person,
             'discounted_price' => method_exists($this->resource, 'getDiscountedPrice') ? $this->getDiscountedPrice() : null,
             'child_price' => $this->child_price === null ? null : (float) $this->child_price,

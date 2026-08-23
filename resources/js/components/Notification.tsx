@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useCallback, ReactNode } from 'react'
+import React, { createContext, useContext, useState, useCallback, useEffect, ReactNode } from 'react'
 
 interface Notification {
   id: string
@@ -29,6 +29,9 @@ interface NotificationProviderProps {
 
 export const NotificationProvider: React.FC<NotificationProviderProps> = ({ children }) => {
   const [notifications, setNotifications] = useState<Notification[]>([])
+  const removeNotification = useCallback((id: string) => {
+    setNotifications(prev => prev.filter(notification => notification.id !== id))
+  }, [])
 
   const addNotification = useCallback((message: string, type: 'success' | 'error' | 'info' | 'warning' | undefined, title?: string) => {
     const id = Date.now().toString()
@@ -47,11 +50,16 @@ export const NotificationProvider: React.FC<NotificationProviderProps> = ({ chil
     setTimeout(() => {
       removeNotification(id)
     }, 5000)
-  }, [])
+  }, [removeNotification])
 
-  const removeNotification = useCallback((id: string) => {
-    setNotifications(prev => prev.filter(notification => notification.id !== id))
-  }, [])
+  useEffect(() => {
+    const handleNotification = (event: Event) => {
+      const detail = (event as CustomEvent<{ message: string; type?: Notification['type']; title?: string }>).detail
+      if (detail?.message) addNotification(detail.message, detail.type, detail.title)
+    }
+    window.addEventListener('app:notification', handleNotification)
+    return () => window.removeEventListener('app:notification', handleNotification)
+  }, [addNotification])
 
   return (
     <NotificationContext.Provider value={{ notifications, addNotification, removeNotification }}>
@@ -106,13 +114,10 @@ const NotificationContainer: React.FC = () => {
 
 // Export a function to show notifications globally
 export const showNotification = (message: string, type: 'success' | 'error' | 'info' | 'warning' = 'info') => {
-  // This will be called from components that have access to the context
-  // For now, we'll store the function globally
   if (typeof window !== 'undefined') {
-    ;(window as any).showNotification = (msg: string, t: string) => {
-      // This is a fallback for now
-      console.log(`${t}: ${msg}`)
-    }
+    window.dispatchEvent(new CustomEvent('app:notification', {
+      detail: { message, type },
+    }))
   }
 }
 

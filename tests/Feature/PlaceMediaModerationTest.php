@@ -4,6 +4,7 @@ use App\Models\Customer;
 use App\Models\Place;
 use App\Models\PlaceMedia;
 use App\Models\Role;
+use App\Models\Tour;
 use App\Models\User;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
@@ -78,4 +79,26 @@ it('publishes admin panorama images as a distinct media type', function () {
         'type' => 'panorama',
         'approval_status' => 'approved',
     ]);
+});
+
+it('returns related tours on a public destination detail', function () {
+    $place = Place::create([
+        'name' => 'Lake View',
+        'slug' => 'lake-view',
+        'is_active' => true,
+    ]);
+    $tour = Tour::create([
+        'title' => 'Lake View Adventure',
+        'slug' => 'lake-view-adventure',
+        'price_per_person' => 1500,
+        'child_price' => 750,
+        'available_from' => now(),
+        'available_to' => now()->addMonth(),
+        'is_active' => true,
+    ]);
+
+    $this->getJson('/api/customer-app/public/destinations/'.$place->id)
+        ->assertOk()
+        ->assertJsonPath('data.active_tours.0.id', $tour->id)
+        ->assertJsonPath('data.active_tours.0.title', 'Lake View Adventure');
 });

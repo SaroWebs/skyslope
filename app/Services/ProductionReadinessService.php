@@ -92,9 +92,9 @@ class ProductionReadinessService
             ),
             $this->check(
                 'otp.sms_provider',
-                filled(config('services.twilio.sid')) && filled(config('services.twilio.token')) && filled(config('services.twilio.from')),
+                app(MtalkzSmsService::class)->isConfigured(),
                 'SMS OTP provider credentials are configured.',
-                'Configure Twilio or replace the SMS driver before launch.',
+                'Configure mTalkz (MTALKZ_API_KEY, MTALKZ_SENDER_ID) or replace the SMS driver before launch.',
                 'critical'
             ),
             $this->check(

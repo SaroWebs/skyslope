@@ -12,6 +12,8 @@ use App\Http\Controllers\Api\InsuranceController;
 use App\Http\Controllers\Api\LocationController;
 use App\Http\Controllers\Api\SupportTicketController;
 use App\Http\Controllers\Api\TrackingController;
+use App\Http\Controllers\Api\V1\BookingReceiptController;
+use App\Http\Controllers\Api\V1\MetaController;
 use App\Http\Controllers\Api\VehicleTrackerController;
 use App\Http\Controllers\Api\WalletController;
 use App\Http\Controllers\Api\WithdrawalController;
@@ -21,6 +23,21 @@ Route::post('/razorpay/webhook', [WalletController::class, 'handleRazorpayWebhoo
 Route::post('/tracker/v1/location', [VehicleTrackerController::class, 'location'])
     ->middleware('throttle:240,1');
 Route::get('/cms/{app}', [CmsController::class, 'show'])->where('app', '[a-z0-9-]+');
+
+/*
+|--------------------------------------------------------------------------
+| Versioned API (v1) — strict response contract (SKY-MRD-001 §9)
+|--------------------------------------------------------------------------
+| New surface built on App\Support\ApiResponse: {success, data|error, meta}.
+| Legacy prefixes below keep their historical shapes for the frozen clients.
+*/
+Route::prefix('v1')->group(function () {
+    Route::get('/meta', [MetaController::class, 'show']);
+
+    Route::middleware('auth:sanctum')->group(function () {
+        Route::get('/bookings/{booking}/receipt', [BookingReceiptController::class, 'show']);
+    });
+});
 
 /*
 |--------------------------------------------------------------------------
@@ -43,6 +60,9 @@ Route::prefix('customer-app')->group(function () {
     Route::get('/public/places/popular', [CustomerAppController::class, 'publicPopularPlaces']);
     Route::get('/public/places/{place}', [CustomerAppController::class, 'publicDestination']);
     Route::get('/public/car-categories', [CustomerAppController::class, 'publicCarCategories']);
+    Route::get('/public/car-categories/{carCategory}', [CustomerAppController::class, 'publicCarCategory']);
+    Route::get('/public/rental-vehicles', [CustomerAppController::class, 'publicRentalVehicles']);
+    Route::get('/public/rental-vehicles/{vehicle}', [CustomerAppController::class, 'publicRentalVehicle']);
     Route::get('/public/locations/search', [LocationController::class, 'search']);
     Route::get('/public/locations/popular', [LocationController::class, 'popular']);
     Route::post('/public/locations/validate', [LocationController::class, 'validateLocation']);
@@ -65,19 +85,19 @@ Route::prefix('customer-app')->group(function () {
         Route::get('/tours', [CustomerAppController::class, 'tours']);
         Route::get('/tour-schedules/{tour}', [CustomerAppController::class, 'tourSchedules']);
         Route::get('/tour-bookings', [CustomerAppController::class, 'tourBookings']);
-        Route::post('/tours/book', [CustomerAppController::class, 'bookTour'])->middleware('throttle:customer-write');
+        Route::post('/tours/book', [CustomerAppController::class, 'bookTour'])->middleware(['throttle:customer-write', 'idempotency']);
         Route::get('/car-categories', [CustomerAppController::class, 'carCategories']);
         Route::get('/car-rentals', [CustomerAppController::class, 'carRentals']);
-        Route::post('/car-rentals', [CustomerAppController::class, 'bookCar'])->middleware('throttle:customer-write');
+        Route::post('/car-rentals', [CustomerAppController::class, 'bookCar'])->middleware(['throttle:customer-write', 'idempotency']);
         Route::post('/car-rentals/{rental}/cancel', [CustomerAppController::class, 'cancelRental'])->middleware('throttle:customer-write');
         Route::post('/car-rentals/{rental}/review', [CustomerAppController::class, 'submitRentalReview'])->middleware('throttle:customer-write');
         Route::get('/rides', [CustomerAppController::class, 'rides']);
         Route::get('/rides/{booking}', [CustomerAppController::class, 'showRide']);
         Route::post('/rides/estimate', [CustomerAppController::class, 'estimateRide'])->middleware('throttle:customer-write');
-        Route::post('/rides', [CustomerAppController::class, 'storeRide'])->middleware('throttle:customer-write');
+        Route::post('/rides', [CustomerAppController::class, 'storeRide'])->middleware(['throttle:customer-write', 'idempotency']);
         Route::post('/rides/{booking}/cancel', [CustomerAppController::class, 'cancelRide'])->middleware('throttle:customer-write');
         Route::post('/rides/{booking}/review', [CustomerAppController::class, 'submitReview'])->middleware('throttle:customer-write');
-        Route::post('/rides/{booking}/tip', [CustomerAppController::class, 'submitTip'])->middleware('throttle:payment-write');
+        Route::post('/rides/{booking}/tip', [CustomerAppController::class, 'submitTip'])->middleware(['throttle:payment-write', 'idempotency']);
         Route::get('/places/{place}/reviews', [CustomerAppController::class, 'placeReviews']);
         Route::post('/places/{place}/reviews', [CustomerAppController::class, 'submitPlaceReview'])->middleware('throttle:customer-write');
         Route::post('/places/{place}/media', [CustomerAppController::class, 'uploadPlaceMedia'])->middleware('throttle:customer-write');
@@ -98,8 +118,8 @@ Route::prefix('customer-app')->group(function () {
         Route::get('/tracking/rental/{rental}', [TrackingController::class, 'getRentalTrackingInfo']);
         Route::get('/wallet', [WalletController::class, 'getWallet']);
         Route::get('/wallet/transactions', [WalletController::class, 'getTransactions']);
-        Route::post('/wallet/topup/order', [WalletController::class, 'createTopUpOrder'])->middleware('throttle:payment-write');
-        Route::post('/wallet/topup/verify', [WalletController::class, 'verifyTopUp'])->middleware('throttle:payment-write');
+        Route::post('/wallet/topup/order', [WalletController::class, 'createTopUpOrder'])->middleware(['throttle:payment-write', 'idempotency']);
+        Route::post('/wallet/topup/verify', [WalletController::class, 'verifyTopUp'])->middleware(['throttle:payment-write', 'idempotency']);
         Route::get('/insurance/plans', [InsuranceController::class, 'getPlans']);
         Route::get('/insurance/policies', [InsuranceController::class, 'getPolicies']);
         Route::get('/insurance/policies/{id}', [InsuranceController::class, 'getPolicy']);
@@ -107,7 +127,7 @@ Route::prefix('customer-app')->group(function () {
         Route::put('/insurance/policies/{id}', [InsuranceController::class, 'updatePolicy'])->middleware('throttle:customer-write');
         Route::delete('/insurance/policies/{id}', [InsuranceController::class, 'cancelPolicy'])->middleware('throttle:customer-write');
         Route::get('/insurance/claims', [InsuranceController::class, 'getClaims']);
-        Route::post('/insurance/claims', [InsuranceController::class, 'createClaim'])->middleware('throttle:support-write');
+        Route::post('/insurance/claims', [InsuranceController::class, 'createClaim'])->middleware(['throttle:support-write', 'idempotency']);
         Route::get('/insurance/extended-care', [InsuranceController::class, 'getExtendedCare']);
         Route::post('/insurance/extended-care', [InsuranceController::class, 'requestAssistance'])->middleware('throttle:support-write');
         Route::delete('/insurance/extended-care/{id}', [InsuranceController::class, 'cancelAssistance'])->middleware('throttle:customer-write');
@@ -123,8 +143,8 @@ Route::prefix('driver-app')->group(function () {
     Route::get('/public/cms/{app}', [CmsController::class, 'show'])->where('app', '[a-z0-9-]+');
     // OTP Auth routes
     Route::post('/otp/send', [DriverOtpController::class, 'sendOtp'])->middleware('throttle:otp-send');
-    Route::post('/register', [DriverOtpController::class, 'register'])->middleware('throttle:otp-send');
     Route::post('/otp/verify', [DriverOtpController::class, 'verifyOtp'])->middleware('throttle:otp-verify');
+    Route::post('/otp/register-complete', [DriverOtpController::class, 'completeRegistration'])->middleware('throttle:otp-verify');
 
     // Protected routes
     Route::middleware('auth:sanctum')->group(function () {
@@ -136,8 +156,11 @@ Route::prefix('driver-app')->group(function () {
             ->whereIn('kind', ['ride', 'tour', 'rental'])
             ->whereNumber('id');
         Route::get('/vehicle', [DriverAppController::class, 'vehicle']);
+        Route::get('/documents', [DriverAppController::class, 'documents']);
+        Route::post('/documents', [DriverAppController::class, 'upsertDocument'])->middleware('throttle:customer-write');
         Route::get('/insurance/policies', [InsuranceController::class, 'getDriverPolicies']);
         Route::put('/vehicle', [DriverAppController::class, 'upsertVehicle'])->middleware('throttle:customer-write');
+        Route::put('/vehicle/rental-availability', [DriverAppController::class, 'updateRentalAvailability'])->middleware('throttle:customer-write');
         Route::put('/availability', [DriverAppController::class, 'updateAvailability'])->middleware('throttle:customer-write');
         Route::get('/active-ride', [DriverController::class, 'activeRide']);
         Route::post('/directions', [LocationController::class, 'directions'])->middleware('throttle:60,1');
@@ -172,7 +195,7 @@ Route::prefix('driver-app')->group(function () {
         Route::get('/wallet/transactions', [WalletController::class, 'getTransactions']);
         Route::get('/wallet/stats', [WalletController::class, 'getStats']);
         Route::get('/withdrawals', [WithdrawalController::class, 'index']);
-        Route::post('/withdrawals', [WithdrawalController::class, 'store'])->middleware('throttle:payment-write');
+        Route::post('/withdrawals', [WithdrawalController::class, 'store'])->middleware(['throttle:payment-write', 'idempotency']);
     });
 });
 

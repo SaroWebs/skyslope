@@ -46,6 +46,10 @@ interface Customer {
     email: string;
     phone: string;
     status: 'active' | 'suspended';
+    date_of_birth?: string | null;
+    gender?: 'male' | 'female' | 'other' | null;
+    emergency_contact_name?: string | null;
+    emergency_contact_phone?: string | null;
     created_at: string;
     ride_bookings: any[];
     car_rentals: any[];

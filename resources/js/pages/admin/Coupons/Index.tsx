@@ -32,8 +32,8 @@ interface Props {
 
 const initialForm = {
     code: '', name: '', description: '', discount_type: 'percent' as 'fixed' | 'percent',
-    discount_value: 10, max_discount_amount: '', min_order_amount: 0,
-    service_types: ['ride', 'tour', 'rental'] as ServiceType[], usage_limit: '',
+    discount_value: 10, max_discount_amount: '' as string | number, min_order_amount: 0,
+    service_types: ['ride', 'tour', 'rental'] as ServiceType[], usage_limit: '' as string | number,
     per_customer_limit: 1, starts_at: '', ends_at: '', is_active: true,
 };
 
@@ -61,7 +61,11 @@ export default function CouponIndex({ title, coupons, summary, recentRedemptions
     const submit = (event: React.FormEvent) => {
         event.preventDefault();
         const options = { preserveScroll: true, onSuccess: () => close() };
-        editing ? form.put(`/admin/coupons/${editing.id}`, options) : form.post('/admin/coupons', options);
+        if (editing) {
+            form.put(`/admin/coupons/${editing.id}`, options);
+        } else {
+            form.post('/admin/coupons', options);
+        }
     };
     const toggleService = (service: ServiceType, checked: boolean) => form.setData(
         'service_types', checked ? [...form.data.service_types, service] : form.data.service_types.filter(item => item !== service),

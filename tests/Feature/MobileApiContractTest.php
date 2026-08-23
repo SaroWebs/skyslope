@@ -48,7 +48,7 @@ it('registers every API route called by the driver app', function () {
         ['GET', '/api/driver-app/me'],
         ['POST', '/api/driver-app/otp/send'],
         ['POST', '/api/driver-app/otp/verify'],
-        ['POST', '/api/driver-app/register'],
+        ['POST', '/api/driver-app/otp/register-complete'],
         ['POST', '/api/driver-app/logout'],
         ['GET', '/api/driver-app/dashboard'],
         ['GET', '/api/driver-app/public/cms/driver-app'],

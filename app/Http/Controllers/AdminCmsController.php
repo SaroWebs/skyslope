@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\CmsContent;
 use App\Support\MediaUrl;
+use App\Rules\FileIsClean;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
@@ -86,7 +87,7 @@ class AdminCmsController extends Controller
                 'string',
                 'max:20000',
             ],
-            'image' => ['nullable', 'image', 'mimes:jpeg,png,jpg,webp,svg', 'max:10240'],
+            'image' => ['nullable', 'image', 'mimes:jpeg,png,jpg,webp,svg', 'max:10240', new FileIsClean()],
             'metadata' => ['nullable', 'array'],
             'sort_order' => ['required', 'integer', 'min:0'],
             'is_active' => ['required', 'boolean'],

@@ -10,14 +10,21 @@ type Tour = {
     price_per_person: number | string; child_price: number | string; discount: number | string;
     start_location?: string | null; end_location?: string | null; region?: string | null;
     difficulty: string; cover_image?: string | null; available_from?: string | null; available_to?: string | null;
+    highlights?: string[]; inclusions?: string[]; exclusions?: string[]; cancellation_policy?: string | null;
     is_active: boolean; is_featured: boolean;
 };
 
+const lines = (value: string) => value.split('\n').map((item) => item.trim()).filter(Boolean);
+
 export default function Edit({ title, tour, categories }: { title: string; tour: Tour; categories: Array<{ id: number; name: string }> }) {
     const date = (value?: string | null) => value ? value.slice(0, 10) : '';
-    const { data, setData, put, processing, errors } = useForm({
+    const { data, setData, put, processing, errors, transform } = useForm({
         tour_category_id: tour.tour_category_id ? String(tour.tour_category_id) : '',
         title: tour.title, short_description: tour.short_description ?? '', description: tour.description ?? '',
+        highlights_text: (tour.highlights ?? []).join('\n'),
+        inclusions_text: (tour.inclusions ?? []).join('\n'),
+        exclusions_text: (tour.exclusions ?? []).join('\n'),
+        cancellation_policy: tour.cancellation_policy ?? '',
         min_group_size: tour.min_group_size, max_group_size: tour.max_group_size,
         price_per_person: Number(tour.price_per_person), child_price: Number(tour.child_price), discount: Number(tour.discount),
         start_location: tour.start_location ?? '', end_location: tour.end_location ?? '', region: tour.region ?? '',
@@ -26,7 +33,17 @@ export default function Edit({ title, tour, categories }: { title: string; tour:
         is_active: tour.is_active, is_featured: tour.is_featured,
     });
 
-    const submit = (event: React.FormEvent) => { event.preventDefault(); put(`/admin/tours/${tour.id}`); };
+    const submit = (event: React.FormEvent) => {
+        event.preventDefault();
+        transform((values) => ({
+            ...values,
+            tour_category_id: values.tour_category_id || null,
+            highlights: lines(values.highlights_text),
+            inclusions: lines(values.inclusions_text),
+            exclusions: lines(values.exclusions_text),
+        }));
+        put(`/admin/tours/${tour.id}`);
+    };
 
     return (
         <AdminLayout title={title}>
@@ -41,6 +58,12 @@ export default function Edit({ title, tour, categories }: { title: string; tour:
                         </SimpleGrid>
                         <Textarea label="Card summary" minRows={2} value={data.short_description} onChange={(e) => setData('short_description', e.currentTarget.value)} error={errors.short_description} />
                         <Textarea required label="Full description" minRows={5} value={data.description} onChange={(e) => setData('description', e.currentTarget.value)} error={errors.description} />
+                        <SimpleGrid cols={{ base: 1, md: 3 }}>
+                            <Textarea minRows={4} label="Highlights" description="One per line" value={data.highlights_text} onChange={(e) => setData('highlights_text', e.currentTarget.value)} />
+                            <Textarea minRows={4} label="Inclusions" description="One per line" value={data.inclusions_text} onChange={(e) => setData('inclusions_text', e.currentTarget.value)} />
+                            <Textarea minRows={4} label="Exclusions" description="One per line" value={data.exclusions_text} onChange={(e) => setData('exclusions_text', e.currentTarget.value)} />
+                        </SimpleGrid>
+                        <Textarea minRows={3} label="Cancellation and change policy" description="Shown to customers before checkout." value={data.cancellation_policy} onChange={(e) => setData('cancellation_policy', e.currentTarget.value)} error={errors.cancellation_policy} />
                         <SimpleGrid cols={{ base: 1, sm: 2, lg: 4 }}>
                             <TextInput label="Duration" readOnly value={`${tour.duration_days} days / ${tour.duration_nights} nights`} description="Calculated from itinerary days" />
                             <NumberInput required min={1} label="Minimum group" value={data.min_group_size} onChange={(v) => setData('min_group_size', Number(v))} error={errors.min_group_size} />

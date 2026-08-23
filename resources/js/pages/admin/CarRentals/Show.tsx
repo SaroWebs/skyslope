@@ -165,7 +165,7 @@ export default function Show({ title, car_rental, drivers, vehicles }: Props) {
     const [incidentDescription, setIncidentDescription] = useState('');
     const [processing, setProcessing] = useState(false);
 
-    const reload = () => router.reload({ preserveScroll: true });
+    const reload = () => router.reload();
 
     const submitStatus = async () => {
         setProcessing(true);

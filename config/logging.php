@@ -1,5 +1,6 @@
 <?php
 
+use Monolog\Formatter\JsonFormatter;
 use Monolog\Handler\NullHandler;
 use Monolog\Handler\StreamHandler;
 use Monolog\Handler\SyslogUdpHandler;
@@ -63,6 +64,7 @@ return [
             'path' => storage_path('logs/laravel.log'),
             'level' => env('LOG_LEVEL', 'debug'),
             'replace_placeholders' => true,
+            'tap' => [App\Logging\TapStructuredContext::class],
         ],
 
         'daily' => [
@@ -70,6 +72,19 @@ return [
             'path' => storage_path('logs/laravel.log'),
             'level' => env('LOG_LEVEL', 'debug'),
             'days' => env('LOG_DAILY_DAYS', 14),
+            'replace_placeholders' => true,
+            'tap' => [App\Logging\TapStructuredContext::class],
+        ],
+
+        // Machine-readable line-per-JSON channel for production log shipping
+        // (SKY-MRD-001 §13.2). Select via LOG_CHANNEL=json or LOG_STACK=json.
+        'json' => [
+            'driver' => 'daily',
+            'path' => storage_path('logs/laravel.json'),
+            'level' => env('LOG_LEVEL', 'debug'),
+            'days' => env('LOG_DAILY_DAYS', 14),
+            'formatter' => JsonFormatter::class,
+            'tap' => [App\Logging\TapStructuredContext::class],
             'replace_placeholders' => true,
         ],
 

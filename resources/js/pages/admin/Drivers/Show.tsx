@@ -24,6 +24,7 @@ import {
     Textarea,
     Rating,
     NumberInput,
+    Select,
 } from '@mantine/core';
 import { 
     Phone, 
@@ -45,6 +46,7 @@ import {
     Star,
     MessageSquareText,
     UsersRound,
+    FileCheck2,
 } from 'lucide-react';
 
 interface DriverRideBooking {
@@ -104,11 +106,30 @@ interface Driver {
         registration_number: string;
         make: string;
         model: string;
+        approval_status: 'pending' | 'approved' | 'rejected';
+        condition: 'excellent' | 'good' | 'fair' | 'under_maintenance';
+        rejection_reason?: string | null;
+        category?: {
+            id: number;
+            name: string;
+            base_fare?: number;
+            price_per_km?: number;
+            base_price_per_day?: number;
+        } | null;
         tracker?: {
             status: string;
             last_ping_at?: string | null;
         } | null;
     } | null;
+    documents: Array<{
+        id: number;
+        type: string;
+        document_number?: string | null;
+        file_url: string;
+        status: 'pending' | 'approved' | 'rejected';
+        rejection_reason?: string | null;
+        expires_at?: string | null;
+    }>;
 }
 
 interface DriverShowProps {
@@ -127,6 +148,13 @@ interface DriverShowProps {
         sharing_seat_capacity: number;
     };
     reviews: DriverReview[];
+    available_vehicles: Array<{
+        id: number;
+        registration_number: string;
+        make: string;
+        model: string;
+        category?: { id: number; name: string } | null;
+    }>;
 }
 
 interface DriverReview {
@@ -139,7 +167,15 @@ interface DriverReview {
     created_at: string | null;
 }
 
-export default function DriverShow({ title, driver, stats, reviews }: DriverShowProps) {
+export default function DriverShow({ title, driver, stats, reviews, available_vehicles }: DriverShowProps) {
+    const requiredDocumentTypes = ['driving_license', 'government_id', 'police_verification'];
+    const documentsReady = requiredDocumentTypes.every((type) =>
+        driver.documents.some((document) =>
+            document.type === type
+            && document.status === 'approved'
+            && (!document.expires_at || new Date(document.expires_at) >= new Date())
+        )
+    );
     const { data, setData, put, processing, errors } = useForm({
         can_short_ride: Boolean(driver.can_short_ride),
         can_long_ride: Boolean(driver.can_long_ride),
@@ -154,6 +190,14 @@ export default function DriverShow({ title, driver, stats, reviews }: DriverShow
         sharing_enabled: Boolean(driver.driver_availability?.sharing_enabled),
         sharing_seat_capacity: driver.driver_availability?.sharing_seat_capacity ?? 3,
     });
+    const vehicleAssignment = useForm({
+        vehicle_id: driver.vehicle?.id ? String(driver.vehicle.id) : '',
+    });
+    const vehicleReview = useForm({
+        approval_status: driver.vehicle?.approval_status ?? 'pending',
+        condition: driver.vehicle?.condition ?? 'good',
+        rejection_reason: driver.vehicle?.rejection_reason ?? '',
+    });
 
     const handleApprove = () => router.post(`/admin/drivers/${driver.id}/approve`, {}, { preserveScroll: true });
     const handleSuspend = () => router.post(`/admin/drivers/${driver.id}/suspend`, {}, { preserveScroll: true });
@@ -165,6 +209,22 @@ export default function DriverShow({ title, driver, stats, reviews }: DriverShow
     const handleSharingSubmit = (event: React.FormEvent) => {
         event.preventDefault();
         sharingForm.put(`/admin/drivers/${driver.id}/sharing`, { preserveScroll: true });
+    };
+    const handleVehicleAssignment = (event: React.FormEvent) => {
+        event.preventDefault();
+        vehicleAssignment.put(`/admin/drivers/${driver.id}/vehicle`, { preserveScroll: true });
+    };
+    const handleVehicleReview = (event: React.FormEvent) => {
+        event.preventDefault();
+        vehicleReview.put(`/admin/drivers/${driver.id}/vehicle/review`, { preserveScroll: true });
+    };
+    const reviewDocument = (documentId: number, status: 'approved' | 'rejected') => {
+        const rejectionReason = status === 'rejected' ? window.prompt('Why is this document rejected?') : null;
+        if (status === 'rejected' && !rejectionReason) return;
+        router.put(`/admin/drivers/${driver.id}/documents/${documentId}`, {
+            status,
+            rejection_reason: rejectionReason,
+        }, { preserveScroll: true });
     };
 
     return (
@@ -189,6 +249,7 @@ export default function DriverShow({ title, driver, stats, reviews }: DriverShow
                                 color="green" 
                                 leftSection={<ShieldCheck size={16} />}
                                 onClick={handleApprove}
+                                disabled={!documentsReady}
                             >
                                 Approve Driver
                             </Button>
@@ -199,6 +260,7 @@ export default function DriverShow({ title, driver, stats, reviews }: DriverShow
                                 color="green" 
                                 leftSection={<Check size={16} />}
                                 onClick={handleActivate}
+                                disabled={!documentsReady}
                             >
                                 Reactivate
                             </Button>
@@ -288,6 +350,89 @@ export default function DriverShow({ title, driver, stats, reviews }: DriverShow
                                 <Text color="white" size="h1" fw={800}>₹{parseFloat(stats.total_earned.toString()).toLocaleString()}</Text>
                                 <Text color="teal.1" size="xs" mt={4}>Current Wallet: ₹{stats.wallet_balance}</Text>
                                 <Button fullWidth variant="white" color="teal.9" mt="xl" size="sm">Payout History</Button>
+                            </Paper>
+
+                            <Paper p="xl" radius="md" withBorder>
+                                <Stack gap="lg">
+                                    <Group gap="sm">
+                                        <ThemeIcon variant="light" color="indigo" radius="md"><Car size={18} /></ThemeIcon>
+                                        <div>
+                                            <Text fw={700}>Driver vehicle</Text>
+                                            <Text size="xs" c="dimmed">Assign and approve the car without leaving this driver.</Text>
+                                        </div>
+                                    </Group>
+                                    <form onSubmit={handleVehicleAssignment}>
+                                        <Stack gap="sm">
+                                            <Select
+                                                label="Assigned vehicle"
+                                                clearable
+                                                searchable
+                                                data={available_vehicles.map((vehicle) => ({
+                                                    value: String(vehicle.id),
+                                                    label: `${vehicle.registration_number} · ${vehicle.make} ${vehicle.model}`,
+                                                }))}
+                                                value={vehicleAssignment.data.vehicle_id}
+                                                onChange={(value) => vehicleAssignment.setData('vehicle_id', value || '')}
+                                                error={vehicleAssignment.errors.vehicle_id}
+                                            />
+                                            <Button type="submit" variant="light" loading={vehicleAssignment.processing}>Save assignment</Button>
+                                        </Stack>
+                                    </form>
+                                    {driver.vehicle ? (
+                                        <>
+                                            <Divider />
+                                            <Group justify="space-between">
+                                                <div>
+                                                    <Text fw={700}>{driver.vehicle.make} {driver.vehicle.model}</Text>
+                                                    <Text size="xs" c="dimmed">{driver.vehicle.registration_number} · {driver.vehicle.category?.name || 'Uncategorised'}</Text>
+                                                </div>
+                                                <Badge color={driver.vehicle.approval_status === 'approved' ? 'green' : driver.vehicle.approval_status === 'rejected' ? 'red' : 'yellow'}>
+                                                    {driver.vehicle.approval_status}
+                                                </Badge>
+                                            </Group>
+                                            {driver.vehicle.category && (
+                                                <SimpleGrid cols={3} spacing="xs">
+                                                    <Paper p="xs" bg="gray.0"><Text size="xs" c="dimmed">Ride base</Text><Text fw={700}>₹{driver.vehicle.category.base_fare ?? 0}</Text></Paper>
+                                                    <Paper p="xs" bg="gray.0"><Text size="xs" c="dimmed">Per km</Text><Text fw={700}>₹{driver.vehicle.category.price_per_km ?? 0}</Text></Paper>
+                                                    <Paper p="xs" bg="gray.0"><Text size="xs" c="dimmed">Rental/day</Text><Text fw={700}>₹{driver.vehicle.category.base_price_per_day ?? 0}</Text></Paper>
+                                                </SimpleGrid>
+                                            )}
+                                            <form onSubmit={handleVehicleReview}>
+                                                <Stack gap="sm">
+                                                    <Select label="Approval" data={['pending', 'approved', 'rejected']} value={vehicleReview.data.approval_status} onChange={(value) => vehicleReview.setData('approval_status', (value || 'pending') as typeof vehicleReview.data.approval_status)} />
+                                                    <Select label="Condition" data={['excellent', 'good', 'fair', 'under_maintenance']} value={vehicleReview.data.condition} onChange={(value) => vehicleReview.setData('condition', (value || 'good') as typeof vehicleReview.data.condition)} />
+                                                    {vehicleReview.data.approval_status === 'rejected' && <Textarea label="Rejection reason" value={vehicleReview.data.rejection_reason} onChange={(event) => vehicleReview.setData('rejection_reason', event.currentTarget.value)} error={vehicleReview.errors.rejection_reason} />}
+                                                    <Button type="submit" color="indigo" loading={vehicleReview.processing}>Save vehicle review</Button>
+                                                </Stack>
+                                            </form>
+                                        </>
+                                    ) : <Text size="sm" c="dimmed">No car has been submitted or assigned.</Text>}
+                                </Stack>
+                            </Paper>
+
+                            <Paper p="xl" radius="md" withBorder>
+                                <Stack gap="md">
+                                    <Group gap="sm"><ThemeIcon variant="light" color="teal"><FileCheck2 size={18} /></ThemeIcon><div><Text fw={700}>Document verification</Text><Text size="xs" c="dimmed">Licence, identity and police verification.</Text></div></Group>
+                                    <Badge color={documentsReady ? 'green' : 'yellow'} variant="light">
+                                        {documentsReady ? 'Ready for driver activation' : 'Required documents pending'}
+                                    </Badge>
+                                    {driver.documents.length ? driver.documents.map((document) => (
+                                        <Paper key={document.id} p="sm" radius="md" withBorder>
+                                            <Stack gap="xs">
+                                                <Group justify="space-between">
+                                                    <div><Text size="sm" fw={700}>{document.type.replaceAll('_', ' ')}</Text><Text size="xs" c="dimmed">{document.document_number || 'No document number'}</Text></div>
+                                                    <Badge color={document.status === 'approved' ? 'green' : document.status === 'rejected' ? 'red' : 'yellow'}>{document.status}</Badge>
+                                                </Group>
+                                                {document.rejection_reason && <Text size="xs" c="red">{document.rejection_reason}</Text>}
+                                                <Group gap="xs">
+                                                    <Button size="xs" variant="light" component="a" href={document.file_url} target="_blank">View file</Button>
+                                                    <Button size="xs" color="green" onClick={() => reviewDocument(document.id, 'approved')}>Approve</Button>
+                                                    <Button size="xs" color="red" variant="outline" onClick={() => reviewDocument(document.id, 'rejected')}>Reject</Button>
+                                                </Group>
+                                            </Stack>
+                                        </Paper>
+                                    )) : <Text size="sm" c="dimmed">No documents submitted yet.</Text>}
+                                </Stack>
                             </Paper>
 
                             <Paper p="xl" radius="md" withBorder>
