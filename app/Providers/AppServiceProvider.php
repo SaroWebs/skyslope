@@ -13,6 +13,9 @@ use App\Policies\PlaceReviewPolicy;
 use App\Policies\RideBookingPolicy;
 use App\Policies\TourBookingPolicy;
 use App\Services\Security\MalwareScanner;
+use App\Support\Settings\SettingsCatalog;
+use App\Support\Settings\SettingsService;
+use App\Support\Settings\ZoneResolver;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Event;
@@ -34,6 +37,12 @@ class AppServiceProvider extends ServiceProvider
         // the container cannot construct MalwareScanner (primitive constructor args) and
         // every FileIsClean-guarded upload 500s.
         $this->app->bind(MalwareScanner::class, fn () => MalwareScanner::fromConfig());
+
+        // Settings system: stateless registry + cache-backed resolvers, so singletons.
+        // The setting() helper resolves SettingsService out of the container.
+        $this->app->singleton(SettingsCatalog::class);
+        $this->app->singleton(ZoneResolver::class);
+        $this->app->singleton(SettingsService::class);
     }
 
     /**

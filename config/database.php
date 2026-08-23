@@ -56,7 +56,11 @@ return [
             'prefix' => '',
             'prefix_indexes' => true,
             'strict' => true,
-            'engine' => null,
+            // This server's default_storage_engine is MyISAM, which has no
+            // transactions or FK enforcement and a 1000-byte index limit — the
+            // ledger/outbox/idempotency tables require InnoDB to hold their
+            // documented invariants, so pin it here rather than inherit the default.
+            'engine' => 'InnoDB',
             'options' => extension_loaded('pdo_mysql') ? array_filter([
                 PDO::MYSQL_ATTR_SSL_CA => env('MYSQL_ATTR_SSL_CA'),
             ]) : [],
