@@ -50,6 +50,18 @@ class BookingReceiptResource extends JsonResource
             'payment_status' => $this->payment_status,
             'status' => $this->status,
             'amount' => (float) $amount,
+            'fare_breakdown' => $this->serviceType === 'ride' ? [
+                'base_fare' => (float) $this->base_fare, 'distance_fare' => (float) $this->distance_fare,
+                'time_fare' => (float) $this->time_fare, 'waiting_fare' => (float) $this->waiting_fare,
+                'discount' => (float) $this->discount_amount, 'tax' => (float) $this->tax_amount,
+                'service_fee' => (float) $this->service_fee_amount, 'total' => (float) $amount,
+            ] : null,
+            'route_summary' => $this->serviceType === 'ride' ? [
+                'pickup' => $this->pickup_location, 'dropoff' => $this->dropoff_location,
+                'distance_km' => $this->actual_distance_km ?? $this->estimated_distance_km,
+                'duration_minutes' => $this->actual_duration ?? $this->estimated_duration,
+                'started_at' => $this->started_at, 'completed_at' => $this->completed_at,
+            ] : null,
             'coupon_code' => $this->coupon_code ?? null,
             'discount_amount' => (float) ($this->discount_amount ?? 0),
             'currency' => 'INR',

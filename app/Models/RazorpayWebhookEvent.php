@@ -12,9 +12,13 @@ use Illuminate\Database\Eloquent\Model;
 class RazorpayWebhookEvent extends Model
 {
     public const STATUS_RECEIVED = 'received';
+
     public const STATUS_PROCESSING = 'processing';
+
     public const STATUS_PROCESSED = 'processed';
+
     public const STATUS_IGNORED = 'ignored';
+
     public const STATUS_FAILED = 'failed';
 
     protected $fillable = [

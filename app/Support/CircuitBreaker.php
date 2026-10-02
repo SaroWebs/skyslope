@@ -58,6 +58,7 @@ class CircuitBreaker
      *   throwable propagates. Success resets the failure count.
      *
      * @template T
+     *
      * @param  Closure():T  $operation
      * @param  (Closure(Throwable|null):T)|null  $fallback
      * @return T

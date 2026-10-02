@@ -2,9 +2,9 @@
 
 namespace Database\Seeders;
 
-use Illuminate\Database\Seeder;
 use App\Models\Customer;
 use App\Models\Driver;
+use Illuminate\Database\Seeder;
 
 class WalletSeeder extends Seeder
 {

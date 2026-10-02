@@ -21,7 +21,9 @@ class TourBookingPolicy
 
     public function updateLocation(Authenticatable $user, TourBooking $booking): bool
     {
-        return $this->isAssignedDriver($user, $booking);
+        return $this->isAssignedDriver($user, $booking)
+            && ! in_array($booking->status, ['completed', 'cancelled'], true)
+            && $booking->driverAssignments()->where('driver_id', $user->id)->where('status', 'accepted')->exists();
     }
 
     public function review(Authenticatable $user, TourBooking $booking): bool

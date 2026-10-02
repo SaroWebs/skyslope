@@ -15,7 +15,7 @@ function adminUserForPaymentConfirmation(): User
 {
     $admin = User::create([
         'name' => 'Payment Admin',
-        'email' => 'payment-admin-' . uniqid() . '@example.com',
+        'email' => 'payment-admin-'.uniqid().'@example.com',
         'password' => 'password',
     ]);
     $role = Role::firstOrCreate(['name' => 'admin'], ['display_name' => 'Admin']);
@@ -122,6 +122,15 @@ it('lets admin confirm non-wallet tour payment and syncs seat inventory', functi
         ->firstOrFail();
 
     expect($audit->after['payment_reference'])->toBe('upi-ref-123');
+    $this->actingAs($admin)->postJson("/admin/tour-bookings/{$booking->id}/confirm-payment", [
+        'payment_method' => 'upi', 'payment_reference' => 'upi-ref-123',
+    ])->assertOk();
+    expect($booking->payments()->count())->toBe(1);
+    expect($booking->payments()->first()->provider)->toBe('manual');
+    expect(\App\Models\LedgerEntry::count())->toBe(2);
+    expect((int) $schedule->fresh()->booked_seats)->toBe(2);
+    $this->actingAs($admin)->postJson("/admin/tour-bookings/{$booking->id}/update-status", ['payment_status' => 'refunded'])->assertUnprocessable();
+    expect($booking->fresh()->payment_status)->toBe('paid');
 });
 
 it('rejects admin payment confirmation for refunded bookings', function () {

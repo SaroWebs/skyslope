@@ -32,14 +32,14 @@ class TourItinerary extends Model
     ];
 
     protected $casts = [
-        'activities'     => 'array',
+        'activities' => 'array',
         'meals_included' => 'array',
-        'key_stops'      => 'array',
-        'inclusions'     => 'array',
-        'exclusions'     => 'array',
-        'day_number'     => 'integer',
-        'stop_order'     => 'integer',
-        'day_index'      => 'integer',
+        'key_stops' => 'array',
+        'inclusions' => 'array',
+        'exclusions' => 'array',
+        'day_number' => 'integer',
+        'stop_order' => 'integer',
+        'day_index' => 'integer',
     ];
 
     public function tour(): BelongsTo
@@ -69,6 +69,6 @@ class TourItinerary extends Model
 
     public function getDayLabelAttribute(): string
     {
-        return 'Day ' . ($this->day_index ?? $this->day_number);
+        return 'Day '.($this->day_index ?? $this->day_number);
     }
 }

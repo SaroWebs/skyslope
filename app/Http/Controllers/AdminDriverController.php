@@ -9,6 +9,7 @@ use App\Models\DriverDocument;
 use App\Models\RideBooking;
 use App\Models\TourDriverAssignment;
 use App\Models\Vehicle;
+use App\Services\DriverVerificationService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -18,8 +19,6 @@ use Illuminate\Validation\ValidationException;
 
 class AdminDriverController extends Controller
 {
-    private const REQUIRED_DOCUMENTS = ['driving_license', 'government_id', 'police_verification'];
-
     /**
      * List all drivers with pagination and search.
      */
@@ -209,6 +208,7 @@ class AdminDriverController extends Controller
             'title' => 'Driver Details',
             'user' => Auth::user(),
             'driver' => $driver,
+            'document_verification' => app(DriverVerificationService::class)->summary($driver),
             'stats' => $stats,
             'reviews' => $reviews,
             'available_vehicles' => Vehicle::query()
@@ -356,6 +356,10 @@ class AdminDriverController extends Controller
             'status' => ['required', Rule::in(['approved', 'rejected'])],
             'rejection_reason' => ['nullable', 'string', 'max:1000', Rule::requiredIf($request->input('status') === 'rejected')],
         ]);
+
+        if ($validated['status'] === 'approved' && $document->expires_at?->lt(today())) {
+            throw ValidationException::withMessages(['status' => 'This document has expired. Ask the driver to upload a valid replacement.']);
+        }
 
         $document->update([
             'status' => $validated['status'],
@@ -519,18 +523,12 @@ class AdminDriverController extends Controller
 
     private function ensureRequiredDocumentsAreApproved(Driver $driver): void
     {
-        $approvedTypes = $driver->documents()
-            ->where('status', 'approved')
-            ->where(fn ($query) => $query
-                ->whereNull('expires_at')
-                ->orWhereDate('expires_at', '>=', today()))
-            ->pluck('type');
-        $missing = collect(self::REQUIRED_DOCUMENTS)->diff($approvedTypes);
+        $missing = collect(app(DriverVerificationService::class)->summary($driver)['missing_or_unverified']);
 
         if ($missing->isNotEmpty()) {
             throw ValidationException::withMessages([
                 'documents' => 'Approve all required, unexpired driver documents first: '
-                    .$missing->map(fn (string $type) => str($type)->replace('_', ' ')->title())->join(', ')
+                    .$missing->map(fn (string $type) => DriverVerificationService::DOCUMENTS[$type]['label'])->join(', ')
                     .'.',
             ]);
         }

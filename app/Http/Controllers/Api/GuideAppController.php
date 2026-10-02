@@ -19,7 +19,7 @@ class GuideAppController extends Controller
         $upcomingToursCount = TourGuideAssignment::where('guide_id', $guide->id)
             ->whereIn('status', ['accepted', 'assigned'])
             ->whereHas('schedule', function ($q) {
-                $q->where('departure_date', '>=', now()->toDateString());
+                $q->where(fn ($sub) => $sub->where('departure_at', '>=', now()->utc())->orWhere(fn ($s) => $s->whereNull('departure_at')->where('departure_date', '>=', now()->toDateString())));
             })
             ->count();
 
@@ -34,7 +34,7 @@ class GuideAppController extends Controller
                 'completed_tours_count' => $completedToursCount,
                 'rating' => $guide->rating,
                 'total_tours' => $guide->total_tours,
-            ]
+            ],
         ]);
     }
 
@@ -51,11 +51,24 @@ class GuideAppController extends Controller
             ->get();
 
         $upcoming = $assignments->filter(function ($assignment) {
-            return $assignment->schedule && $assignment->schedule->departure_date >= now()->toDateString() && !in_array($assignment->status, ['declined', 'completed']);
+            if (! $assignment->schedule || in_array($assignment->status, ['declined', 'completed'])) {
+                return false;
+            }
+            $departureInstant = $assignment->schedule->departure_at ?? \Carbon\Carbon::parse($assignment->schedule->departure_date->toDateString().' '.($assignment->schedule->departure_time ?: '00:00:00'), config('app.business_timezone', 'Asia/Kolkata'))->utc();
+
+            return $departureInstant->gte(now()->utc());
         })->values();
 
         $past = $assignments->filter(function ($assignment) {
-            return $assignment->schedule && $assignment->schedule->departure_date < now()->toDateString() || in_array($assignment->status, ['declined', 'completed']);
+            if (! $assignment->schedule) {
+                return false;
+            }
+            if (in_array($assignment->status, ['declined', 'completed'])) {
+                return true;
+            }
+            $departureInstant = $assignment->schedule->departure_at ?? \Carbon\Carbon::parse($assignment->schedule->departure_date->toDateString().' '.($assignment->schedule->departure_time ?: '00:00:00'), config('app.business_timezone', 'Asia/Kolkata'))->utc();
+
+            return $departureInstant->lt(now()->utc());
         })->values();
 
         return response()->json([
@@ -63,7 +76,7 @@ class GuideAppController extends Controller
             'data' => [
                 'upcoming' => $upcoming,
                 'past' => $past,
-            ]
+            ],
         ]);
     }
 
@@ -79,7 +92,7 @@ class GuideAppController extends Controller
         if ($assignment->status !== 'assigned') {
             return response()->json([
                 'success' => false,
-                'message' => 'Assignment cannot be accepted (current status: ' . $assignment->status . ').'
+                'message' => 'Assignment cannot be accepted (current status: '.$assignment->status.').',
             ], 400);
         }
 
@@ -88,7 +101,7 @@ class GuideAppController extends Controller
         return response()->json([
             'success' => true,
             'message' => 'Assignment accepted successfully.',
-            'data' => $assignment
+            'data' => $assignment,
         ]);
     }
 
@@ -104,7 +117,7 @@ class GuideAppController extends Controller
         if ($assignment->status !== 'assigned') {
             return response()->json([
                 'success' => false,
-                'message' => 'Assignment cannot be declined (current status: ' . $assignment->status . ').'
+                'message' => 'Assignment cannot be declined (current status: '.$assignment->status.').',
             ], 400);
         }
 
@@ -113,7 +126,7 @@ class GuideAppController extends Controller
         return response()->json([
             'success' => true,
             'message' => 'Assignment declined.',
-            'data' => $assignment
+            'data' => $assignment,
         ]);
     }
 
@@ -129,7 +142,7 @@ class GuideAppController extends Controller
         if ($assignment->status !== 'accepted') {
             return response()->json([
                 'success' => false,
-                'message' => 'Assignment cannot be completed unless it is in "accepted" status.'
+                'message' => 'Assignment cannot be completed unless it is in "accepted" status.',
             ], 400);
         }
 
@@ -138,7 +151,7 @@ class GuideAppController extends Controller
         return response()->json([
             'success' => true,
             'message' => 'Assignment marked as completed.',
-            'data' => $assignment
+            'data' => $assignment,
         ]);
     }
 }

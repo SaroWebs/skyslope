@@ -10,12 +10,29 @@ use Illuminate\Support\Str;
 
 class Vehicle extends Model
 {
+    public function save(array $options = [])
+    {
+        if (! $this->exists || ! $this->isDirty(['seats', 'driver_id', 'registration_number', 'make', 'model', 'fuel_type'])) {
+            return parent::save($options);
+        }
+
+        return \Illuminate\Support\Facades\DB::transaction(function () use ($options) {
+            app(\App\Services\ResourceCommitmentService::class)->lockResources($this->getOriginal('driver_id'), $this->id);
+            abort_if(CarpoolRide::where('vehicle_id', $this->id)->whereIn('status', ['published', 'in_progress'])
+                ->whereHas('bookings', fn ($q) => $q->whereIn('status', ['requested', 'reserved', 'confirmed']))->exists(),
+                409, 'Cancel the active carpool and notify its passengers before changing vehicle identity or capacity.');
+
+            return parent::save($options);
+        }, 5);
+    }
+
     protected $table = 'vehicles';
 
     protected $fillable = [
         'car_category_id',
         'driver_id',
         'registration_number',
+        'tracking_preference',
         'make',
         'model',
         'year',
@@ -41,16 +58,16 @@ class Vehicle extends Model
 
     protected $casts = [
         'insurance_expiry' => 'date',
-        'permit_expiry'    => 'date',
-        'fitness_expiry'   => 'date',
+        'permit_expiry' => 'date',
+        'fitness_expiry' => 'date',
         'pollution_expiry' => 'date',
-        'is_ac'            => 'boolean',
-        'is_active'        => 'boolean',
+        'is_ac' => 'boolean',
+        'is_active' => 'boolean',
         'is_available_for_rent' => 'boolean',
-        'year'             => 'integer',
-        'seats'            => 'integer',
-        'odometer_km'      => 'integer',
-        'reviewed_at'      => 'datetime',
+        'year' => 'integer',
+        'seats' => 'integer',
+        'odometer_km' => 'integer',
+        'reviewed_at' => 'datetime',
     ];
 
     protected static function booted(): void
@@ -120,14 +137,14 @@ class Vehicle extends Model
 
     public function isInsuranceExpired(): bool
     {
-        return $this->insurance_expiry && $this->insurance_expiry->isPast();
+        return $this->insurance_expiry && $this->insurance_expiry->lt(today());
     }
 
     public function isDocumentValid(): bool
     {
-        return !$this->isInsuranceExpired()
-            && (!$this->permit_expiry   || !$this->permit_expiry->isPast())
-            && (!$this->fitness_expiry  || !$this->fitness_expiry->isPast())
-            && (!$this->pollution_expiry|| !$this->pollution_expiry->isPast());
+        return ! $this->isInsuranceExpired()
+            && (! $this->permit_expiry || ! $this->permit_expiry->lt(today()))
+            && (! $this->fitness_expiry || ! $this->fitness_expiry->lt(today()))
+            && (! $this->pollution_expiry || ! $this->pollution_expiry->lt(today()));
     }
 }

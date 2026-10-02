@@ -42,6 +42,16 @@ return new class extends Migration
 
             $table->index(['driver_id', 'is_active']);
             $table->index(['car_category_id', 'is_active']);
+            $table->string('approval_status', 20)->default('approved');
+            $table->timestamp('reviewed_at')->nullable();
+            $table->foreignId('reviewed_by')->nullable()->constrained('users')->nullOnDelete();
+            $table->text('rejection_reason')->nullable();
+            $table->unique('driver_id', 'vehicles_driver_id_unique');
+            $table->boolean('is_available_for_rent')
+                ->default(false)
+
+                ->index();
+            $table->string('tracking_preference')->default('automatic');
         });
     }
 

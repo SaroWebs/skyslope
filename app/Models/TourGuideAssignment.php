@@ -32,8 +32,23 @@ class TourGuideAssignment extends Model
         return $this->belongsTo(Guide::class, 'guide_id');
     }
 
-    public function isAccepted(): bool  { return $this->status === 'accepted'; }
-    public function isDeclined(): bool  { return $this->status === 'declined'; }
-    public function isPending(): bool   { return $this->status === 'assigned'; }
-    public function isCompleted(): bool { return $this->status === 'completed'; }
+    public function isAccepted(): bool
+    {
+        return $this->status === 'accepted';
+    }
+
+    public function isDeclined(): bool
+    {
+        return $this->status === 'declined';
+    }
+
+    public function isPending(): bool
+    {
+        return $this->status === 'assigned';
+    }
+
+    public function isCompleted(): bool
+    {
+        return $this->status === 'completed';
+    }
 }

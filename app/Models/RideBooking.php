@@ -17,6 +17,7 @@ class RideBooking extends Model
 
     protected $fillable = [
         'booking_number',
+        'request_expires_at', 'request_closed_at', 'request_outcome',
         'customer_id',
         'driver_id',
         'car_category_id',
@@ -89,6 +90,7 @@ class RideBooking extends Model
     ];
 
     protected $casts = [
+        'request_expires_at' => 'datetime', 'request_closed_at' => 'datetime',
         'scheduled_at' => 'datetime',
         'driver_assigned_at' => 'datetime',
         'driver_arrived_at' => 'datetime',
@@ -270,5 +272,15 @@ class RideBooking extends Model
         $a = sin($dLat / 2) ** 2 + cos(deg2rad((float) $this->pickup_lat)) * cos(deg2rad((float) $this->dropoff_lat)) * sin($dLng / 2) ** 2;
 
         return round($R * 2 * atan2(sqrt($a), sqrt(1 - $a)), 2);
+    }
+
+    /**
+     * Get normalized UTC commitment interval for this ride booking.
+     *
+     * @return array{start: \Carbon\Carbon, end: \Carbon\Carbon}
+     */
+    public function getCommitmentInterval(): array
+    {
+        return app(\App\Services\ResourceCommitmentService::class)->getRideInterval($this);
     }
 }

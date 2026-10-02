@@ -135,6 +135,11 @@ interface Driver {
 interface DriverShowProps {
     title: string;
     driver: Driver;
+    document_verification: {
+        is_complete: boolean;
+        message: string;
+        requirements: Array<{ type: string; label: string; required: boolean; status: string; expires_at: string | null }>;
+    };
     stats: {
         total_rides: number;
         completed_rides: number;
@@ -167,15 +172,8 @@ interface DriverReview {
     created_at: string | null;
 }
 
-export default function DriverShow({ title, driver, stats, reviews, available_vehicles }: DriverShowProps) {
-    const requiredDocumentTypes = ['driving_license', 'government_id', 'police_verification'];
-    const documentsReady = requiredDocumentTypes.every((type) =>
-        driver.documents.some((document) =>
-            document.type === type
-            && document.status === 'approved'
-            && (!document.expires_at || new Date(document.expires_at) >= new Date())
-        )
-    );
+export default function DriverShow({ title, driver, document_verification, stats, reviews, available_vehicles }: DriverShowProps) {
+    const documentsReady = document_verification.is_complete;
     const { data, setData, put, processing, errors } = useForm({
         can_short_ride: Boolean(driver.can_short_ride),
         can_long_ride: Boolean(driver.can_long_ride),
@@ -416,17 +414,21 @@ export default function DriverShow({ title, driver, stats, reviews, available_ve
                                     <Badge color={documentsReady ? 'green' : 'yellow'} variant="light">
                                         {documentsReady ? 'Ready for driver activation' : 'Required documents pending'}
                                     </Badge>
+                                    <Text size="sm" c="dimmed">{document_verification.message}</Text>
+                                    {document_verification.requirements.filter((item) => item.required && item.status === 'missing').map((item) => (
+                                        <Text key={item.type} size="sm">{item.label}: not submitted</Text>
+                                    ))}
                                     {driver.documents.length ? driver.documents.map((document) => (
                                         <Paper key={document.id} p="sm" radius="md" withBorder>
                                             <Stack gap="xs">
                                                 <Group justify="space-between">
-                                                    <div><Text size="sm" fw={700}>{document.type.replaceAll('_', ' ')}</Text><Text size="xs" c="dimmed">{document.document_number || 'No document number'}</Text></div>
-                                                    <Badge color={document.status === 'approved' ? 'green' : document.status === 'rejected' ? 'red' : 'yellow'}>{document.status}</Badge>
+                                                    <div><Text size="sm" fw={700}>{document_verification.requirements.find((item) => item.type === document.type)?.label || document.type.replaceAll('_', ' ')}</Text><Text size="xs" c="dimmed">{document.document_number || 'No document number'}</Text></div>
+                                                    <Badge color={document_verification.requirements.find((item) => item.type === document.type)?.status === 'expired' ? 'red' : document.status === 'approved' ? 'green' : document.status === 'rejected' ? 'red' : 'yellow'}>{document_verification.requirements.find((item) => item.type === document.type)?.status || document.status}</Badge>
                                                 </Group>
                                                 {document.rejection_reason && <Text size="xs" c="red">{document.rejection_reason}</Text>}
                                                 <Group gap="xs">
                                                     <Button size="xs" variant="light" component="a" href={document.file_url} target="_blank">View file</Button>
-                                                    <Button size="xs" color="green" onClick={() => reviewDocument(document.id, 'approved')}>Approve</Button>
+                                                    <Button size="xs" color="green" disabled={document_verification.requirements.find((item) => item.type === document.type)?.status === 'expired' || document.status === 'approved'} onClick={() => reviewDocument(document.id, 'approved')}>Approve</Button>
                                                     <Button size="xs" color="red" variant="outline" onClick={() => reviewDocument(document.id, 'rejected')}>Reject</Button>
                                                 </Group>
                                             </Stack>

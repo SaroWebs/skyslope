@@ -2,22 +2,24 @@
 
 namespace App\Events;
 
+use App\Models\RideBooking;
 use Illuminate\Broadcasting\Channel;
 use Illuminate\Broadcasting\InteractsWithSockets;
-use Illuminate\Broadcasting\PresenceChannel;
 use Illuminate\Broadcasting\PrivateChannel;
 use Illuminate\Contracts\Broadcasting\ShouldBroadcastNow;
 use Illuminate\Foundation\Events\Dispatchable;
 use Illuminate\Queue\SerializesModels;
-use App\Models\RideBooking;
 
 class RideStatusUpdated implements ShouldBroadcastNow
 {
     use Dispatchable, InteractsWithSockets, SerializesModels;
 
     public RideBooking $booking;
+
     public string $status;
+
     public ?string $previousStatus;
+
     public ?string $message;
 
     public function __construct(RideBooking $booking, string $status, ?string $message = null, ?string $previousStatus = null)

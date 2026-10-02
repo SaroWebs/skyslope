@@ -1,29 +1,29 @@
 <?php
 
 use App\Events\NewRideRequest;
-use App\Models\CarCategory;
-use App\Models\CarRental;
 use App\Models\BookingAuditLog;
 use App\Models\BookingIncident;
 use App\Models\BookingRefund;
+use App\Models\CarCategory;
+use App\Models\CarRental;
 use App\Models\Customer;
 use App\Models\Driver;
 use App\Models\DriverAvailability;
 use App\Models\Place;
 use App\Models\RideBooking;
 use App\Models\RideDispatchAttempt;
+use App\Models\Role;
 use App\Models\Tour;
 use App\Models\TourBooking;
 use App\Models\TourDriverAssignment;
 use App\Models\TourSchedule;
-use App\Models\Role;
 use App\Models\User;
-use App\Models\Wallet;
 use App\Models\Vehicle;
+use App\Models\Wallet;
 use App\Services\DriverDispatchService;
 use App\Services\RideEstimateService;
-use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Route;
 use Laravel\Sanctum\Sanctum;

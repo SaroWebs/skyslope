@@ -21,7 +21,7 @@ class RedactSensitiveData implements ProcessorInterface
     /** Substrings that mark a value as a secret — replaced entirely. */
     private const SECRET_KEYS = [
         'password', 'secret', 'token', 'authorization',
-        'api_key', 'apikey', 'signature', 'otp', 'code',
+        'api_key', 'apikey', 'signature', 'otp', 'code', 'session',
     ];
 
     /** Substrings that mark a contact value — masked, not removed. */

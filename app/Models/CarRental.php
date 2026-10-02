@@ -49,15 +49,27 @@ class CarRental extends Model
         'service_fee_amount',
         'security_deposit',
         'total_price',
+        'pricing_snapshot',
         'commission_amount',
         'driver_share',
         'status',
         'payment_status',
+        'hold_expires_at',
         'payment_method',
         'coupon_code',
         'special_requests',
         'internal_notes',
+        'actual_km',
+        'actual_return_at',
+        'km_overage_charge',
+        'extra_hours_charge',
+        'surcharges',
+        'surcharge_items',
+        'settlement_total',
+        'settlement_notes',
+        'settled_at',
         'cancellation_reason',
+        'cancelled_by_type',
         'cancelled_at',
         'cancellation_fee',
         'refund_amount',
@@ -72,6 +84,7 @@ class CarRental extends Model
         'end_date' => 'date',
         'cancelled_at' => 'datetime',
         'refunded_at' => 'datetime',
+        'hold_expires_at' => 'datetime',
         'last_location_update' => 'datetime',
         'base_price' => 'decimal:2',
         'distance_km' => 'decimal:2',
@@ -82,6 +95,15 @@ class CarRental extends Model
         'service_fee_amount' => 'decimal:2',
         'security_deposit' => 'decimal:2',
         'total_price' => 'decimal:2',
+        'pricing_snapshot' => 'array',
+        'surcharge_items' => 'array',
+        'actual_km' => 'decimal:2',
+        'actual_return_at' => 'datetime',
+        'km_overage_charge' => 'decimal:2',
+        'extra_hours_charge' => 'decimal:2',
+        'surcharges' => 'decimal:2',
+        'settlement_total' => 'decimal:2',
+        'settled_at' => 'datetime',
         'commission_amount' => 'decimal:2',
         'driver_share' => 'decimal:2',
         'cancellation_fee' => 'decimal:2',
@@ -100,6 +122,11 @@ class CarRental extends Model
     protected static function boot()
     {
         parent::boot();
+        static::saving(function (CarRental $rental) {
+            if ($rental->status === 'in_progress' && ($rental->isDirty('status') || $rental->isDirty('driver_id') || $rental->isDirty('vehicle_id'))) {
+                app(\App\Services\RentalDriverService::class)->assertReady($rental);
+            }
+        });
         static::creating(function ($rental) {
             if (empty($rental->booking_number)) {
                 $rental->booking_number = static::generateBookingNumber();
@@ -141,6 +168,11 @@ class CarRental extends Model
     public function extras(): HasMany
     {
         return $this->hasMany(CarRentalExtra::class, 'car_rental_id');
+    }
+
+    public function checklists(): HasMany
+    {
+        return $this->hasMany(RentalChecklist::class, 'car_rental_id');
     }
 
     public function refunds(): MorphMany

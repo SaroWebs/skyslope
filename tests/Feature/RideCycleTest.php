@@ -46,6 +46,7 @@ it('completes the customer-to-driver cash ride cycle through public app APIs', f
         'approval_status' => 'approved',
     ]);
     DriverAvailability::create([
+        'last_updated' => now(),
         'driver_id' => $driver->id,
         'is_available' => true,
         'status' => 'online',
@@ -89,7 +90,7 @@ it('completes the customer-to-driver cash ride cycle through public app APIs', f
         'start_pin' => $startPin,
     ])->assertOk()
         ->assertJsonPath('data.status', 'in_transit');
-    $this->postJson("/api/driver-app/tracking/ride/{$rideId}/status", ['status' => 'completed'])
+    $this->postJson("/api/driver-app/tracking/ride/{$rideId}/status", ['status' => 'completed', 'cash_received' => true])
         ->assertOk()
         ->assertJsonPath('data.status', 'completed')
         ->assertJsonPath('data.payment_status', 'paid');

@@ -49,6 +49,11 @@ class ProcessOutboxMessage implements ShouldQueue
         }
 
         $message->markDispatched();
+        if (app()->environment('local', 'testing') && config('services.testing.mock_notifications')) {
+            $message->markSkipped('simulated_delivery: inspect this outbox record; nothing sent');
+
+            return;
+        }
 
         // A provider that isn't configured in this environment is not a delivery
         // failure — skip without consuming the retry budget (mirrors the legacy

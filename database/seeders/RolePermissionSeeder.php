@@ -4,7 +4,6 @@ namespace Database\Seeders;
 
 use App\Models\Permission;
 use App\Models\Role;
-use Illuminate\Database\Console\Seeds\WithoutModelEvents;
 use Illuminate\Database\Seeder;
 
 class RolePermissionSeeder extends Seeder
@@ -61,8 +60,8 @@ class RolePermissionSeeder extends Seeder
             ['name' => 'manage_settings', 'display_name' => 'Manage Settings', 'group' => 'settings'],
             ['name' => 'manage_cms',      'display_name' => 'Manage Frontend CMS', 'group' => 'settings'],
             ['name' => 'manage_vehicles', 'display_name' => 'Manage Vehicles', 'group' => 'fleet'],
-            ['name' => 'manage_customers','display_name' => 'Manage Customers', 'group' => 'customers'],
-            ['name' => 'manage_financials','display_name' => 'Manage Financials', 'group' => 'financials'],
+            ['name' => 'manage_customers', 'display_name' => 'Manage Customers', 'group' => 'customers'],
+            ['name' => 'manage_financials', 'display_name' => 'Manage Financials', 'group' => 'financials'],
             ['name' => 'manage_support',  'display_name' => 'Manage Support', 'group' => 'support'],
             ['name' => 'view_logs',       'display_name' => 'View Logs',       'group' => 'logs'],
         ];
@@ -80,25 +79,25 @@ class RolePermissionSeeder extends Seeder
                 'name' => 'admin',
                 'display_name' => 'Administrator',
                 'description' => 'Full system access with all permissions',
-                'permissions' => Permission::all()->pluck('name')->toArray()
+                'permissions' => Permission::all()->pluck('name')->toArray(),
             ],
             [
                 'name' => 'guide',
                 'display_name' => 'Tour Guide',
                 'description' => 'Can manage tours and view bookings',
-                'permissions' => ['view_tours', 'edit_tours', 'view_bookings', 'view_places', 'view_guides']
+                'permissions' => ['view_tours', 'edit_tours', 'view_bookings', 'view_places', 'view_guides'],
             ],
             [
                 'name' => 'driver',
                 'display_name' => 'Driver',
                 'description' => 'Can view assigned tours and update status',
-                'permissions' => ['view_tours', 'view_bookings', 'view_drivers']
+                'permissions' => ['view_tours', 'view_bookings', 'view_drivers'],
             ],
             [
                 'name' => 'customer',
                 'display_name' => 'Customer',
                 'description' => 'Can view and book tours',
-                'permissions' => ['view_tours', 'view_places', 'create_bookings', 'view_bookings']
+                'permissions' => ['view_tours', 'view_places', 'create_bookings', 'view_bookings'],
             ],
             [
                 'name' => 'operations_manager',

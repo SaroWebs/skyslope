@@ -26,6 +26,9 @@ class CarCategory extends Model
         // Car Rental daily fare fields
         'base_price_per_day',
         'extra_km_charge',
+        'included_km_per_day',
+        'included_hours_per_day',
+        'extra_hour_charge',
         // Metadata
         'fuel_type',
         'year',
@@ -37,20 +40,23 @@ class CarCategory extends Model
     ];
 
     protected $casts = [
-        'has_ac'                 => 'boolean',
-        'has_driver'             => 'boolean',
-        'is_active'              => 'boolean',
-        'features'               => 'array',
-        'images'                 => 'array',
-        'base_fare'              => 'decimal:2',
-        'price_per_km'           => 'decimal:2',
-        'price_per_minute'       => 'decimal:2',
+        'has_ac' => 'boolean',
+        'has_driver' => 'boolean',
+        'is_active' => 'boolean',
+        'features' => 'array',
+        'images' => 'array',
+        'base_fare' => 'decimal:2',
+        'price_per_km' => 'decimal:2',
+        'price_per_minute' => 'decimal:2',
         'waiting_charge_per_min' => 'decimal:2',
-        'min_fare'               => 'decimal:2',
-        'base_price_per_day'     => 'decimal:2',
-        'extra_km_charge'        => 'decimal:2',
-        'seats'                  => 'integer',
-        'sort_order'             => 'integer',
+        'min_fare' => 'decimal:2',
+        'base_price_per_day' => 'decimal:2',
+        'extra_km_charge' => 'decimal:2',
+        'seats' => 'integer',
+        'included_km_per_day' => 'integer',
+        'included_hours_per_day' => 'integer',
+        'extra_hour_charge' => 'decimal:2',
+        'sort_order' => 'integer',
     ];
 
     public function vehicles(): HasMany
@@ -94,11 +100,15 @@ class CarCategory extends Model
     public function calculatePrice(int $days, float $distanceKm = 0): array
     {
         $basePrice = (float) $this->base_price_per_day * max(1, $days);
-        $distancePrice = max(0, $distanceKm) * (float) $this->extra_km_charge;
+        $includedKm = $this->included_km_per_day === null ? null : $this->included_km_per_day * max(1, $days);
+        $extraKm = $includedKm === null ? 0 : max(0, $distanceKm - $includedKm);
+        $distancePrice = $extraKm * (float) $this->extra_km_charge;
 
         return [
             'base_price' => round($basePrice, 2),
             'distance_price' => round($distancePrice, 2),
+            'included_km' => $includedKm,
+            'extra_km' => $extraKm,
             'subtotal' => round($basePrice + $distancePrice, 2),
         ];
     }

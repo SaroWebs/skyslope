@@ -25,13 +25,14 @@ use App\Models\User;
 use App\Models\Vehicle;
 use App\Models\Wallet;
 use App\Models\WalletTransaction;
+use App\Rules\FileIsClean;
 use App\Services\BookingCancellationService;
 use App\Services\BookingLifecycleNotifier;
 use App\Services\BookingStatusService;
 use App\Services\CommissionService;
 use App\Services\DriverDispatchService;
 use App\Services\GooglePlaceDetailsService;
-use App\Rules\FileIsClean;
+use App\Services\RentalDriverService;
 use App\Support\MediaUrl;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -487,7 +488,13 @@ class AdminController extends Controller
      */
     public function deleteTour(Tour $tour)
     {
-        $tour->delete();
+        \Illuminate\Support\Facades\DB::transaction(function () use ($tour) {
+            $tour = Tour::lockForUpdate()->findOrFail($tour->id);
+            $schedules = $tour->schedules()->orderBy('id')->lockForUpdate()->get();
+            abort_if($tour->bookings()->exists() || $schedules->contains(fn ($schedule) => $schedule->hasBookingHistory()),
+                422, 'Tours with booking history cannot be deleted. Deactivate the tour instead.');
+            $tour->delete();
+        });
 
         return redirect()->route('admin.tours')->with('success', 'Tour deleted successfully');
     }
@@ -811,7 +818,27 @@ class AdminController extends Controller
             'title' => 'Tour Booking Details',
             'user' => Auth::user(),
             'booking' => $tourBooking,
+            'amendmentSchedules' => TourSchedule::where('tour_id', $tourBooking->tour_id)
+                ->where('id', '!=', $tourBooking->tour_schedule_id)->bookable($tourBooking->getTotalPax())
+                ->orderBy('departure_at')->get(['id', 'departure_date', 'departure_time', 'departure_point']),
         ]);
+    }
+
+    public function amendTourBooking(Request $request, TourBooking $tourBooking)
+    {
+        $validated = $request->validate([
+            'source_schedule_id' => 'required|integer',
+            'target_schedule_id' => 'required|integer|different:source_schedule_id',
+            'reason' => 'required|string|max:2000',
+            'customer_agreed' => 'required|accepted',
+            'request_id' => 'required|uuid',
+        ]);
+        app(\App\Services\TourBookingAmendmentService::class)->transfer(
+            $tourBooking, $validated['source_schedule_id'], $validated['target_schedule_id'],
+            $validated['reason'], (int) $request->user()->id, $validated['request_id']
+        );
+
+        return response()->json(['message' => 'Departure changed. The agreed price and payment balance are preserved.']);
     }
 
     /**
@@ -872,6 +899,7 @@ class AdminController extends Controller
     public function updateTourSchedule(Request $request, Tour $tour, TourSchedule $schedule)
     {
         $validated = $request->validate([
+            'amendment_reason' => 'required|string|max:2000',
             'departure_date' => 'required|date',
             'return_date' => 'required|date|after_or_equal:departure_date',
             'departure_time' => 'required|date_format:H:i',
@@ -883,16 +911,63 @@ class AdminController extends Controller
             'notes' => 'nullable|string|max:2000',
         ]);
 
-        $schedule->update($validated);
+        abort_unless((int) $schedule->tour_id === (int) $tour->id, 404);
+        $reason = $validated['amendment_reason'];
+        unset($validated['amendment_reason']);
+        \Illuminate\Support\Facades\DB::transaction(function () use ($schedule, $validated, $reason, $request) {
+            $schedule = TourSchedule::lockForUpdate()->findOrFail($schedule->id);
+            $before = $schedule->only(array_keys($validated));
+            if ($schedule->departure_time === $validated['departure_time'].':00') {
+                $validated['departure_time'] = $schedule->departure_time;
+            }
+            if ($validated['total_seats'] < $schedule->booked_seats + $schedule->reserved_seats) {
+                throw \Illuminate\Validation\ValidationException::withMessages(['total_seats' => 'Capacity cannot be below booked and reserved seats.']);
+            }
+            $schedule->fill($validated);
+            if ($schedule->hasBookingHistory() && $schedule->isDirty(['departure_date', 'return_date', 'departure_time', 'departure_point', 'price_override', 'child_price_override', 'status'])) {
+                throw \Illuminate\Validation\ValidationException::withMessages(['schedule' => 'This departure has bookings. Resolve customer amendments or cancellations before changing its dates, pricing, pickup, or status.']);
+            }
+            $schedule->save();
+            if ($schedule->wasChanged()) {
+                $schedule->auditLogs()->create(['admin_id' => $request->user()->id, 'action' => 'schedule.updated',
+                    'before' => $before, 'after' => $schedule->only(array_keys($validated)), 'note' => $reason]);
+            }
+        });
 
         return redirect()->back()->with('success', 'Tour schedule updated.');
     }
 
     public function deleteTourSchedule(Tour $tour, TourSchedule $schedule)
     {
-        $schedule->delete();
+        abort_unless((int) $schedule->tour_id === (int) $tour->id, 404);
+        \Illuminate\Support\Facades\DB::transaction(function () use ($schedule) {
+            $schedule = TourSchedule::lockForUpdate()->findOrFail($schedule->id);
+            abort_if($schedule->hasBookingHistory(), 422, 'Departures with booking history cannot be deleted.');
+            $schedule->delete();
+        });
 
         return redirect()->back()->with('success', 'Tour schedule deleted.');
+    }
+
+    public function tourManifest(Request $request, Tour $tour, TourSchedule $schedule)
+    {
+        abort_unless((int) $schedule->tour_id === (int) $tour->id, 404);
+        $bookings = $schedule->bookings()->whereNotIn('status', ['cancelled'])->orderBy('id')
+            ->get(['id', 'booking_number', 'customer_name', 'customer_phone', 'number_of_adults', 'number_of_children', 'status']);
+        if ($request->boolean('download')) {
+            return response()->streamDownload(function () use ($bookings) {
+                $stream = fopen('php://output', 'w');
+                fputcsv($stream, ['Booking', 'Lead traveller', 'Phone', 'Adults', 'Children', 'Status'], ',', '"', '');
+                foreach ($bookings as $booking) {
+                    $values = [$booking->booking_number, $booking->customer_name, $booking->customer_phone, $booking->number_of_adults, $booking->number_of_children, $booking->status];
+                    $values = array_map(fn ($value) => preg_match('/^[=+@\-\t\r]/', (string) $value) ? "'".$value : $value, $values);
+                    fputcsv($stream, $values, ',', '"', '');
+                }
+                fclose($stream);
+            }, 'departure-'.$schedule->id.'-manifest.csv', ['Content-Type' => 'text/csv']);
+        }
+
+        return inertia('admin/Tours/Manifest', ['tour' => $tour->only('id', 'title'), 'schedule' => $schedule->only('id', 'departure_date'), 'bookings' => $bookings]);
     }
 
     public function assignDriverToSchedule(Request $request, Tour $tour, TourSchedule $schedule)
@@ -905,29 +980,73 @@ class AdminController extends Controller
 
         $driver = Driver::findOrFail($validated['driver_id']);
         $role = $validated['role'] ?? 'transport';
+        $vehicleId = isset($validated['vehicle_id']) ? (int) $validated['vehicle_id'] : null;
 
-        $eligibilityFailures = app(DriverDispatchService::class)->eligibilityFailures(
-            $driver,
-            'tour',
-            $role,
-            null,
-            isset($validated['vehicle_id']) ? (int) $validated['vehicle_id'] : null
-        );
+        return DB::transaction(function () use ($request, $schedule, $driver, $role, $vehicleId) {
+            app(\App\Services\ResourceCommitmentService::class)->lockResources($driver->id, $vehicleId);
+            $schedule = TourSchedule::lockForUpdate()->findOrFail($schedule->id);
 
-        if ($eligibilityFailures !== []) {
-            return redirect()->back()->with('error', implode(' ', $eligibilityFailures));
-        }
+            $eligibilityFailures = app(DriverDispatchService::class)->eligibilityFailures(
+                $driver,
+                'tour',
+                $role,
+                null,
+                $vehicleId
+            );
 
-        $schedule->driverAssignments()->updateOrCreate(
-            ['driver_id' => $driver->id],
-            [
-                'vehicle_id' => $validated['vehicle_id'] ?? null,
-                'role' => $role,
-                'status' => 'assigned',
-            ]
-        );
+            if ($eligibilityFailures !== []) {
+                if ($request->wantsJson()) {
+                    return response()->json([
+                        'message' => implode(' ', $eligibilityFailures),
+                        'errors' => ['driver_id' => $eligibilityFailures],
+                    ], 422);
+                }
 
-        return redirect()->back()->with('success', 'Driver assigned to tour.');
+                return redirect()->back()->with('error', implode(' ', $eligibilityFailures));
+            }
+
+            $existingAssignment = $schedule->driverAssignments()->where('driver_id', $driver->id)->first();
+            $conflicts = app(\App\Services\ResourceCommitmentService::class)->findConflicts(
+                $driver->id,
+                $vehicleId,
+                $schedule->departure_date,
+                $schedule->return_date ?? $schedule->departure_date,
+                [
+                    'exclude_tour_assignment_id' => $existingAssignment?->id,
+                    'exclude_tour_schedule_id' => $schedule->id,
+                ]
+            );
+
+            if (! empty($conflicts)) {
+                $errorMsg = implode(' ', $conflicts);
+                if ($request->wantsJson()) {
+                    return response()->json([
+                        'message' => $errorMsg,
+                        'errors' => ['driver_id' => $conflicts],
+                    ], 422);
+                }
+
+                return redirect()->back()->with('error', $errorMsg);
+            }
+
+            $schedule->driverAssignments()->updateOrCreate(
+                ['driver_id' => $driver->id],
+                [
+                    'vehicle_id' => $vehicleId,
+                    'role' => $role,
+                    'status' => 'assigned',
+                ]
+            );
+
+            if ($request->wantsJson()) {
+                return response()->json([
+                    'message' => 'Driver assigned to tour successfully.',
+                    'assignment' => $schedule->driverAssignments()->where('driver_id', $driver->id)->with(['driver', 'vehicle'])->first(),
+                ]);
+            }
+
+            return redirect()->back()->with('success', 'Driver assigned to tour.');
+        });
     }
 
     /**
@@ -1069,7 +1188,7 @@ class AdminController extends Controller
             'google_review_count' => $validated['google_review_count'] ?? 0,
         ]);
 
-        if ($place->google_place_id && ($place->wasChanged(['google_place_id', 'latitude', 'longitude']) || !$place->google_synced_at)) {
+        if ($place->google_place_id && ($place->wasChanged(['google_place_id', 'latitude', 'longitude']) || ! $place->google_synced_at)) {
             $googlePlaces->sync($place, true);
         }
 
@@ -1092,7 +1211,7 @@ class AdminController extends Controller
     public function storeMedia(Request $request, Place $place)
     {
         $validated = $request->validate([
-            'file' => ['nullable', 'required_without:url', 'file', 'mimes:jpeg,png,jpg,gif,svg,mp4,avi,mov', 'max:20480', new FileIsClean()],
+            'file' => ['nullable', 'required_without:url', 'file', 'mimes:jpeg,png,jpg,gif,svg,mp4,avi,mov', 'max:20480', new FileIsClean],
             'url' => 'nullable|required_without:file|url:http,https|max:2048',
             'type' => 'required|in:image,panorama,video',
             'caption' => 'nullable|string|max:500',
@@ -1100,11 +1219,11 @@ class AdminController extends Controller
 
         if ($request->hasFile('file')) {
             $isVideo = str_starts_with($request->file('file')->getMimeType(), 'video/');
-        if (($validated['type'] === 'video') !== $isVideo) {
-            return back()->withErrors(['type' => $isVideo
-                ? 'Video files must use the Video media type.'
-                : 'Image files must use Image or 360° panorama.'])->withInput();
-        }
+            if (($validated['type'] === 'video') !== $isVideo) {
+                return back()->withErrors(['type' => $isVideo
+                    ? 'Video files must use the Video media type.'
+                    : 'Image files must use Image or 360° panorama.'])->withInput();
+            }
 
         }
 
@@ -1532,43 +1651,35 @@ class AdminController extends Controller
         ]);
 
         $driver = Driver::findOrFail($validated['driver_id']);
+        $vehicleId = isset($validated['vehicle_id']) ? (int) $validated['vehicle_id'] : null;
 
-        $eligibilityFailures = app(DriverDispatchService::class)->eligibilityFailures(
-            $driver,
-            'rental',
-            null,
-            $carRental->car_category_id ? (int) $carRental->car_category_id : null,
-            isset($validated['vehicle_id']) ? (int) $validated['vehicle_id'] : null,
-            $carRental->pickup_lat !== null ? (float) $carRental->pickup_lat : null,
-            $carRental->pickup_lng !== null ? (float) $carRental->pickup_lng : null
-        );
+        try {
+            $updatedRental = app(RentalDriverService::class)->assignDriver(
+                $carRental,
+                $driver,
+                $vehicleId,
+                $request->user()?->id
+            );
 
-        if ($eligibilityFailures !== []) {
             return response()->json([
-                'message' => implode(' ', $eligibilityFailures),
-                'errors' => ['driver_id' => $eligibilityFailures],
+                'message' => 'Rental driver assigned successfully.',
+                'car_rental' => $updatedRental,
+            ]);
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return response()->json([
+                'message' => $e->getMessage(),
+                'errors' => $e->errors(),
             ], 422);
         }
+    }
 
-        $previousDriverId = $carRental->driver_id;
-
-        $carRental->update([
-            'driver_id' => $driver->id,
-            'vehicle_id' => $validated['vehicle_id'] ?? $carRental->vehicle_id,
-            'status' => in_array($carRental->status, ['completed', 'cancelled'], true)
-                ? $carRental->status
-                : 'driver_assigned',
-        ]);
-
-        $this->syncDriverAvailabilityForRental($carRental, $previousDriverId);
-        $this->notifyBookingLifecycle($carRental->fresh('customer'), 'driver.assigned', [
-            'driver_id' => $driver->id,
-            'vehicle_id' => $validated['vehicle_id'] ?? $carRental->vehicle_id,
-        ]);
+    public function carRentalCandidates(CarRental $carRental)
+    {
+        $candidates = app(RentalDriverService::class)->getRankedCandidates($carRental);
 
         return response()->json([
-            'message' => 'Rental driver assigned successfully.',
-            'car_rental' => $carRental->fresh(['driver:id,name,email,phone', 'vehicle']),
+            'success' => true,
+            'data' => $candidates,
         ]);
     }
 
@@ -1644,6 +1755,53 @@ class AdminController extends Controller
         return $this->confirmBookingPayment($request, $carRental, 'car_rental');
     }
 
+    /**
+     * Preview extra charges for a completed rental without persisting.
+     */
+    public function previewRentalSettlement(Request $request, CarRental $carRental)
+    {
+        $validated = $request->validate([
+            'actual_km' => 'nullable|numeric|min:0',
+            'actual_return_at' => 'nullable|date',
+            'surcharge_items' => 'nullable|array',
+            'surcharge_items.*.name' => 'required_with:surcharge_items|string|max:120',
+            'surcharge_items.*.amount' => 'required_with:surcharge_items|numeric|min:0',
+        ]);
+
+        $preview = app(\App\Services\RentalSettlementService::class)->preview($carRental, $validated);
+
+        return response()->json([
+            'message' => 'Settlement preview computed.',
+            'data' => $preview,
+        ]);
+    }
+
+    /**
+     * Apply settlement charges to a completed rental.
+     */
+    public function settleRental(Request $request, CarRental $carRental)
+    {
+        $validated = $request->validate([
+            'actual_km' => 'nullable|numeric|min:0',
+            'actual_return_at' => 'nullable|date',
+            'surcharge_items' => 'nullable|array',
+            'surcharge_items.*.name' => 'required_with:surcharge_items|string|max:120',
+            'surcharge_items.*.amount' => 'required_with:surcharge_items|numeric|min:0',
+            'notes' => 'nullable|string|max:2000',
+        ]);
+
+        $settled = app(\App\Services\RentalSettlementService::class)->settle(
+            $carRental,
+            $validated,
+            Auth::id()
+        );
+
+        return response()->json([
+            'message' => 'Rental settlement applied successfully.',
+            'car_rental' => $settled->fresh(['driver:id,name,email,phone', 'vehicle', 'extras']),
+        ]);
+    }
+
     public function updateTourBookingStatus(Request $request, TourBooking $tourBooking)
     {
         $validated = $request->validate([
@@ -1659,9 +1817,7 @@ class AdminController extends Controller
         $statusService = app(BookingStatusService::class);
 
         DB::transaction(function () use ($tourBooking, $validated) {
-            $tourBooking->refresh();
-            $previousStatus = $tourBooking->status;
-            $previousPaymentStatus = $tourBooking->payment_status;
+            $tourBooking = TourBooking::lockForUpdate()->findOrFail($tourBooking->id);
             $before = $this->bookingAuditSnapshot($tourBooking);
 
             $updates = [];
@@ -1694,15 +1850,18 @@ class AdminController extends Controller
                 $updates['status'] = $requestedStatus;
             }
             if (isset($validated['payment_status'])) {
-                $updates['payment_status'] = $validated['payment_status'];
+                abort_unless($validated['payment_status'] === $tourBooking->payment_status, 422, 'Use payment confirmation or the refund workflow to change payment status.');
+            }
+            if (($updates['status'] ?? null) === 'confirmed') {
+                abort_unless($tourBooking->payment_status === 'paid', 422, 'Confirm the payment before confirming the booking.');
+                app(\App\Services\PaymentService::class)->confirmTourBooking($tourBooking);
             }
 
             $tourBooking->update($updates);
-            if (($updates['status'] ?? null) === 'completed' && $tourBooking->fresh()->payment_status === 'paid') {
+            if (($updates['status'] ?? null) === 'completed' && ($tourBooking->payment_plan || $tourBooking->fresh()->payment_status === 'paid')) {
                 app(CommissionService::class)->settleTour($tourBooking->fresh());
             }
             $this->recordBookingAudit($tourBooking->fresh(), 'status_updated', $before, $this->bookingAuditSnapshot($tourBooking->fresh()));
-            $this->syncTourSeatInventory($tourBooking->fresh(), $previousStatus, $previousPaymentStatus);
             $this->notifyStatusAndPaymentLifecycle($tourBooking->fresh('customer'), $updates);
         });
 
@@ -1740,39 +1899,6 @@ class AdminController extends Controller
         ]);
     }
 
-    private function syncTourSeatInventory(TourBooking $booking, string $previousStatus, string $previousPaymentStatus): void
-    {
-        $schedule = $booking->schedule()->lockForUpdate()->first();
-        if (! $schedule) {
-            return;
-        }
-
-        $seats = $booking->getTotalPax();
-        $wasConfirmed = $previousStatus === 'confirmed' || $previousPaymentStatus === 'paid';
-        $isConfirmed = $booking->status === 'confirmed' || $booking->payment_status === 'paid';
-        $isCancelled = $booking->status === 'cancelled';
-
-        if (! $wasConfirmed && $isConfirmed && ! $isCancelled) {
-            $schedule->decrement('reserved_seats', min($schedule->reserved_seats, $seats));
-            $schedule->increment('booked_seats', $seats);
-
-            return;
-        }
-
-        if ($previousStatus === 'pending' && $isCancelled) {
-            $schedule->decrement('reserved_seats', min($schedule->reserved_seats, $seats));
-
-            return;
-        }
-
-        if ($wasConfirmed && $isCancelled) {
-            $schedule->decrement('booked_seats', min($schedule->booked_seats, $seats));
-        }
-    }
-
-    /**
-     * Car categories management
-     */
     public function carCategories(Request $request)
     {
         $query = CarCategory::query();
@@ -1822,6 +1948,8 @@ class AdminController extends Controller
             'has_ac' => 'boolean',
             'has_driver' => 'boolean',
             'base_price_per_day' => 'required|numeric|min:0',
+            'included_km_per_day' => 'nullable|integer|min:0',
+            'extra_km_charge' => 'nullable|numeric|min:0',
             'price_per_km' => 'required|numeric|min:0',
             'features' => 'nullable|array',
             'features.*' => 'string',
@@ -1833,6 +1961,7 @@ class AdminController extends Controller
             'sort_order' => 'nullable|integer|min:0',
         ]);
 
+        $validated['extra_km_charge'] = $validated['extra_km_charge'] ?? 0;
         CarCategory::create($validated);
 
         return redirect()->route('admin.car-categories')->with('success', 'Car category created successfully');
@@ -1875,6 +2004,8 @@ class AdminController extends Controller
             'has_ac' => 'boolean',
             'has_driver' => 'boolean',
             'base_price_per_day' => 'required|numeric|min:0',
+            'included_km_per_day' => 'nullable|integer|min:0',
+            'extra_km_charge' => 'nullable|numeric|min:0',
             'price_per_km' => 'required|numeric|min:0',
             'features' => 'nullable|array',
             'features.*' => 'string',
@@ -1886,6 +2017,7 @@ class AdminController extends Controller
             'sort_order' => 'nullable|integer|min:0',
         ]);
 
+        $validated['extra_km_charge'] = $validated['extra_km_charge'] ?? $carCategory->extra_km_charge ?? 0;
         $carCategory->update($validated);
 
         return redirect()->route('admin.car-categories')->with('success', 'Car category updated successfully');
@@ -2142,60 +2274,110 @@ class AdminController extends Controller
 
         $driver = Driver::findOrFail($validated['driver_id']);
         $dispatchService = app(DriverDispatchService::class);
-        $eligibilityFailures = $dispatchService->eligibilityFailures(
-            $driver,
-            $dispatchService->rideServiceType($rideBooking),
-            null,
-            $rideBooking->car_category_id ? (int) $rideBooking->car_category_id : null,
-            isset($validated['vehicle_id']) ? (int) $validated['vehicle_id'] : null,
-            $rideBooking->pickup_lat !== null ? (float) $rideBooking->pickup_lat : null,
-            $rideBooking->pickup_lng !== null ? (float) $rideBooking->pickup_lng : null
-        );
+        $vehicleId = isset($validated['vehicle_id']) ? (int) $validated['vehicle_id'] : ($rideBooking->vehicle_id ?: $driver->vehicle?->id);
 
-        if ($eligibilityFailures !== []) {
-            return response()->json([
-                'message' => implode(' ', $eligibilityFailures),
-                'errors' => ['driver_id' => $eligibilityFailures],
-            ], 422);
-        }
+        return DB::transaction(function () use ($rideBooking, $driver, $vehicleId, $dispatchService, $validated) {
+            Customer::whereKey($rideBooking->customer_id)->lockForUpdate()->firstOrFail();
+            app(\App\Services\ResourceCommitmentService::class)->lockResources($driver->id, $vehicleId);
+            $rideBooking = RideBooking::lockForUpdate()->findOrFail($rideBooking->id);
 
-        $previousDriverId = $rideBooking->driver_id;
-        $newDriverId = (int) $validated['driver_id'];
+            if (! in_array($rideBooking->status, ['pending', 'confirmed', 'driver_assigned', 'driver_arriving', 'pickup'], true)
+                || (! $rideBooking->driver_id && $rideBooking->request_expires_at?->lte(now()))) {
+                return response()->json(['message' => 'This ride is closed or its search deadline has passed.'], 409);
+            }
+            if ($rideBooking->request_expires_at && RideBooking::where('customer_id', $rideBooking->customer_id)->whereKeyNot($rideBooking->id)
+                ->whereIn('status', ['driver_assigned', 'driver_arriving', 'pickup', 'in_transit'])->exists()) {
+                return response()->json(['message' => 'The customer already has another accepted ride.'], 409);
+            }
 
-        if ($previousDriverId && $previousDriverId !== $newDriverId) {
-            DriverAvailability::where('driver_id', $previousDriverId)->update([
-                'is_available' => true,
+            $eligibilityFailures = $dispatchService->eligibilityFailures(
+                $driver,
+                $dispatchService->rideServiceType($rideBooking),
+                null,
+                $rideBooking->car_category_id ? (int) $rideBooking->car_category_id : null,
+                $vehicleId,
+                $rideBooking->pickup_lat !== null ? (float) $rideBooking->pickup_lat : null,
+                $rideBooking->pickup_lng !== null ? (float) $rideBooking->pickup_lng : null,
+                null,
+                null,
+                $rideBooking
+            );
+
+            if ($eligibilityFailures !== []) {
+                return response()->json([
+                    'message' => implode(' ', $eligibilityFailures),
+                    'errors' => ['driver_id' => $eligibilityFailures],
+                ], 422);
+            }
+
+            $commitmentService = app(\App\Services\ResourceCommitmentService::class);
+            $rideInterval = $commitmentService->getRideInterval($rideBooking);
+            $conflicts = $commitmentService->findConflicts(
+                $driver->id,
+                $vehicleId,
+                $rideInterval['start'],
+                $rideInterval['end'],
+                [
+                    'exclude_ride_booking_id' => $rideBooking->id,
+                    'exact_interval' => true,
+                ]
+            );
+
+            if (! empty($conflicts)) {
+                return response()->json([
+                    'message' => implode(' ', $conflicts),
+                    'errors' => ['driver_id' => $conflicts],
+                ], 422);
+            }
+
+            $previousDriverId = $rideBooking->driver_id;
+            $newDriverId = (int) $validated['driver_id'];
+
+            $this->captureAdminSnapshot($rideBooking);
+
+            $rideBooking->update([
+                'driver_id' => $newDriverId,
+                'vehicle_id' => $vehicleId,
+                'status' => in_array($rideBooking->status, ['completed', 'cancelled'], true)
+                    ? $rideBooking->status
+                    : 'driver_assigned',
+                'dispatch_status' => 'assigned',
+                'admin_assignable' => false,
+                'start_ride_pin' => $rideBooking->start_ride_pin ?: RideBooking::generateStartRidePin(),
+                'start_pin_verified_at' => null,
+                'last_admin_changed_at' => now(),
+                'last_admin_changed_by' => Auth::id(),
             ]);
-        }
 
-        $this->captureAdminSnapshot($rideBooking);
+            if ($previousDriverId && $previousDriverId !== $newDriverId) {
+                $prevDriver = Driver::find($previousDriverId);
+                if ($prevDriver && ! $dispatchService->hasActiveWorkload($prevDriver)) {
+                    DriverAvailability::where('driver_id', $previousDriverId)->update([
+                        'is_available' => true,
+                        'status' => 'online',
+                    ]);
+                }
+            }
 
-        $rideBooking->update([
-            'driver_id' => $newDriverId,
-            'vehicle_id' => $validated['vehicle_id'] ?? $rideBooking->vehicle_id,
-            'status' => in_array($rideBooking->status, ['completed', 'cancelled'], true)
-                ? $rideBooking->status
-                : 'driver_assigned',
-            'dispatch_status' => 'assigned',
-            'admin_assignable' => false,
-            'start_ride_pin' => $rideBooking->start_ride_pin ?: RideBooking::generateStartRidePin(),
-            'start_pin_verified_at' => null,
-            'last_admin_changed_at' => now(),
-            'last_admin_changed_by' => Auth::id(),
-        ]);
+            $isDueNow = $rideBooking->scheduled_at === null
+                || $rideBooking->scheduled_at->lte(now()->addMinutes((int) setting('ride.dispatch.window_minutes', 15)));
 
-        DriverAvailability::where('driver_id', $newDriverId)->update([
-            'is_available' => false,
-        ]);
-        $this->notifyBookingLifecycle($rideBooking->fresh('customer'), 'driver.assigned', [
-            'driver_id' => $newDriverId,
-            'vehicle_id' => $validated['vehicle_id'] ?? $rideBooking->vehicle_id,
-        ]);
+            if ($isDueNow) {
+                DriverAvailability::where('driver_id', $newDriverId)->update([
+                    'is_available' => false,
+                    'status' => 'on_ride',
+                ]);
+            }
+            $this->notifyBookingLifecycle($rideBooking->fresh('customer'), 'driver.assigned', [
+                'driver_id' => $newDriverId,
+                'vehicle_id' => $vehicleId,
+            ]);
 
-        return response()->json([
-            'message' => 'Driver assigned successfully.',
-            'ride_booking' => $rideBooking->fresh(['driver:id,name,email,phone']),
-        ]);
+            return response()->json([
+                'message' => 'Driver assigned successfully.',
+                'ride_booking' => $rideBooking->fresh(['driver:id,name,email,phone']),
+            ]);
+        });
     }
 
     public function updateRideBookingStatus(Request $request, RideBooking $rideBooking)
@@ -2382,7 +2564,7 @@ class AdminController extends Controller
     {
         $validated = $request->validate([
             'payment_method' => 'required|in:cash,card,upi,bank_transfer,razorpay,wallet',
-            'payment_reference' => 'nullable|string|max:255',
+            'payment_reference' => 'required_if:payment_method,card,upi,bank_transfer|string|max:255|nullable',
             'note' => 'nullable|string|max:1000',
         ]);
 
@@ -2395,23 +2577,14 @@ class AdminController extends Controller
         $before = $this->bookingAuditSnapshot($booking);
 
         DB::transaction(function () use ($booking, $validated, $before, $type) {
-            $booking->refresh();
-            $updates = [
-                'payment_status' => 'paid',
-                'payment_method' => $validated['payment_method'],
-            ];
-
-            if ($booking instanceof TourBooking && $booking->status === 'pending') {
-                $updates['status'] = 'confirmed';
+            $booking = $booking->newQuery()->lockForUpdate()->findOrFail($booking->id);
+            abort_if($booking->status === 'cancelled' || $booking->payment_status === 'refunded', 422, 'Closed or refunded bookings cannot be confirmed.');
+            if ($booking->payment_status === 'paid') {
+                return;
             }
-
-            $previousStatus = $booking->status;
-            $previousPaymentStatus = $booking->payment_status;
-            $booking->update($updates);
-
-            if ($booking instanceof TourBooking) {
-                $this->syncTourSeatInventory($booking->fresh(), $previousStatus, $previousPaymentStatus);
-            }
+            app(\App\Services\PaymentService::class)->recordAdminReceipt(
+                $booking, $validated['payment_method'], $validated['payment_reference'] ?? null, (int) Auth::id()
+            );
 
             $this->recordBookingAudit(
                 $booking->fresh(),
@@ -2423,10 +2596,7 @@ class AdminController extends Controller
                 ]),
                 $validated['note'] ?? null
             );
-            $this->notifyBookingLifecycle($booking->fresh('customer'), 'payment.paid', [
-                'confirmation_type' => $type,
-                'payment_reference' => $validated['payment_reference'] ?? null,
-            ]);
+
         });
 
         return response()->json([
@@ -2578,5 +2748,194 @@ class AdminController extends Controller
                 ]);
             });
         });
+    }
+
+    public function tourInquiries(Request $request)
+    {
+        $query = \App\Models\TourInquiry::with(['tour:id,title,slug', 'schedule:id,departure_date,departure_time', 'customer:id,name,phone,email']);
+
+        if ($request->filled('inquiry_type')) {
+            $query->where('inquiry_type', $request->inquiry_type);
+        }
+        if ($request->filled('status')) {
+            $query->where('status', $request->status);
+        }
+        if ($request->filled('tour_id')) {
+            $query->where('tour_id', $request->tour_id);
+        }
+
+        $inquiries = $query->latest()->paginate($request->input('per_page', 20));
+
+        if ($request->wantsJson()) {
+            return response()->json([
+                'success' => true,
+                'data' => $inquiries->items(),
+                'pagination' => [
+                    'current_page' => $inquiries->currentPage(),
+                    'last_page' => $inquiries->lastPage(),
+                    'total' => $inquiries->total(),
+                ],
+            ]);
+        }
+
+        return inertia('admin/TourInquiries', [
+            'title' => 'Tour Inquiries & Waitlists',
+            'inquiries' => $inquiries,
+        ]);
+    }
+
+    public function updateTourInquiry(Request $request, \App\Models\TourInquiry $inquiry)
+    {
+        $validated = $request->validate([
+            'status' => 'nullable|in:pending,contacted,fulfilled,cancelled',
+            'operator_notes' => 'nullable|string|max:2000',
+        ]);
+
+        $inquiry->update(array_filter($validated, fn ($val) => $val !== null));
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Tour inquiry updated successfully.',
+            'data' => $inquiry->fresh(['tour:id,title', 'schedule', 'customer']),
+        ]);
+    }
+
+    public function notifyTourInquiry(Request $request, \App\Models\TourInquiry $inquiry)
+    {
+        $validated = $request->validate([
+            'message' => 'required|string|max:500',
+        ]);
+
+        $customer = $inquiry->customer;
+        abort_unless($customer, 404, 'Customer not found.');
+
+        $tourTitle = $inquiry->tour?->title ?? 'Tour';
+        $content = [
+            'sms' => 'HappyMiles: '.$validated['message'],
+            'whatsapp' => "*HappyMiles Update*\n\n".$validated['message'],
+            'email' => $validated['message'],
+            'subject' => "Update regarding your inquiry for {$tourTitle}",
+        ];
+
+        $channels = ['sms'];
+        if (! empty($customer->email)) {
+            $channels[] = 'email';
+        }
+
+        app(\App\Services\NotificationService::class)->enqueue($customer, $channels, $content, [
+            'dedup_key' => "tour:inquiry:manual_notify:{$inquiry->id}:".now()->timestamp,
+        ]);
+
+        $inquiry->update(['notified_at' => now(), 'status' => \App\Models\TourInquiry::STATUS_CONTACTED]);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Notification dispatched to customer.',
+            'data' => $inquiry->fresh(),
+        ]);
+    }
+
+    public function carRentalChecklists(Request $request, CarRental $carRental)
+    {
+        return response()->json([
+            'success' => true,
+            'data' => $carRental->checklists,
+        ]);
+    }
+
+    public function storeCarRentalChecklist(Request $request, CarRental $carRental)
+    {
+        $validated = $request->validate([
+            'type' => 'required|in:handover,return',
+            'odometer_reading' => 'nullable|numeric',
+            'fuel_level_percent' => 'nullable|integer|min:0|max:100',
+            'cleanliness' => 'nullable|in:clean,moderate,dirty',
+            'checklist_items' => 'nullable|array',
+            'photos' => 'nullable|array',
+            'damage_detected' => 'nullable|boolean',
+            'damage_notes' => 'nullable|string',
+            'customer_acknowledged' => 'nullable|boolean',
+        ]);
+
+        $checklist = app(\App\Services\RentalChecklistService::class)->submitChecklist(
+            $carRental,
+            $validated['type'],
+            $validated,
+            'admin',
+            $request->user()->id
+        );
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Checklist saved successfully.',
+            'data' => $checklist,
+        ]);
+    }
+
+    public function previewCarRentalAmendment(Request $request, CarRental $carRental)
+    {
+        $validated = $request->validate([
+            'end_date' => 'required|date|after_or_equal:'.$carRental->start_date->format('Y-m-d'),
+            'end_time' => 'nullable|date_format:H:i:s',
+        ]);
+
+        $preview = app(\App\Services\CarRentalAmendmentService::class)->preview($carRental, $validated);
+
+        return response()->json([
+            'success' => true,
+            'data' => $preview,
+        ]);
+    }
+
+    public function amendCarRental(Request $request, CarRental $carRental)
+    {
+        $validated = $request->validate([
+            'version' => 'nullable|string|size:64',
+            'end_date' => 'required|date|after_or_equal:'.$carRental->start_date->format('Y-m-d'),
+            'end_time' => 'nullable|date_format:H:i:s',
+        ]);
+
+        try {
+            $requestId = $request->header('Idempotency-Key') ?? uniqid('amend_', true);
+            $amended = app(\App\Services\CarRentalAmendmentService::class)->amend($carRental, $validated, $request->user()->id, $requestId);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Rental amended successfully.',
+                'data' => $amended,
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage(),
+            ], 400);
+        }
+    }
+
+    public function reviewNoShow(Request $request, \App\Models\TourBooking $booking)
+    {
+        $validated = $request->validate([
+            'decision' => 'required|in:confirmed,excused',
+            'notes' => 'nullable|string|max:1000',
+        ]);
+
+        try {
+            app(\App\Services\TourAttendanceService::class)->reviewNoShow(
+                $booking,
+                $validated['decision'],
+                $validated['notes'] ?? null
+            );
+
+            return response()->json([
+                'success' => true,
+                'message' => 'No-show reviewed successfully.',
+                'data' => $booking->fresh(),
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage(),
+            ], 400);
+        }
     }
 }

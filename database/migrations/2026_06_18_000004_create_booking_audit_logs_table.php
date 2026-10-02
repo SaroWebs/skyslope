@@ -8,7 +8,7 @@ return new class extends Migration
 {
     public function up(): void
     {
-        if (!Schema::hasTable('booking_audit_logs')) {
+        if (! Schema::hasTable('booking_audit_logs')) {
             Schema::create('booking_audit_logs', function (Blueprint $table) {
                 $table->id();
                 $table->string('auditable_type');

@@ -161,6 +161,7 @@ it('prioritizes sharing-enabled drivers for shared requests without excluding ot
     ]);
 
     DriverAvailability::create([
+        'last_updated' => now(),
         'driver_id' => $standardDriver->id,
         'is_available' => true,
         'status' => 'online',
@@ -169,6 +170,7 @@ it('prioritizes sharing-enabled drivers for shared requests without excluding ot
         'current_lng' => 77.5946,
     ]);
     DriverAvailability::create([
+        'last_updated' => now(),
         'driver_id' => $sharingDriver->id,
         'is_available' => true,
         'status' => 'online',

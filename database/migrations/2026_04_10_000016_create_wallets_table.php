@@ -18,6 +18,7 @@ return new class extends Migration
             $table->timestamps();
 
             $table->unique(['owner_type', 'owner_id']);
+            $table->bigInteger('balance_minor')->nullable();
         });
 
         Schema::create('wallet_transactions', function (Blueprint $table) {
@@ -36,6 +37,13 @@ return new class extends Migration
 
             $table->index('wallet_id');
             $table->index(['reference_type', 'reference_id']);
+            $table->string('idempotency_key')->nullable();
+            $table->unique('idempotency_key');
+            $table->unsignedBigInteger('amount_minor')->nullable();
+            $table->bigInteger('balance_before_minor')->nullable();
+            $table->bigInteger('balance_after_minor')->nullable();
+            $table->uuid('transaction_ref')->nullable();
+            $table->index('transaction_ref');
         });
 
         // Polymorphic withdrawal: Customer or Driver
@@ -53,6 +61,10 @@ return new class extends Migration
 
             $table->index(['owner_type', 'owner_id', 'status']);
             $table->index('status');
+            $table->string('rejection_reason')->nullable();
+            $table->string('utr_number')->nullable();
+            $table->string('razorpay_fund_account_id')->nullable();
+            $table->string('razorpay_payout_id')->nullable();
         });
     }
 

@@ -35,7 +35,7 @@ return new class extends Migration
 
             // Status
             $table->enum('status', [
-                'pending', 'confirmed', 'in_progress', 'completed', 'cancelled'
+                'pending', 'confirmed', 'in_progress', 'completed', 'cancelled',
             ])->default('pending');
             $table->enum('payment_status', ['pending', 'partial', 'paid', 'refunded'])->default('pending');
             $table->string('payment_method')->default('cash');
@@ -62,6 +62,35 @@ return new class extends Migration
             $table->index(['tour_schedule_id', 'status']);
             $table->index(['status', 'travel_date']);
             $table->index('booking_number');
+            $table->decimal('current_lat', 10, 8)->nullable();
+            $table->decimal('current_lng', 11, 8)->nullable();
+            $table->timestamp('last_location_update')->nullable();
+            $table->unsignedInteger('current_stop_index')->default(0);
+            $table->decimal('cancellation_fee', 10, 2)->default(0);
+            $table->decimal('refund_amount', 10, 2)->default(0);
+            $table->timestamp('refunded_at')->nullable();
+            $table->decimal('commission_amount', 10, 2)->default(0);
+            $table->decimal('driver_share', 10, 2)->default(0);
+            $table->index(['assigned_driver_id', 'status', 'travel_date'], 'idx_tb_driver_status_travel');
+            $table->string('coupon_code')->nullable();
+            $table->decimal('tax_amount', 12, 2)->nullable();
+            $table->decimal('service_fee_amount', 12, 2)->nullable();
+            $table->dateTime('hold_expires_at')->nullable()->index();
+            $table->json('payment_plan')->nullable();
+            $table->unsignedBigInteger('online_paid_minor')->default(0);
+            $table->dateTime('settled_at')->nullable();
+            $table->json('settlement_breakdown')->nullable();
+            $table->integer('margin_minor')->nullable();
+            $table->integer('driver_entitlement_minor')->nullable();
+            $table->integer('cash_collected_minor')->nullable();
+            $table->integer('net_settlement_minor')->nullable();
+            $table->string('attendance_status')->nullable();
+            $table->timestamp('waiting_started_at')->nullable();
+            $table->timestamp('waiting_deadline_at')->nullable();
+            $table->timestamp('joined_at')->nullable();
+            $table->timestamp('no_show_at')->nullable();
+            $table->string('no_show_marked_by')->nullable();
+            $table->string('no_show_review_status')->nullable();
         });
 
         Schema::create('travel_statuses', function (Blueprint $table) {

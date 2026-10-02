@@ -13,10 +13,15 @@ use Illuminate\Database\Eloquent\Relations\MorphTo;
 class PaymentOrder extends Model
 {
     public const STATUS_CREATED = 'created';
+
     public const STATUS_ATTEMPTED = 'attempted';
+
     public const STATUS_PAID = 'paid';
+
     public const STATUS_FAILED = 'failed';
+
     public const STATUS_CANCELLED = 'cancelled';
+
     public const STATUS_EXPIRED = 'expired';
 
     protected $fillable = [

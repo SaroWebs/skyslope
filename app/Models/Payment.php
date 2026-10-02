@@ -17,10 +17,15 @@ use Illuminate\Database\Eloquent\Relations\MorphTo;
 class Payment extends Model
 {
     public const STATUS_CREATED = 'created';
+
     public const STATUS_AUTHORIZED = 'authorized';
+
     public const STATUS_CAPTURED = 'captured';
+
     public const STATUS_FAILED = 'failed';
+
     public const STATUS_REFUNDED = 'refunded';
+
     public const STATUS_PARTIALLY_REFUNDED = 'partially_refunded';
 
     protected $fillable = [

@@ -147,7 +147,7 @@ interface Props {
 
 const rentalStatusOptions = ['pending', 'confirmed', 'driver_assigned', 'in_progress', 'completed', 'cancelled'].map((value) => ({ value, label: value.replace('_', ' ') }));
 const paymentStatusOptions = ['pending', 'paid', 'failed', 'refunded'].map((value) => ({ value, label: value }));
-const paymentMethodOptions = ['cash', 'card', 'upi', 'bank_transfer', 'razorpay', 'wallet'].map((value) => ({ value, label: value.replace('_', ' ') }));
+const paymentMethodOptions = ['cash', 'card', 'upi', 'bank_transfer'].map((value) => ({ value, label: value.replace('_', ' ') }));
 
 export default function Show({ title, car_rental, drivers, vehicles }: Props) {
     const category = car_rental.car_category || car_rental.carCategory;

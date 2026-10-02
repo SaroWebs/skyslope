@@ -561,7 +561,7 @@ const AdminLayout = ({ children, title = 'Admin Panel' }: AdminLayoutProps) => {
     const navigation: NavigationItem[] = [
         {
             name: 'Dashboard',
-            href: '/admin/dashboard',
+            href: '/admin/journey-operations',
             icon: LayoutDashboard,
             current: url === '/admin/dashboard',
         },
@@ -596,6 +596,7 @@ const AdminLayout = ({ children, title = 'Admin Panel' }: AdminLayoutProps) => {
                 url.startsWith('/admin/tour-bookings') ||
                 url.startsWith('/admin/car-rentals'),
         },
+        { name: 'Carpool', href: '/admin/carpool', icon: Car, current: url.startsWith('/admin/carpool') },
         { name: 'Tour Packages', href: '/admin/tours', icon: Map, current: url.startsWith('/admin/tours') },
         { name: 'Coupons & Offers', href: '/admin/coupons', icon: TicketPercent, current: url.startsWith('/admin/coupons') },
         {

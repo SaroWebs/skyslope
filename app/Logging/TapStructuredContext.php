@@ -25,10 +25,10 @@ class TapStructuredContext
             return;
         }
 
-        $monolog->pushProcessor(new InjectRequestContext());
+        $monolog->pushProcessor(new InjectRequestContext);
 
         if (! app()->environment('local', 'testing')) {
-            $monolog->pushProcessor(new RedactSensitiveData());
+            $monolog->pushProcessor(new RedactSensitiveData);
         }
     }
 }

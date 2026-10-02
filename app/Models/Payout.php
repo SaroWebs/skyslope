@@ -15,11 +15,17 @@ use Illuminate\Database\Eloquent\Relations\MorphTo;
 class Payout extends Model
 {
     public const STATUS_CREATED = 'created';
+
     public const STATUS_QUEUED = 'queued';
+
     public const STATUS_PROCESSING = 'processing';
+
     public const STATUS_PROCESSED = 'processed';
+
     public const STATUS_REVERSED = 'reversed';
+
     public const STATUS_FAILED = 'failed';
+
     public const STATUS_CANCELLED = 'cancelled';
 
     protected $fillable = [

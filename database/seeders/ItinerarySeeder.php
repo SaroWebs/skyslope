@@ -2,10 +2,9 @@
 
 namespace Database\Seeders;
 
-use Illuminate\Database\Seeder;
 use App\Models\Itinerary;
 use App\Models\Tour;
-use App\Models\Place;
+use Illuminate\Database\Seeder;
 
 class ItinerarySeeder extends Seeder
 {

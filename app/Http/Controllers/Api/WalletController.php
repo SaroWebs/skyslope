@@ -32,6 +32,7 @@ class WalletController extends Controller
 
         $walletData = $wallet->toArray();
         if ($request->user()->isDriver()) {
+            $walletData = array_merge($walletData, app(\App\Services\DriverWithdrawalPolicy::class)->summary($wallet));
             $earnings = RideBooking::where('driver_id', $request->user()->id)
                 ->where('status', 'completed');
             $walletData['total_earnings'] = (float) (clone $earnings)->sum('driver_share');

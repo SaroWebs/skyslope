@@ -160,6 +160,7 @@ it('assigns the drivers approved car when accepting a compatible ride', function
         'status' => 'online',
         'current_lat' => 12.9716,
         'current_lng' => 77.5946,
+        'last_updated' => now(),
     ]);
     $customer = Customer::create(['name' => 'One Car Rider', 'phone' => '9000000991']);
     $ride = RideBooking::create([

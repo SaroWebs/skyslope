@@ -26,6 +26,13 @@ return new class extends Migration
             $table->timestamps();
 
             $table->index(['customer_id', 'status']);
+            $table->string('product_code')->nullable();
+            $table->string('provider_name')->nullable();
+            $table->string('terms_version')->nullable();
+            $table->timestamp('terms_accepted_at')->nullable();
+            $table->timestamp('issued_at')->nullable();
+            $table->timestamp('cancelled_at')->nullable();
+            $table->unique(['coverable_type', 'coverable_id'], 'insurance_coverable_unique');
         });
 
         Schema::create('insurance_claims', function (Blueprint $table) {
@@ -40,6 +47,8 @@ return new class extends Migration
             $table->text('admin_notes')->nullable();
             $table->timestamp('resolved_at')->nullable();
             $table->timestamps();
+            $table->date('incident_date')->nullable();
+            $table->json('documents')->nullable();
         });
 
         Schema::create('extended_care', function (Blueprint $table) {

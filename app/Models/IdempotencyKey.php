@@ -12,6 +12,7 @@ use Illuminate\Database\Eloquent\Model;
 class IdempotencyKey extends Model
 {
     public const STATUS_PROCESSING = 'processing';
+
     public const STATUS_COMPLETED = 'completed';
 
     protected $fillable = [

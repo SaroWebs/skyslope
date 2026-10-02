@@ -4,8 +4,8 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Http\Resources\CustomerApp\InsurancePolicyResource;
-use App\Models\ExtendedCare;
 use App\Models\DriverInsurancePolicy;
+use App\Models\ExtendedCare;
 use App\Models\InsuranceClaim;
 use App\Models\InsurancePolicy;
 use App\Services\InsurancePlanCatalog;

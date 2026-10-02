@@ -28,14 +28,14 @@ class Destination extends Model
     ];
 
     protected $casts = [
-        'latitude'    => 'decimal:8',
-        'longitude'   => 'decimal:8',
-        'gallery'     => 'array',
-        'highlights'  => 'array',
-        'rating'      => 'decimal:2',
-        'is_active'   => 'boolean',
+        'latitude' => 'decimal:8',
+        'longitude' => 'decimal:8',
+        'gallery' => 'array',
+        'highlights' => 'array',
+        'rating' => 'decimal:2',
+        'is_active' => 'boolean',
         'is_featured' => 'boolean',
-        'sort_order'  => 'integer',
+        'sort_order' => 'integer',
     ];
 
     /**

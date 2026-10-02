@@ -14,6 +14,5 @@ class BookingLifecycleNotification
         public int $bookingId,
         public string $action,
         public array $metadata = []
-    ) {
-    }
+    ) {}
 }

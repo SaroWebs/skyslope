@@ -13,6 +13,7 @@ class RideDispatchAttempt extends Model
         'score',
         'distance_km',
         'rank',
+        'wave_number',
         'status',
         'offered_at',
         'responded_at',
@@ -23,6 +24,7 @@ class RideDispatchAttempt extends Model
     protected $casts = [
         'score' => 'decimal:2',
         'distance_km' => 'decimal:2',
+        'wave_number' => 'integer',
         'offered_at' => 'datetime',
         'responded_at' => 'datetime',
         'expires_at' => 'datetime',

@@ -10,6 +10,4 @@ use RuntimeException;
  * breaker counts toward tripping; client errors (4xx) are deliberately NOT
  * this exception, so a bad request never opens the breaker.
  */
-class ProviderUnavailableException extends RuntimeException
-{
-}
+class ProviderUnavailableException extends RuntimeException {}

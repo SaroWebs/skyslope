@@ -91,6 +91,11 @@ class WalletLedgerService
                 throw new \RuntimeException('Insufficient wallet balance.');
             }
 
+            if ($type === 'debit' && $referenceType === 'driver_withdrawal'
+                && $lockedWallet->owner_type === \App\Models\Driver::class) {
+                app(DriverWithdrawalPolicy::class)->assertAllowed($lockedWallet, $amountMinor);
+            }
+
             $lockedWallet->forceFill([
                 'balance_minor' => $afterMinor,
                 'balance' => Money::toMajor($afterMinor),

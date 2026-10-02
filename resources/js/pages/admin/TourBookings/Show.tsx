@@ -7,6 +7,7 @@ import {
     Badge,
     Button,
     Card,
+    Checkbox,
     Divider,
     Grid,
     Group,
@@ -107,17 +108,16 @@ interface TourBooking {
 interface Props {
     title: string;
     booking: TourBooking;
+    amendmentSchedules: { id: number; departure_date: string; departure_time: string; departure_point: string }[];
 }
 
 const statusOptions = ['pending', 'confirmed', 'in_progress', 'completed', 'cancelled'].map((value) => ({ value, label: value.replace('_', ' ') }));
-const paymentStatusOptions = ['pending', 'partial', 'paid', 'refunded'].map((value) => ({ value, label: value }));
-const paymentMethodOptions = ['cash', 'card', 'upi', 'bank_transfer', 'razorpay', 'wallet'].map((value) => ({ value, label: value.replace('_', ' ') }));
+const paymentMethodOptions = ['cash', 'card', 'upi', 'bank_transfer'].map((value) => ({ value, label: value.replace('_', ' ') }));
 
-export default function TourBookingShow({ title, booking }: Props) {
+export default function TourBookingShow({ title, booking, amendmentSchedules }: Props) {
     const [status, setStatus] = useState(booking.status);
-    const [paymentStatus, setPaymentStatus] = useState(booking.payment_status);
     const [cancellationReason, setCancellationReason] = useState('');
-    const [paymentMethod, setPaymentMethod] = useState(booking.payment_method || 'cash');
+    const [paymentMethod, setPaymentMethod] = useState(['cash', 'card', 'upi', 'bank_transfer'].includes(booking.payment_method || '') ? booking.payment_method : 'cash');
     const [paymentReference, setPaymentReference] = useState('');
     const [paymentNote, setPaymentNote] = useState('');
     const [incidentTitle, setIncidentTitle] = useState('');
@@ -125,6 +125,37 @@ export default function TourBookingShow({ title, booking }: Props) {
     const [incidentSeverity, setIncidentSeverity] = useState('medium');
     const [incidentDescription, setIncidentDescription] = useState('');
     const [processing, setProcessing] = useState(false);
+    const [targetSchedule, setTargetSchedule] = useState<string | null>(null);
+    const [amendmentReason, setAmendmentReason] = useState('');
+    const [customerAgreed, setCustomerAgreed] = useState(false);
+    const [amendmentError, setAmendmentError] = useState('');
+    const [amendmentRequestId, setAmendmentRequestId] = useState(() => crypto.randomUUID());
+
+    const amendDeparture = async () => {
+        if (processing || !targetSchedule || !customerAgreed || !amendmentReason.trim()) return;
+        setProcessing(true);
+        setAmendmentError('');
+        try {
+            await axios.post(`/admin/tour-bookings/${booking.id}/amend-departure`, {
+                source_schedule_id: booking.schedule?.id,
+                target_schedule_id: Number(targetSchedule),
+                customer_agreed: customerAgreed,
+                reason: amendmentReason,
+                request_id: amendmentRequestId,
+            });
+            setTargetSchedule(null);
+            setAmendmentReason('');
+            setCustomerAgreed(false);
+            setAmendmentRequestId(crypto.randomUUID());
+            router.reload();
+        } catch (error) {
+            setAmendmentError(axios.isAxiosError(error)
+                ? error.response?.data?.message || 'Unable to change departure. Refresh the booking and try again.'
+                : 'Unable to change departure. Please try again.');
+        } finally {
+            setProcessing(false);
+        }
+    };
 
     const reload = () => router.reload();
 
@@ -133,7 +164,6 @@ export default function TourBookingShow({ title, booking }: Props) {
         try {
             await axios.post(`/admin/tour-bookings/${booking.id}/update-status`, {
                 status,
-                payment_status: paymentStatus,
                 cancellation_reason: cancellationReason || null,
             });
             reload();
@@ -269,7 +299,7 @@ export default function TourBookingShow({ title, booking }: Props) {
                                 <Text fw={800} mb="md">Status & Payment</Text>
                                 <Stack gap="sm">
                                     <Select label="Lifecycle status" data={statusOptions} value={status} onChange={(value) => setStatus(value || booking.status)} />
-                                    <Select label="Payment status" data={paymentStatusOptions} value={paymentStatus} onChange={(value) => setPaymentStatus(value || booking.payment_status)} />
+                                    <Text size="sm">Payment: {booking.payment_status}. Use receipt confirmation or the refund workflow to change it.</Text>
                                     {status === 'cancelled' && (
                                         <Textarea label="Cancellation reason" value={cancellationReason} onChange={(event) => setCancellationReason(event.currentTarget.value)} />
                                     )}
@@ -277,11 +307,30 @@ export default function TourBookingShow({ title, booking }: Props) {
                                 </Stack>
                             </Paper>
 
+                            {['pending', 'confirmed'].includes(booking.status) && (
+                                <Paper p="xl" radius="md" withBorder>
+                                    <Text fw={800} mb="md">Change departure</Text>
+                                    <Stack gap="sm">
+                                        <Text size="sm">Move this booking to another departure of the same tour. The agreed price, payment balance and existing hold deadline stay unchanged.</Text>
+                                        {amendmentSchedules.length === 0 && <Text size="sm">No alternative departures currently have enough seats.</Text>}
+                                        <Select label="New departure" required searchable disabled={processing}
+                                            data={amendmentSchedules.map((schedule) => ({ value: String(schedule.id), label: `${schedule.departure_date.slice(0, 10)} ${schedule.departure_time || ''} — ${schedule.departure_point || 'Departure'} (#${schedule.id})` }))}
+                                            value={targetSchedule} onChange={setTargetSchedule} />
+                                        <Textarea label="Reason and customer agreement reference" required maxLength={2000} disabled={processing}
+                                            value={amendmentReason} onChange={(event) => setAmendmentReason(event.currentTarget.value)} />
+                                        <Checkbox label="The customer agreed to this departure change" disabled={processing}
+                                            checked={customerAgreed} onChange={(event) => setCustomerAgreed(event.currentTarget.checked)} />
+                                        {amendmentError && <Alert color="red" role="alert">{amendmentError}</Alert>}
+                                        <Button variant="light" loading={processing} disabled={!targetSchedule || !customerAgreed || !amendmentReason.trim()} onClick={amendDeparture}>Confirm departure change</Button>
+                                    </Stack>
+                                </Paper>
+                            )}
+
                             <Paper p="xl" radius="md" withBorder>
-                                <Text fw={800} mb="md">Confirm Payment</Text>
+                                <Text fw={800} mb="md">Record collected payment</Text>
                                 <Stack gap="sm">
                                     <Select label="Method" data={paymentMethodOptions} value={paymentMethod} onChange={(value) => setPaymentMethod(value || 'cash')} />
-                                    <TextInput label="Reference" value={paymentReference} onChange={(event) => setPaymentReference(event.currentTarget.value)} />
+                                    <TextInput label="Receipt reference" required={paymentMethod !== 'cash'} value={paymentReference} onChange={(event) => setPaymentReference(event.currentTarget.value)} />
                                     <Textarea label="Note" value={paymentNote} onChange={(event) => setPaymentNote(event.currentTarget.value)} />
                                     <Button leftSection={<CreditCard size={16} />} loading={processing} onClick={confirmPayment}>Mark Paid</Button>
                                 </Stack>

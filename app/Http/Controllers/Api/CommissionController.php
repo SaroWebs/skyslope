@@ -30,7 +30,7 @@ class CommissionController extends Controller
         // Base query
         $query = RideBooking::where('status', 'completed')
             ->whereNotNull('commission_amount')
-            ->whereBetween('created_at', [$startDate . ' 00:00:00', $endDate . ' 23:59:59']);
+            ->whereBetween('created_at', [$startDate.' 00:00:00', $endDate.' 23:59:59']);
 
         if ($serviceType !== 'all') {
             $query->where('service_type', $serviceType);
@@ -133,7 +133,7 @@ class CommissionController extends Controller
         $query = RideBooking::with('driver:id,name')
             ->where('status', 'completed')
             ->whereNotNull('commission_amount')
-            ->whereBetween('created_at', [$startDate . ' 00:00:00', $endDate . ' 23:59:59']);
+            ->whereBetween('created_at', [$startDate.' 00:00:00', $endDate.' 23:59:59']);
 
         if ($serviceType !== 'all') {
             $query->where('service_type', $serviceType);

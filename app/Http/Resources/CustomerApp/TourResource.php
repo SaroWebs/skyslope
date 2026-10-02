@@ -28,6 +28,10 @@ class TourResource extends JsonResource
             'id' => $this->id,
             'title' => $this->title,
             'slug' => $this->slug,
+            'brochure_url' => route('public.tours.brochure', ['tour' => $this->id]),
+            'generated_brochure_url' => route('public.tours.brochure', ['tour' => $this->id, 'source' => 'generated']),
+            'has_uploaded_brochure' => (bool) $this->brochure_path,
+            'brochure_uploaded_at' => $this->brochure_uploaded_at?->toISOString(),
             'category' => $this->whenLoaded('category', fn () => $this->category ? [
                 'id' => $this->category->id,
                 'name' => $this->category->name,
@@ -43,13 +47,14 @@ class TourResource extends JsonResource
             'duration_nights' => (int) ($this->duration_nights ?? 0),
             'min_group_size' => (int) ($this->min_group_size ?? 1),
             'max_group_size' => (int) ($this->max_group_size ?? 1),
-            'price_per_person' => $this->price_per_person === null ? null : (float) $this->price_per_person,
-            'discounted_price' => method_exists($this->resource, 'getDiscountedPrice') ? $this->getDiscountedPrice() : null,
+            'price_per_person' => $nextSchedule ? $nextSchedule->getEffectivePrice() : ($this->price_per_person === null ? null : (float) $this->price_per_person),
+            'discounted_price' => $nextSchedule ? $nextSchedule->getEffectivePrice() : (method_exists($this->resource, 'getDiscountedPrice') ? $this->getDiscountedPrice() : null),
             'child_price' => $this->child_price === null ? null : (float) $this->child_price,
             'start_location' => $this->start_location,
             'end_location' => $this->end_location,
             'region' => $this->region,
             'difficulty' => $this->difficulty,
+            'travel_style' => $this->travel_style ?? ($this->max_group_size <= 2 ? 'solo' : ($this->max_group_size >= 6 ? 'family' : 'senior-friendly')),
             'cover_image' => MediaUrl::resolve($this->cover_image),
             'gallery' => collect($this->gallery ?? [])
                 ->map(fn ($image) => MediaUrl::resolve($image))

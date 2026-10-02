@@ -20,7 +20,7 @@ class RideBookingReview extends Model
 
     protected $casts = [
         'customer_rating' => 'integer',
-        'driver_rating'   => 'integer',
+        'driver_rating' => 'integer',
     ];
 
     public function rideBooking(): BelongsTo

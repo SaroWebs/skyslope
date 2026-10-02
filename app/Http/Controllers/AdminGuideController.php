@@ -18,8 +18,8 @@ class AdminGuideController extends Controller
         if ($search = $request->input('search')) {
             $query->where(function ($q) use ($search) {
                 $q->where('name', 'like', "%{$search}%")
-                  ->orWhere('email', 'like', "%{$search}%")
-                  ->orWhere('phone', 'like', "%{$search}%");
+                    ->orWhere('email', 'like', "%{$search}%")
+                    ->orWhere('phone', 'like', "%{$search}%");
             });
         }
 
@@ -43,8 +43,8 @@ class AdminGuideController extends Controller
     public function show(Guide $guide)
     {
         $guide->load([
-            'tourGuideAssignments.schedule.tour' => fn($q) => $q->select('id', 'title'),
-            'tourBookingAssignments' => fn($q) => $q->latest()->take(15),
+            'tourGuideAssignments.schedule.tour' => fn ($q) => $q->select('id', 'title'),
+            'tourBookingAssignments' => fn ($q) => $q->latest()->take(15),
         ]);
 
         $stats = [

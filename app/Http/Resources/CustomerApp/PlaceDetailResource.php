@@ -26,7 +26,7 @@ class PlaceDetailResource extends JsonResource
                 'rating' => $this->google_rating === null ? null : (float) $this->google_rating,
                 'review_count' => (int) ($this->google_review_count ?? 0),
                 'reviews' => $this->google_reviews ?? [],
-                'photos' => collect($this->google_photos ?? [])->map(function (array $photo) use ($request) {
+                'photos' => collect($this->google_photos ?? [])->map(function (array $photo) {
                     $reference = $photo['photo_reference'] ?? null;
 
                     return [

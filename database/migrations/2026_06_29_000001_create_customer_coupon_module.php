@@ -29,6 +29,8 @@ return new class extends Migration
 
             $table->index(['is_active', 'starts_at', 'ends_at']);
             $table->index('code');
+            $table->boolean('is_deal')->default(false);
+            $table->string('deal_tag')->nullable();
         });
 
         Schema::create('customer_coupon_redemptions', function (Blueprint $table) {
@@ -46,38 +48,10 @@ return new class extends Migration
             $table->index(['customer_id', 'service_type']);
             $table->index(['customer_coupon_id', 'customer_id']);
         });
-
-        foreach (['tour_bookings', 'car_rentals', 'ride_bookings'] as $tableName) {
-            Schema::table($tableName, function (Blueprint $table) use ($tableName) {
-                if (! Schema::hasColumn($tableName, 'coupon_code')) {
-                    $table->string('coupon_code')->nullable()->after('payment_method');
-                }
-            });
-        }
-
-        Schema::table('ride_bookings', function (Blueprint $table) {
-            if (! Schema::hasColumn('ride_bookings', 'discount_amount')) {
-                $table->decimal('discount_amount', 10, 2)->default(0)->after('surge_multiplier');
-            }
-        });
     }
 
     public function down(): void
     {
-        Schema::table('ride_bookings', function (Blueprint $table) {
-            if (Schema::hasColumn('ride_bookings', 'discount_amount')) {
-                $table->dropColumn('discount_amount');
-            }
-        });
-
-        foreach (['tour_bookings', 'car_rentals', 'ride_bookings'] as $tableName) {
-            Schema::table($tableName, function (Blueprint $table) use ($tableName) {
-                if (Schema::hasColumn($tableName, 'coupon_code')) {
-                    $table->dropColumn('coupon_code');
-                }
-            });
-        }
-
         Schema::dropIfExists('customer_coupon_redemptions');
         Schema::dropIfExists('customer_coupons');
     }

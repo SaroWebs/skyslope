@@ -41,9 +41,9 @@ class RideStateEngine implements BookingStateEngine
 
         if ($actor === 'driver') {
             return match ($currentStatus) {
-                'driver_assigned' => ['driver_arriving'],
-                'driver_arriving' => ['pickup'],
-                'pickup' => ['in_transit'],
+                'driver_assigned' => ['driver_arriving', 'cancelled'],
+                'driver_arriving' => ['pickup', 'cancelled'],
+                'pickup' => ['in_transit', 'cancelled'],
                 'in_transit' => ['completed'],
                 default => [],
             };

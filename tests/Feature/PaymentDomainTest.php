@@ -6,8 +6,8 @@ use App\Models\LedgerEntry;
 use App\Models\Payment;
 use App\Models\PaymentOrder;
 use App\Models\Payout;
-use App\Models\TourBooking;
 use App\Models\Tour;
+use App\Models\TourBooking;
 use App\Models\TourSchedule;
 use App\Models\WithdrawalRequest;
 use App\Services\PaymentService;
@@ -15,10 +15,10 @@ use App\Services\PaymentService;
 /** Minimal paid-able tour booking for payment-mirror assertions. */
 function paymentDomainTourBooking(string $paymentStatus = 'pending'): TourBooking
 {
-    $customer = Customer::create(['name' => 'PD Customer', 'phone' => '93' . random_int(10000000, 99999999)]);
+    $customer = Customer::create(['name' => 'PD Customer', 'phone' => '93'.random_int(10000000, 99999999)]);
     $tour = Tour::create([
         'title' => 'PD Tour',
-        'slug' => 'pd-tour-' . uniqid(),
+        'slug' => 'pd-tour-'.uniqid(),
         'duration_days' => 1,
         'duration_nights' => 0,
         'price_per_person' => 1000,

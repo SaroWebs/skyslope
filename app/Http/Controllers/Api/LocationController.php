@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Destination;
+use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
@@ -72,7 +73,7 @@ class LocationController extends Controller
         if ($googleApiKey && count($results) < 5) {
             try {
                 // Use Autocomplete API — better for partial queries like "Guw", faster and cheaper than Text Search
-                $googleResponse = Http::connectTimeout(2)->timeout(3)->withoutVerifying()->get('https://maps.googleapis.com/maps/api/place/autocomplete/json', [
+                $googleResponse = $this->placesRequest()->get('https://maps.googleapis.com/maps/api/place/autocomplete/json', [
                     'input' => $query,
                     'key' => $googleApiKey,
                     'components' => 'country:in', // Restrict to India
@@ -117,7 +118,7 @@ class LocationController extends Controller
         // Fallback: If results are still low (< 5), try Photon (OpenStreetMap)
         if (count($results) < 5) {
             try {
-                $photonResponse = Http::connectTimeout(2)->timeout(3)->withoutVerifying()->get('https://photon.komoot.io/api/', [
+                $photonResponse = $this->placesRequest()->get('https://photon.komoot.io/api/', [
                     'q' => $query,
                     'limit' => 5 - count($results),
                 ]);
@@ -262,11 +263,11 @@ class LocationController extends Controller
         $googleApiKey = config('services.google_maps.api_key') ?: env('GOOGLE_MAPS_API_KEY');
 
         if (! $googleApiKey) {
-            return response()->json(['error' => 'Google Maps API not configured'], 500);
+            return response()->json(['message' => 'Location search is temporarily unavailable. Please try again later.'], 503);
         }
 
         try {
-            $response = Http::timeout(5)->get('https://maps.googleapis.com/maps/api/place/details/json', [
+            $response = $this->placesRequest()->get('https://maps.googleapis.com/maps/api/place/details/json', [
                 'place_id' => $request->place_id,
                 'fields' => 'place_id,name,formatted_address,geometry',
                 'key' => $googleApiKey,
@@ -275,7 +276,7 @@ class LocationController extends Controller
             if ($response->successful()) {
                 $data = $response->json();
 
-                if (isset($data['result'])) {
+                if (($data['status'] ?? null) === 'OK' && isset($data['result']['geometry']['location']['lat'], $data['result']['geometry']['location']['lng'])) {
                     $place = $data['result'];
 
                     return response()->json([
@@ -288,11 +289,34 @@ class LocationController extends Controller
                 }
             }
 
-            return response()->json(['error' => 'Place not found'], 404);
+            $status = $response->json('status');
+            if (in_array($status, ['NOT_FOUND', 'ZERO_RESULTS', 'INVALID_REQUEST'], true)) {
+                return response()->json(['message' => 'Location not found. Please search again.'], 404);
+            }
+
+            Log::warning('Place details provider unavailable.', ['http_status' => $response->status(), 'provider_status' => $status]);
+
+            return response()->json(['message' => 'Location details are temporarily unavailable. Please try again.'], 503);
 
         } catch (\Exception $e) {
-            return response()->json(['error' => 'Failed to fetch place details'], 500);
+            // Exception messages can contain the request URL and its API key.
+            Log::warning('Place details request failed.', ['exception' => get_class($e)]);
+
+            return response()->json(['message' => 'Location details are temporarily unavailable. Please try again.'], 503);
         }
+    }
+
+    private function placesRequest(): PendingRequest
+    {
+        $request = Http::connectTimeout(3)->timeout(8);
+
+        // Windows PHP often has no PEM bundle configured. Use the OS trust store
+        // in that case, preserving TLS verification instead of bypassing it.
+        if (PHP_OS_FAMILY === 'Windows' && ! ini_get('curl.cainfo') && defined('CURLSSLOPT_NATIVE_CA')) {
+            $request = $request->withOptions(['curl' => [CURLOPT_SSL_OPTIONS => CURLSSLOPT_NATIVE_CA]]);
+        }
+
+        return $request;
     }
 
     /**

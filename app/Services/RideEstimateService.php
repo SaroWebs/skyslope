@@ -133,6 +133,7 @@ class RideEstimateService
     private function activeAvailabilityQuery(bool $sharingOnly = false)
     {
         return DriverAvailability::active()
+            ->where(fn ($q) => $q->whereNull('last_updated')->orWhere('last_updated', '>=', now()->subSeconds((int) setting('ride.dispatch.stale_availability_seconds', 300))))
             ->whereHas('driver', fn ($driver) => $driver
                 ->where('status', 'active')
                 ->where('is_active', true)
@@ -177,11 +178,13 @@ class RideEstimateService
             : 0.0;
 
         $radiusKm = (float) setting('ride.dispatch.pickup_radius_km', DriverDispatchService::DEFAULT_PICKUP_RADIUS_KM, $context);
-        $nearbyDrivers = $this->nearbyDriverCount($pickupLat, $pickupLng, $radiusKm);
-        $nearbyDriverLocations = $this->nearbyDriverLocations($pickupLat, $pickupLng, $radiusKm);
-        $nearbySharingDrivers = $sharingEligible
-            ? $this->nearbySharingDriverCount($pickupLat, $pickupLng)
-            : 0;
+        $candidates = app(DriverDispatchService::class)->rankedCandidates(
+            $this->classify($serviceType, $distance), $pickupLat, $pickupLng, limit: 200, radiusKm: $radiusKm);
+        $nearbyDrivers = $candidates->count();
+        $nearbyDriverLocations = $candidates->take(24)->map(fn ($row) => [
+            'lat' => round((float) $row->current_lat, 5), 'lng' => round((float) $row->current_lng, 5),
+        ])->values()->all();
+        $nearbySharingDrivers = $sharingEligible ? $candidates->where('sharing_enabled', true)->count() : 0;
         $surgeThreshold = (int) setting('ride.pricing.surge_driver_threshold', self::SURGE_DRIVER_THRESHOLD, $context);
         $configuredSurge = (float) setting('ride.pricing.surge_multiplier', self::SURGE_MULTIPLIER, $context);
         $surgeMultiplier = $nearbyDrivers < $surgeThreshold
@@ -218,6 +221,9 @@ class RideEstimateService
             'service_type' => $serviceType,
             'ride_classification' => $this->classify($serviceType, $distance),
             'vehicle_class' => $vehicleClass,
+            'fare_type' => $sharingRequested ? 'flexible' : 'private',
+            'fare_type_label' => $sharingRequested ? 'Flexible Fare' : 'Private Ride',
+            'sharing_disclaimer' => $sharingRequested ? 'You consent to sharing and receive a discounted rate. Pooling with another rider is not guaranteed.' : null,
             'nearby_drivers' => $nearbyDrivers,
             'nearby_driver_locations' => $nearbyDriverLocations,
             'sharing' => [

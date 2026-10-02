@@ -12,6 +12,8 @@ interface CarCategory {
     has_ac: boolean;
     has_driver: boolean;
     base_price_per_day: number;
+    included_km_per_day: number | null;
+    extra_km_charge: number | null;
     price_per_km: number;
     features: string[] | null;
     images: string[] | null;
@@ -35,6 +37,8 @@ export default function EditCarCategory({ title, car_category }: EditCarCategory
         has_ac: car_category.has_ac || false,
         has_driver: car_category.has_driver || false,
         base_price_per_day: car_category.base_price_per_day?.toString() || '',
+        included_km_per_day: car_category.included_km_per_day?.toString() ?? '',
+        extra_km_charge: car_category.extra_km_charge?.toString() ?? '',
         price_per_km: car_category.price_per_km?.toString() || '',
         features: car_category.features || [],
         images: car_category.images || [],
@@ -318,6 +322,17 @@ export default function EditCarCategory({ title, car_category }: EditCarCategory
                                         required
                                     />
                                     {errors.price_per_km && <div className="text-red-600 text-sm mt-1">{errors.price_per_km}</div>}
+                                </div>
+                                <div>
+                                    <label htmlFor="included_km_per_day">Rental included kilometres per day</label>
+                                    <input id="included_km_per_day" type="number" min="0" value={data.included_km_per_day} onChange={e => setData('included_km_per_day', e.target.value)} className="mt-1 block w-full border-gray-300 rounded-md" />
+                                    <p>Leave blank to disable distance surcharges.</p>
+                                    {errors.included_km_per_day && <p className="text-red-600">{errors.included_km_per_day}</p>}
+                                </div>
+                                <div>
+                                    <label htmlFor="extra_km_charge">Rental charge per extra kilometre (INR)</label>
+                                    <input id="extra_km_charge" type="number" min="0" step="0.01" value={data.extra_km_charge} onChange={e => setData('extra_km_charge', e.target.value)} className="mt-1 block w-full border-gray-300 rounded-md" />
+                                    {errors.extra_km_charge && <p className="text-red-600">{errors.extra_km_charge}</p>}
                                 </div>
                             </div>
 

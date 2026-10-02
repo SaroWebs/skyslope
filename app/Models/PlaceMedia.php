@@ -70,7 +70,18 @@ class PlaceMedia extends Model
         return MediaUrl::resolve($this->path) ?? '';
     }
 
-    public function isImage(): bool { return $this->type === 'image'; }
-    public function isPanorama(): bool { return $this->type === 'panorama'; }
-    public function isVideo(): bool { return $this->type === 'video'; }
+    public function isImage(): bool
+    {
+        return $this->type === 'image';
+    }
+
+    public function isPanorama(): bool
+    {
+        return $this->type === 'panorama';
+    }
+
+    public function isVideo(): bool
+    {
+        return $this->type === 'video';
+    }
 }

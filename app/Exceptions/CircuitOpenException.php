@@ -9,6 +9,4 @@ use RuntimeException;
  * call is short-circuited without a fallback. Signals "provider is presumed
  * down, we did not even try" — distinct from a real provider error.
  */
-class CircuitOpenException extends RuntimeException
-{
-}
+class CircuitOpenException extends RuntimeException {}

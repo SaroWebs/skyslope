@@ -84,7 +84,7 @@ function threatValidateUpload(string $bytes, string $name): array
 
     $messages = [];
     try {
-        (new FileIsClean())->validate('image', $file, function (string $message) use (&$messages) {
+        (new FileIsClean)->validate('image', $file, function (string $message) use (&$messages) {
             $messages[] = $message;
         });
     } finally {
@@ -163,7 +163,7 @@ it('stops a coupon at its per-customer limit for a repeat redeemer', function ()
 
 it('burns an OTP after the configured wrong-attempt cap and blocks further use', function () {
     config(['services.otp.max_verify_attempts' => 5]);
-    $service = new OtpService(); // constructor reads the cap from config
+    $service = new OtpService; // constructor reads the cap from config
 
     Otp::create([
         'phone' => '9990001111',

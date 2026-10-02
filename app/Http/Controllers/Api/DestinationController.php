@@ -16,24 +16,24 @@ class DestinationController extends Controller
         $query = Destination::query();
 
         // Filter by state if provided
-        if ($request->has('state') && !empty($request->state)) {
+        if ($request->has('state') && ! empty($request->state)) {
             $query->where('state', $request->state);
         }
 
         // Filter by type if provided
-        if ($request->has('type') && !empty($request->type)) {
+        if ($request->has('type') && ! empty($request->type)) {
             $query->where('type', $request->type);
         }
 
         // Filter by region if provided
-        if ($request->has('region') && !empty($request->region)) {
+        if ($request->has('region') && ! empty($request->region)) {
             $query->where('region', $request->region);
         }
 
         // Filter by active status
         if ($request->has('active') && $request->boolean('active')) {
             $query->where('is_active', true);
-        } elseif ($request->has('active') && !$request->boolean('active')) {
+        } elseif ($request->has('active') && ! $request->boolean('active')) {
             $query->where('is_active', false);
         }
 
@@ -73,7 +73,7 @@ class DestinationController extends Controller
 
         return response()->json([
             'message' => 'Destination created successfully',
-            'destination' => $destination
+            'destination' => $destination,
         ], 201);
     }
 
@@ -91,7 +91,7 @@ class DestinationController extends Controller
     public function update(Request $request, Destination $destination)
     {
         $validated = $request->validate([
-            'name' => 'required|string|max:255|unique:destinations,name,' . $destination->id,
+            'name' => 'required|string|max:255|unique:destinations,name,'.$destination->id,
             'description' => 'nullable|string',
             'state' => 'required|string|max:100',
             'region' => 'nullable|string|max:100',
@@ -116,7 +116,7 @@ class DestinationController extends Controller
 
         return response()->json([
             'message' => 'Destination updated successfully',
-            'destination' => $destination
+            'destination' => $destination,
         ]);
     }
 
@@ -128,14 +128,14 @@ class DestinationController extends Controller
         // Check if there are any tours using this destination
         if ($destination->tours()->count() > 0) {
             return response()->json([
-                'message' => 'Cannot delete destination as it has associated tours'
+                'message' => 'Cannot delete destination as it has associated tours',
             ], 422);
         }
 
         $destination->delete();
 
         return response()->json([
-            'message' => 'Destination deleted successfully'
+            'message' => 'Destination deleted successfully',
         ]);
     }
 }

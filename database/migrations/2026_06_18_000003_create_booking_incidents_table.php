@@ -8,7 +8,7 @@ return new class extends Migration
 {
     public function up(): void
     {
-        if (!Schema::hasTable('booking_incidents')) {
+        if (! Schema::hasTable('booking_incidents')) {
             Schema::create('booking_incidents', function (Blueprint $table) {
                 $table->id();
                 $table->string('incidentable_type');

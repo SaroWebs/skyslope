@@ -21,9 +21,9 @@ class Wallet extends Model
     ];
 
     protected $casts = [
-        'balance'       => 'decimal:2',
+        'balance' => 'decimal:2',
         'balance_minor' => 'integer',
-        'is_active'     => 'boolean',
+        'is_active' => 'boolean',
     ];
 
     // ── Relationships ──────────────────────────────────────────────
@@ -46,8 +46,7 @@ class Wallet extends Model
         ?string $refType = null,
         ?string $refId = null,
         ?string $idempotencyKey = null
-    ): WalletTransaction
-    {
+    ): WalletTransaction {
         return app(WalletLedgerService::class)->credit($this, $amount, $description, $refType, $refId, $idempotencyKey);
     }
 
@@ -57,8 +56,7 @@ class Wallet extends Model
         ?string $refType = null,
         ?string $refId = null,
         ?string $idempotencyKey = null
-    ): WalletTransaction
-    {
+    ): WalletTransaction {
         return app(WalletLedgerService::class)->debit($this, $amount, $description, $refType, $refId, $idempotencyKey);
     }
 
@@ -99,7 +97,7 @@ class Wallet extends Model
     public function scopeForOwner($query, $user)
     {
         return $query->where('owner_type', get_class($user))
-                     ->where('owner_id', $user->id);
+            ->where('owner_id', $user->id);
     }
 
     /**

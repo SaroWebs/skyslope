@@ -2,22 +2,26 @@
 
 use App\Http\Controllers\AdminCustomerController;
 use App\Http\Controllers\AdminDriverController;
-use App\Http\Controllers\Api\CustomerAppController;
 use App\Http\Controllers\Api\CmsController;
+use App\Http\Controllers\Api\CustomerAppController;
 use App\Http\Controllers\Api\CustomerOtpController;
 use App\Http\Controllers\Api\DriverAppController;
 use App\Http\Controllers\Api\DriverController;
 use App\Http\Controllers\Api\DriverOtpController;
 use App\Http\Controllers\Api\InsuranceController;
 use App\Http\Controllers\Api\LocationController;
+use App\Http\Controllers\Api\LoyaltyController;
 use App\Http\Controllers\Api\SupportTicketController;
 use App\Http\Controllers\Api\TrackingController;
 use App\Http\Controllers\Api\V1\BookingReceiptController;
 use App\Http\Controllers\Api\V1\MetaController;
 use App\Http\Controllers\Api\VehicleTrackerController;
 use App\Http\Controllers\Api\WalletController;
+use App\Http\Controllers\Api\WishlistController;
 use App\Http\Controllers\Api\WithdrawalController;
 use Illuminate\Support\Facades\Route;
+
+require __DIR__.'/carpool.php';
 
 Route::post('/razorpay/webhook', [WalletController::class, 'handleRazorpayWebhook']);
 Route::post('/tracker/v1/location', [VehicleTrackerController::class, 'location'])
@@ -50,6 +54,8 @@ Route::prefix('customer-app')->group(function () {
     Route::get('/public/bootstrap', [CustomerAppController::class, 'publicBootstrap']);
     Route::get('/public/tours', [CustomerAppController::class, 'publicTours']);
     Route::get('/public/tours/{tour}', [CustomerAppController::class, 'publicTour']);
+    Route::get('/public/tours/{tour}/brochure', [\App\Http\Controllers\TourBrochureController::class, 'publicDownload'])
+        ->middleware('throttle:30,1')->name('public.tours.brochure');
     Route::get('/public/tours/{tour}/schedules', [CustomerAppController::class, 'tourSchedules']);
     Route::get('/public/destinations', [CustomerAppController::class, 'publicDestinations']);
     Route::get('/public/destinations/{place}', [CustomerAppController::class, 'publicDestination']);
@@ -63,20 +69,41 @@ Route::prefix('customer-app')->group(function () {
     Route::get('/public/car-categories/{carCategory}', [CustomerAppController::class, 'publicCarCategory']);
     Route::get('/public/rental-vehicles', [CustomerAppController::class, 'publicRentalVehicles']);
     Route::get('/public/rental-vehicles/{vehicle}', [CustomerAppController::class, 'publicRentalVehicle']);
+    Route::post('/public/directions', [LocationController::class, 'directions'])->middleware('throttle:60,1');
     Route::get('/public/locations/search', [LocationController::class, 'search']);
     Route::get('/public/locations/popular', [LocationController::class, 'popular']);
     Route::post('/public/locations/validate', [LocationController::class, 'validateLocation']);
     Route::get('/public/locations/place-details', [LocationController::class, 'placeDetails']);
-    Route::post('/public/directions', [LocationController::class, 'directions'])->middleware('throttle:60,1');
     Route::match(['get', 'post'], '/public/rides/estimate', [CustomerAppController::class, 'estimateRide']);
+    Route::post('/public/newsletter/subscribe', [CustomerAppController::class, 'subscribeNewsletter']);
+    Route::post('/public/wishlists/tours/{tourId}/{action}', [WishlistController::class, 'toggleTour']);
+    Route::get('/public/coupons/deals', [LoyaltyController::class, 'publicDeals']);
 
-    // OTP Auth routes
     Route::post('/otp/send', [CustomerOtpController::class, 'sendOtp'])->middleware('throttle:otp-send');
     Route::post('/otp/verify', [CustomerOtpController::class, 'verifyOtp'])->middleware('throttle:otp-verify');
     Route::post('/otp/register-complete', [CustomerOtpController::class, 'completeRegistration'])->middleware('throttle:otp-verify');
 
+    Route::post('/tour-shares/otp', [\App\Http\Controllers\Api\TourShareController::class, 'sendOtp'])->middleware('throttle:10,1');
+    Route::post('/tour-shares/verify', [\App\Http\Controllers\Api\TourShareController::class, 'verify'])->middleware('throttle:20,1');
+    Route::get('/tour-shares/view', [\App\Http\Controllers\Api\TourShareController::class, 'show'])->middleware('throttle:60,1');
+
     // Protected routes
     Route::middleware('auth:sanctum')->group(function () {
+        Route::get('/tour-bookings/{booking}/shares', [\App\Http\Controllers\Api\TourShareController::class, 'index']);
+        Route::post('/tour-bookings/{booking}/shares', [\App\Http\Controllers\Api\TourShareController::class, 'store'])->middleware('throttle:customer-write');
+        Route::delete('/tour-bookings/{booking}/shares/{share}', [\App\Http\Controllers\Api\TourShareController::class, 'revoke'])->middleware('throttle:customer-write');
+        Route::post('/tours/quote', [CustomerAppController::class, 'bookTour'])->middleware('throttle:customer-write');
+        Route::post('/rentals/quote', [CustomerAppController::class, 'bookCar'])->middleware('throttle:customer-write');
+        Route::post('/mock-payments/{kind}/{id}', [\App\Http\Controllers\Api\MockPaymentController::class, 'store'])->middleware(['throttle:payment-write', 'idempotency']);
+        Route::get('/booking-payments/{kind}/{id}', [\App\Http\Controllers\Api\BookingPaymentController::class, 'show'])->where(['kind' => 'ride|tour|rental', 'id' => '[0-9]+']);
+        Route::post('/booking-payments/{kind}/{id}/order', [\App\Http\Controllers\Api\BookingPaymentController::class, 'store'])->where(['kind' => 'ride|tour|rental', 'id' => '[0-9]+'])->middleware('throttle:payment-write');
+        Route::post('/booking-payments/{kind}/{id}/verify', [\App\Http\Controllers\Api\BookingPaymentController::class, 'verify'])->where(['kind' => 'ride|tour|rental', 'id' => '[0-9]+'])->middleware('throttle:payment-write');
+        Route::get('/wishlists', [WishlistController::class, 'index']);
+        Route::post('/wishlists/toggle', [WishlistController::class, 'toggle'])->middleware('throttle:customer-write');
+        Route::post('/wishlists/tours/{tourId}/{action}', [WishlistController::class, 'toggleTour'])->middleware('throttle:customer-write');
+        Route::post('/wishlists/sync', [WishlistController::class, 'sync'])->middleware('throttle:customer-write');
+        Route::get('/loyalty', [LoyaltyController::class, 'index']);
+        Route::get('/referrals', [LoyaltyController::class, 'referralDetails']);
         Route::post('/logout', [CustomerOtpController::class, 'logout']);
         Route::get('/me', [CustomerOtpController::class, 'me']);
         Route::get('/dashboard', [CustomerAppController::class, 'dashboard']);
@@ -86,12 +113,17 @@ Route::prefix('customer-app')->group(function () {
         Route::get('/tour-schedules/{tour}', [CustomerAppController::class, 'tourSchedules']);
         Route::get('/tour-bookings', [CustomerAppController::class, 'tourBookings']);
         Route::post('/tours/book', [CustomerAppController::class, 'bookTour'])->middleware(['throttle:customer-write', 'idempotency']);
+        Route::post('/tours/inquiry', [CustomerAppController::class, 'submitTourInquiry'])->middleware('throttle:customer-write');
+        Route::get('/tour-inquiries', [CustomerAppController::class, 'customerTourInquiries']);
+        Route::delete('/tour-inquiries/{inquiry}', [CustomerAppController::class, 'cancelTourInquiry'])->middleware('throttle:customer-write');
         Route::get('/car-categories', [CustomerAppController::class, 'carCategories']);
         Route::get('/car-rentals', [CustomerAppController::class, 'carRentals']);
         Route::post('/car-rentals', [CustomerAppController::class, 'bookCar'])->middleware(['throttle:customer-write', 'idempotency']);
+        Route::get('/car-rentals/{rental}/cancel-preview', [CustomerAppController::class, 'cancelPreviewRental']);
         Route::post('/car-rentals/{rental}/cancel', [CustomerAppController::class, 'cancelRental'])->middleware('throttle:customer-write');
         Route::post('/car-rentals/{rental}/review', [CustomerAppController::class, 'submitRentalReview'])->middleware('throttle:customer-write');
         Route::get('/rides', [CustomerAppController::class, 'rides']);
+        Route::get('/rides/current', [CustomerAppController::class, 'currentRide']);
         Route::get('/rides/{booking}', [CustomerAppController::class, 'showRide']);
         Route::post('/rides/estimate', [CustomerAppController::class, 'estimateRide'])->middleware('throttle:customer-write');
         Route::post('/rides', [CustomerAppController::class, 'storeRide'])->middleware(['throttle:customer-write', 'idempotency']);
@@ -104,6 +136,7 @@ Route::prefix('customer-app')->group(function () {
         Route::post('/tour-bookings/{booking}/cancel', [CustomerAppController::class, 'cancelTour'])->middleware('throttle:customer-write');
         Route::post('/tour-bookings/{booking}/review', [CustomerAppController::class, 'submitTourReview'])->middleware('throttle:customer-write');
         Route::get('/support/tickets', [SupportTicketController::class, 'index']);
+        Route::get('/tour-shares/invitations', [\App\Http\Controllers\Api\TourShareController::class, 'invitations']);
         Route::post('/support/tickets', [SupportTicketController::class, 'store'])->middleware('throttle:support-write');
         Route::post('/support/tickets/{ticket}/messages', [SupportTicketController::class, 'reply'])->middleware('throttle:support-write');
         Route::post('/support/requests', [CustomerAppController::class, 'storeSupportRequest'])->middleware('throttle:support-write');
@@ -168,11 +201,21 @@ Route::prefix('driver-app')->group(function () {
         Route::get('/pending-rides', [DriverController::class, 'pendingRides']);
         Route::post('/rides/{booking}/accept', [DriverController::class, 'acceptRide'])->middleware('throttle:customer-write');
         Route::post('/rides/{booking}/decline', [DriverController::class, 'declineRide'])->middleware('throttle:customer-write');
+        Route::post('/rides/{booking}/cancel', [DriverController::class, 'cancelRide'])->middleware('throttle:customer-write');
+        Route::post('/rides/{booking}/issues', [DriverController::class, 'reportRideIssue'])->middleware('throttle:customer-write');
         Route::post('/rides/{booking}/payment-status', [DriverController::class, 'updatePaymentStatus'])->middleware('throttle:payment-write');
         Route::post('/rides/{booking}/notes', [DriverController::class, 'updateRideNote'])->middleware('throttle:customer-write');
+        
+        Route::get('/funding-status', [DriverController::class, 'fundingStatus']);
+        Route::post('/top-up', [DriverController::class, 'topUp'])->middleware(['throttle:payment-write', 'idempotency']);
+        Route::post('/top-up/verify', [DriverController::class, 'verifyTopUp'])->middleware(['throttle:payment-write', 'idempotency']);
 
         // Tour Assignments
         Route::get('/tour-assignments', [DriverAppController::class, 'tourAssignments']);
+        Route::get('/tour-assignments/{assignment}/attendance', [DriverAppController::class, 'assignmentAttendance']);
+        Route::get('/tour-assignments/{assignment}/cash-summary', [DriverAppController::class, 'tourCashSummary']);
+        Route::post('/tour-bookings/{booking}/collect-cash', [DriverAppController::class, 'collectTourCash'])->middleware(['throttle:payment-write', 'idempotency']);
+        Route::post('/tour-bookings/{booking}/mark-no-show', [DriverAppController::class, 'markNoShow'])->middleware('throttle:customer-write');
         Route::post('/tour-assignments/{id}/accept', [DriverAppController::class, 'acceptTourAssignment'])->middleware('throttle:customer-write');
         Route::post('/tour-assignments/{id}/decline', [DriverAppController::class, 'declineTourAssignment'])->middleware('throttle:customer-write');
         Route::post('/tour-assignments/{id}/complete', [DriverAppController::class, 'completeTourAssignment'])->middleware('throttle:customer-write');
@@ -180,6 +223,9 @@ Route::prefix('driver-app')->group(function () {
         Route::post('/rentals/{rental}/accept', [DriverAppController::class, 'acceptRental'])->middleware('throttle:customer-write');
         Route::post('/rentals/{rental}/decline', [DriverAppController::class, 'declineRental'])->middleware('throttle:customer-write');
         Route::post('/rentals/{rental}/complete', [DriverAppController::class, 'completeRental'])->middleware('throttle:customer-write');
+        
+        Route::get('/car-rentals/{carRental}/checklists', [DriverAppController::class, 'carRentalChecklists']);
+        Route::post('/car-rentals/{carRental}/checklist', [DriverAppController::class, 'submitCarRentalChecklist'])->middleware('throttle:customer-write');
 
         Route::post('/tracking/location', [TrackingController::class, 'updateDriverLocation'])->middleware('throttle:120,1');
         Route::post('/tracking/ride/{booking}/location', [TrackingController::class, 'updateRideLocation'])->middleware('throttle:120,1');
@@ -223,4 +269,8 @@ Route::middleware(['auth:sanctum', 'role:admin'])->prefix('admin/api')->group(fu
     Route::post('/drivers/{driver}/approve', [AdminDriverController::class, 'approve']);
     Route::post('/drivers/{driver}/suspend', [AdminDriverController::class, 'suspend']);
     Route::post('/drivers/{driver}/activate', [AdminDriverController::class, 'activate']);
+    Route::get('/tour-inquiries', [\App\Http\Controllers\AdminController::class, 'tourInquiries']);
+    Route::patch('/tour-inquiries/{inquiry}', [\App\Http\Controllers\AdminController::class, 'updateTourInquiry']);
+    Route::post('/tour-inquiries/{inquiry}/notify', [\App\Http\Controllers\AdminController::class, 'notifyTourInquiry']);
+    Route::post('/tour-bookings/{booking}/review-no-show', [\App\Http\Controllers\AdminController::class, 'reviewNoShow']);
 });

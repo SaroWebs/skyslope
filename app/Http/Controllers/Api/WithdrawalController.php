@@ -18,9 +18,7 @@ use Illuminate\Support\Facades\Validator;
  */
 class WithdrawalController extends Controller
 {
-    public function __construct(protected NotificationService $notification)
-    {
-    }
+    public function __construct(protected NotificationService $notification) {}
 
     /**
      * List the authenticated user's withdrawal requests.
@@ -49,7 +47,7 @@ class WithdrawalController extends Controller
     public function store(Request $request)
     {
         $validator = Validator::make($request->all(), [
-            'amount' => 'required|numeric|min:100',
+            'amount' => 'required|numeric|decimal:0,2|min:100',
             'bank_account_name' => 'required|string|max:255',
             'bank_account_number' => 'required|string|between:9,18',
             'bank_ifsc' => 'required|string|size:11',
@@ -66,21 +64,21 @@ class WithdrawalController extends Controller
         $user = $request->user();
         $wallet = Wallet::forOwner($user)->first();
 
-        if (!$wallet) {
+        if (! $wallet) {
             return response()->json([
                 'success' => false,
                 'message' => 'Wallet not found',
             ], 404);
         }
 
-        if (!$wallet->isActive()) {
+        if (! $wallet->isActive()) {
             return response()->json([
                 'success' => false,
                 'message' => 'Wallet is not active',
             ], 400);
         }
 
-        if (!$wallet->hasSufficientBalance((float) $request->amount)) {
+        if (! $wallet->hasSufficientBalance((float) $request->amount)) {
             return response()->json([
                 'success' => false,
                 'message' => 'Insufficient wallet balance',
@@ -107,18 +105,20 @@ class WithdrawalController extends Controller
                 // Hold the funds: wallet → system:payout_clearing.
                 $wallet->debit(
                     (float) $request->amount,
-                    'Withdrawal request #' . $withdrawal->id,
+                    'Withdrawal request #'.$withdrawal->id,
                     'driver_withdrawal',
                     (string) $withdrawal->id,
-                    'withdrawal_hold:' . $withdrawal->id
+                    'withdrawal_hold:'.$withdrawal->id
                 );
 
                 return $withdrawal;
             });
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            throw $e;
         } catch (\Throwable $e) {
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to create withdrawal request: ' . $e->getMessage(),
+                'message' => 'Failed to create withdrawal request: '.$e->getMessage(),
             ], 500);
         }
 

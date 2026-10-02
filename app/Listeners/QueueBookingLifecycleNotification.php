@@ -21,6 +21,7 @@ class QueueBookingLifecycleNotification
 
             if (config('queue.default') === 'sync') {
                 dispatch($job);
+
                 return;
             }
 

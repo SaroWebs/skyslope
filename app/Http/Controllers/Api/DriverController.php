@@ -2,8 +2,8 @@
 
 namespace App\Http\Controllers\Api;
 
-use App\Events\RideStatusUpdated;
 use App\Events\RideAssigned;
+use App\Events\RideStatusUpdated;
 use App\Http\Controllers\Controller;
 use App\Models\DriverAvailability;
 use App\Models\RideBooking;
@@ -17,7 +17,7 @@ class DriverController extends Controller
     public function activeRide(Request $request)
     {
         $user = $request->user();
-        if (!$user || !$user->isDriver()) {
+        if (! $user || ! $user->isDriver()) {
             return response()->json([
                 'success' => false,
                 'message' => 'Unauthorized',
@@ -39,8 +39,9 @@ class DriverController extends Controller
 
     public function pendingRides(Request $request)
     {
+        app(\App\Services\RideRequestLifecycle::class)->expire();
         $user = $request->user();
-        if (!$user || !$user->isDriver()) {
+        if (! $user || ! $user->isDriver()) {
             return response()->json([
                 'success' => false,
                 'message' => 'Unauthorized',
@@ -50,6 +51,7 @@ class DriverController extends Controller
         $availability = DriverAvailability::where('driver_id', $user->id)->first();
 
         $query = RideBooking::query()
+            ->where('scheduled_at', '<=', now()->addMinutes((int) setting('ride.dispatch.window_minutes', 15)))
             ->where(function ($query) use ($user) {
                 $query->whereHas('dispatchAttempts', function ($attempts) use ($user) {
                     $attempts->where('driver_id', $user->id)
@@ -112,14 +114,14 @@ class DriverController extends Controller
     public function acceptRide(Request $request, RideBooking $booking)
     {
         $user = $request->user();
-        if (!$user || !$user->isDriver()) {
+        if (! $user || ! $user->isDriver()) {
             return response()->json([
                 'success' => false,
                 'message' => 'Unauthorized',
             ], 403);
         }
 
-        if (!in_array($booking->status, ['pending', 'confirmed'], true)) {
+        if (! in_array($booking->status, ['pending', 'confirmed'], true)) {
             return response()->json([
                 'success' => false,
                 'message' => 'This ride is not available to accept.',
@@ -147,7 +149,10 @@ class DriverController extends Controller
             $booking->car_category_id,
             $vehicle?->id,
             $booking->pickup_lat !== null ? (float) $booking->pickup_lat : null,
-            $booking->pickup_lng !== null ? (float) $booking->pickup_lng : null
+            $booking->pickup_lng !== null ? (float) $booking->pickup_lng : null,
+            null,
+            null,
+            $booking
         );
 
         if ($eligibilityFailures !== []) {
@@ -161,9 +166,34 @@ class DriverController extends Controller
         $accepted = false;
 
         DB::transaction(function () use ($booking, $user, $vehicle, &$accepted) {
+            app(\App\Services\ResourceCommitmentService::class)->lockResources($user->id, $vehicle?->id);
+            \App\Models\Customer::whereKey($booking->customer_id)->lockForUpdate()->firstOrFail();
+            if (RideBooking::where('customer_id', $booking->customer_id)->whereKeyNot($booking->id)
+                ->whereIn('status', ['driver_assigned', 'driver_arriving', 'pickup', 'in_transit'])->exists()) {
+                return;
+            }
+            if (app(DriverDispatchService::class)->hasActiveWorkload($user)) {
+                return;
+            }
             $locked = RideBooking::whereKey($booking->id)->lockForUpdate()->first();
 
-            if (!$locked || $locked->driver_id || !in_array($locked->status, ['pending', 'confirmed'], true)) {
+            if (! $locked || $locked->scheduled_at->gt(now()->addMinutes((int) setting('ride.dispatch.window_minutes', 15))) || ($locked->request_expires_at && $locked->request_expires_at->lte(now())) || $locked->driver_id || ! in_array($locked->status, ['pending', 'confirmed'], true)) {
+                return;
+            }
+
+            $commitmentService = app(\App\Services\ResourceCommitmentService::class);
+            $rideInterval = $commitmentService->getRideInterval($locked);
+            $conflicts = $commitmentService->findConflicts(
+                $user->id,
+                $vehicle?->id,
+                $rideInterval['start'],
+                $rideInterval['end'],
+                [
+                    'exclude_ride_booking_id' => $locked->id,
+                    'exact_interval' => true,
+                ]
+            );
+            if (! empty($conflicts)) {
                 return;
             }
 
@@ -171,6 +201,7 @@ class DriverController extends Controller
                 'driver_id' => $user->id,
                 'vehicle_id' => $vehicle->id,
                 'status' => 'driver_assigned',
+                'driver_assigned_at' => now(),
                 'dispatch_status' => 'assigned',
                 'admin_assignable' => false,
                 'start_ride_pin' => $locked->start_ride_pin ?: RideBooking::generateStartRidePin(),
@@ -183,14 +214,19 @@ class DriverController extends Controller
                 'last_updated' => now(),
             ]);
 
-            broadcast(new RideStatusUpdated($locked, 'driver_assigned', 'Driver assigned', 'pending'));
-            broadcast(new RideAssigned($locked, $user->id));
+            try {
+                broadcast(new RideStatusUpdated($locked, 'driver_assigned', 'Driver assigned', 'pending'));
+                broadcast(new RideAssigned($locked, $user->id));
+            } catch (\Throwable $e) {
+                \Log::warning('Failed to broadcast ride assignment: '.$e->getMessage());
+            }
+
             app(DriverDispatchService::class)->markAccepted($locked, $user);
 
             $accepted = true;
         });
 
-        if (!$accepted) {
+        if (! $accepted) {
             return response()->json([
                 'success' => false,
                 'message' => 'Ride already assigned to another driver.',
@@ -208,10 +244,33 @@ class DriverController extends Controller
         ]);
     }
 
+    public function cancelRide(Request $request, RideBooking $booking)
+    {
+        abort_unless($request->user() instanceof \App\Models\Driver && (int) $booking->driver_id === (int) $request->user()->id, 403);
+        $validated = $request->validate(['reason' => 'required|string|max:1000']);
+        app(\App\Services\BookingCancellationService::class)->cancel($booking, 'ride', $validated['reason'], null, 'driver', (int) $request->user()->id);
+
+        return response()->json(['success' => true, 'ride' => $this->mapRide($booking->fresh())]);
+    }
+
+    public function reportRideIssue(Request $request, RideBooking $booking)
+    {
+        abort_unless($request->user() instanceof \App\Models\Driver && (int) $booking->driver_id === (int) $request->user()->id, 403);
+        $data = $request->validate(['description' => 'required|string|max:2000']);
+        $incident = $booking->incidents()->create([
+            'customer_id' => $booking->customer_id, 'driver_id' => $booking->driver_id,
+            'opened_by_type' => \App\Models\Driver::class, 'opened_by_id' => $request->user()->id,
+            'type' => 'other', 'severity' => 'high', 'status' => 'open',
+            'title' => 'Driver reported a ride issue', 'description' => $data['description'], 'reported_at' => now(),
+        ]);
+
+        return response()->json(['success' => true, 'data' => $incident], 201);
+    }
+
     public function declineRide(Request $request, RideBooking $booking)
     {
         $user = $request->user();
-        if (!$user || !$user->isDriver()) {
+        if (! $user || ! $user->isDriver()) {
             return response()->json([
                 'success' => false,
                 'message' => 'Unauthorized',
@@ -221,6 +280,8 @@ class DriverController extends Controller
         $validated = $request->validate([
             'reason' => 'nullable|string|max:1000',
         ]);
+
+        abort_if($booking->driver_id, 409, 'Use cancellation for an accepted ride.');
 
         if ($booking->driver_id && (int) $booking->driver_id !== (int) $user->id) {
             return response()->json([
@@ -249,7 +310,7 @@ class DriverController extends Controller
     public function updatePaymentStatus(Request $request, RideBooking $booking)
     {
         $user = $request->user();
-        if (!$user || !$user->isDriver()) {
+        if (! $user || ! $user->isDriver()) {
             return response()->json([
                 'success' => false,
                 'message' => 'Unauthorized',
@@ -264,40 +325,12 @@ class DriverController extends Controller
         }
 
         $validated = $request->validate([
-            'payment_status' => 'required|string|in:pending,paid,failed,refunded',
-            'payment_method' => 'nullable|string|in:cash,card,wallet,upi,bank_transfer',
+            'payment_status' => 'required|in:paid',
+            'payment_method' => 'required|in:cash',
+            'collection_reference' => 'required|string|max:255',
         ]);
-
-        if ($booking->payment_status === 'paid' && $validated['payment_status'] === 'paid') {
-            return response()->json([
-                'success' => false,
-                'message' => 'Payment is already marked as paid.',
-            ], 422);
-        }
-
-        if ($validated['payment_status'] === 'paid' && empty($validated['payment_method'])) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Payment mode is required when marking as paid.',
-            ], 422);
-        }
-
-        $updateData = [
-            'payment_status' => $validated['payment_status'],
-        ];
-
-        if (!empty($validated['payment_method'])) {
-            $updateData['payment_method'] = $validated['payment_method'];
-        }
-
-        $booking->update($updateData);
-        if (in_array($validated['payment_status'], ['paid', 'failed'], true)) {
-            app(BookingLifecycleNotifier::class)->emit(
-                $booking->fresh('customer'),
-                $validated['payment_status'] === 'paid' ? 'payment.paid' : 'payment.failed',
-                ['driver_id' => $user->id]
-            );
-        }
+        app(\App\Services\PaymentService::class)->recordCashCollection($booking, (int) $user->id, $validated['collection_reference']);
+        app(BookingLifecycleNotifier::class)->emit($booking->fresh('customer'), 'payment.paid', ['driver_id' => $user->id]);
 
         return response()->json([
             'success' => true,
@@ -309,7 +342,7 @@ class DriverController extends Controller
     public function updateRideNote(Request $request, RideBooking $booking)
     {
         $user = $request->user();
-        if (!$user || !$user->isDriver()) {
+        if (! $user || ! $user->isDriver()) {
             return response()->json([
                 'success' => false,
                 'message' => 'Unauthorized',
@@ -336,6 +369,84 @@ class DriverController extends Controller
             'message' => 'Ride note updated.',
             'ride' => $this->mapRide($booking->fresh(['customer:id,name,phone'])),
         ]);
+    }
+
+    public function fundingStatus(Request $request)
+    {
+        $user = $request->user();
+        if (! $user || ! $user->isDriver()) {
+            return response()->json(['success' => false, 'message' => 'Unauthorized'], 403);
+        }
+
+        return response()->json([
+            'success' => true,
+            'data' => [
+                'funding_eligible' => $user->isFundingEligible(),
+                'balance_minor' => $user->getWalletBalanceMinor(),
+                'minimum_topup_minor' => (int) setting('driver.minimum_topup_minor', 0),
+                'dispatch_eligible_balance_minor' => (int) setting('driver.dispatch_eligible_balance_minor', 0),
+            ],
+        ]);
+    }
+
+    public function topUp(Request $request)
+    {
+        $user = $request->user();
+        if (! $user || ! $user->isDriver()) {
+            return response()->json(['success' => false, 'message' => 'Unauthorized'], 403);
+        }
+
+        $validated = $request->validate([
+            'amount_minor' => 'required|integer|min:100',
+        ]);
+
+        try {
+            $data = app(\App\Services\DriverFundingService::class)->createTopUpOrder($user, $validated['amount_minor']);
+            return response()->json(['success' => true, 'data' => $data]);
+        } catch (\Exception $e) {
+            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
+        }
+    }
+
+    public function verifyTopUp(Request $request)
+    {
+        $user = $request->user();
+        if (! $user || ! $user->isDriver()) {
+            return response()->json(['success' => false, 'message' => 'Unauthorized'], 403);
+        }
+
+        $validated = $request->validate([
+            'razorpay_order_id' => 'required|string',
+            'razorpay_payment_id' => 'required|string',
+            'razorpay_signature' => 'required|string',
+            'idempotency_key' => 'nullable|string',
+        ]);
+
+        try {
+            $transaction = app(\App\Services\DriverFundingService::class)->verifyTopUp(
+                $user,
+                $validated['razorpay_order_id'],
+                $validated['razorpay_payment_id'],
+                $validated['razorpay_signature'],
+                $validated['idempotency_key'] ?? null
+            );
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Top-up successful',
+                'data' => [
+                    'transaction_id' => $transaction->id,
+                    'balance_minor' => $user->fresh()->getWalletBalanceMinor(),
+                    'funding_eligible' => $user->fresh()->isFundingEligible(),
+                ],
+            ]);
+        } catch (\Exception $e) {
+            \Log::error('Driver top-up verification failed', [
+                'driver_id' => $user->id,
+                'error' => $e->getMessage(),
+            ]);
+            return response()->json(['success' => false, 'message' => $e->getMessage()], 400);
+        }
     }
 
     private function mapRide(RideBooking $ride): array

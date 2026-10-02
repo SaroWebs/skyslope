@@ -17,6 +17,11 @@ return new class extends Migration
             $table->decimal('current_lng', 11, 8)->nullable();
             $table->timestamp('last_updated')->nullable();
             $table->timestamps();
+            $table->index(['is_available', 'status', 'last_updated'], 'idx_da_available_status_updated');
+            $table->index(['is_available', 'status', 'current_lat', 'current_lng'], 'idx_da_available_status_location');
+            $table->boolean('sharing_enabled')->default(false);
+            $table->unsignedTinyInteger('sharing_seat_capacity')->default(3);
+            $table->index(['status', 'is_available', 'sharing_enabled'], 'driver_availability_sharing_idx');
         });
 
         Schema::create('driver_locations', function (Blueprint $table) {
@@ -32,6 +37,9 @@ return new class extends Migration
 
             $table->index(['driver_id', 'created_at']);
             $table->index(['latitude', 'longitude']);
+            $table->index(['context', 'created_at'], 'idx_dl_context_created');
+            $table->index(['driver_id', 'context', 'created_at'], 'idx_dl_driver_context_created');
+            $table->timestamp('recorded_at')->nullable()->index();
         });
     }
 

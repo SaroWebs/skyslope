@@ -71,7 +71,7 @@ return new class extends Migration
                 'pickup',
                 'in_transit',
                 'completed',
-                'cancelled'
+                'cancelled',
             ])->default('pending');
 
             $table->enum('payment_status', ['pending', 'paid', 'failed', 'refunded'])->default('pending');
@@ -110,6 +110,31 @@ return new class extends Migration
             $table->index(['pickup_lat', 'pickup_lng']);
             $table->index(['current_lat', 'current_lng']);
             $table->index('booking_number');
+            $table->decimal('cancellation_fee', 10, 2)->default(0);
+            $table->decimal('refund_amount', 10, 2)->default(0);
+            $table->timestamp('refunded_at')->nullable();
+            $table->enum('dispatch_status', ['pending', 'offered', 'admin_queue', 'assigned', 'expired'])
+                    ->default('pending')
+                    ;
+            $table->boolean('admin_assignable')->default(false);
+            $table->timestamp('dispatch_failed_at')->nullable();
+            $table->index(['dispatch_status', 'admin_assignable', 'scheduled_at'], 'idx_rb_dispatch_queue');
+            $table->index(['driver_id', 'status', 'scheduled_at'], 'idx_rb_driver_status_sched');
+            $table->string('coupon_code')->nullable();
+            $table->decimal('discount_amount', 10, 2)->default(0);
+            $table->string('ride_mode', 20)->default('private');
+            $table->boolean('sharing_requested')->default(false);
+            $table->string('sharing_enabled_by', 20)->nullable();
+            $table->unsignedTinyInteger('reserved_seats')->default(1);
+            $table->decimal('full_car_fare', 10, 2)->default(0);
+            $table->decimal('sharing_discount_percent', 5, 2)->default(0);
+            $table->decimal('sharing_savings', 10, 2)->default(0);
+            $table->index(['service_type', 'ride_mode', 'scheduled_at'], 'ride_booking_sharing_idx');
+            $table->decimal('tax_amount', 12, 2)->nullable();
+            $table->decimal('service_fee_amount', 12, 2)->nullable();
+            $table->timestamp('request_expires_at')->nullable()->index();
+            $table->timestamp('request_closed_at')->nullable()->index();
+            $table->string('request_outcome')->nullable()->index();
         });
 
         Schema::create('ride_booking_reviews', function (Blueprint $table) {

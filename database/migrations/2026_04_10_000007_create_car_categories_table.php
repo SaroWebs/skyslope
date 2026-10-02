@@ -43,6 +43,9 @@ return new class extends Migration
 
             $table->index(['is_active', 'sort_order']);
             $table->index('vehicle_type');
+            $table->unsignedInteger('included_km_per_day')->nullable();
+            $table->unsignedInteger('included_hours_per_day')->nullable();
+            $table->decimal('extra_hour_charge', 10, 2)->nullable();
         });
     }
 

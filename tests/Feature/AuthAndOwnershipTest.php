@@ -11,6 +11,7 @@ use App\Models\RideBooking;
 use App\Models\Tour;
 use App\Models\TourDriverAssignment;
 use App\Models\TourSchedule;
+use App\Models\Vehicle;
 use App\Services\StartVerificationService;
 use Illuminate\Support\Facades\Route;
 use Laravel\Sanctum\Sanctum;
@@ -359,7 +360,7 @@ it('removes a customer point ride cancelled before pickup', function () {
         ->assertJsonPath('data.data', []);
 });
 
-it('removes a point ride while the assigned driver is en route', function () {
+it('preserves a cancelled point ride and releases its en route driver', function () {
     $customer = Customer::create(['name' => 'En Route Customer', 'phone' => '9500000007']);
     $driver = Driver::create([
         'name' => 'En Route Driver',
@@ -397,9 +398,9 @@ it('removes a point ride while the assigned driver is en route', function () {
 
     $this->postJson("/api/customer-app/rides/{$ride->id}/cancel")
         ->assertOk()
-        ->assertJsonPath('data.removed', true);
+        ->assertJsonPath('data.booking.status', 'cancelled');
 
-    $this->assertDatabaseMissing('ride_bookings', ['id' => $ride->id]);
+    $this->assertDatabaseHas('ride_bookings', ['id' => $ride->id, 'status' => 'cancelled']);
     $this->assertDatabaseHas('driver_availabilities', [
         'driver_id' => $driver->id,
         'is_available' => true,
@@ -518,9 +519,24 @@ it('lets assigned drivers start rentals only with the customer start otp', funct
         'seats' => 4,
         'base_price_per_day' => 1800,
     ]);
+    $vehicle = Vehicle::create([
+        'car_category_id' => $category->id,
+        'driver_id' => $driver->id,
+        'registration_number' => 'KA01OTP17',
+        'make' => 'Toyota',
+        'model' => 'Etios',
+        'year' => 2024,
+        'color' => 'White',
+        'fuel_type' => 'petrol',
+        'seats' => 4,
+        'is_active' => true,
+        'approval_status' => 'approved',
+        'condition' => 'good',
+    ]);
     $rental = CarRental::create([
         'customer_id' => $customer->id,
         'driver_id' => $driver->id,
+        'vehicle_id' => $vehicle->id,
         'car_category_id' => $category->id,
         'customer_name' => $customer->name,
         'customer_phone' => $customer->phone,

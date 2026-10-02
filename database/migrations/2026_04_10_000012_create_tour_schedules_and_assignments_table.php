@@ -32,6 +32,7 @@ return new class extends Migration
 
             $table->index(['tour_id', 'departure_date', 'status']);
             $table->index('departure_date');
+            $table->dateTime('departure_at')->nullable()->index();
         });
 
         // Which guides are assigned to each schedule
@@ -62,6 +63,8 @@ return new class extends Migration
 
             $table->unique(['tour_schedule_id', 'driver_id']);
             $table->index('driver_id');
+            $table->string('role', 40)->default('transport');
+            $table->index(['driver_id', 'status', 'created_at'], 'idx_tda_driver_status_created');
         });
     }
 

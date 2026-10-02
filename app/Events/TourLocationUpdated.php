@@ -22,7 +22,7 @@ class TourLocationUpdated implements ShouldBroadcast
 
     public function broadcastOn(): array
     {
-        return [new PrivateChannel('tour.' . $this->booking->id)];
+        return [new PrivateChannel('tour.'.$this->booking->id)];
     }
 
     public function broadcastAs(): string

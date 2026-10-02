@@ -16,7 +16,7 @@ class DriverAuthController extends Controller
             'password' => ['required', 'string'],
         ]);
 
-        if (!Auth::guard('driver')->attempt($credentials, true)) {
+        if (! Auth::guard('driver')->attempt($credentials, true)) {
             throw ValidationException::withMessages([
                 'email' => ['The provided credentials are incorrect.'],
             ]);

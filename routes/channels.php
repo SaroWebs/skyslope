@@ -1,9 +1,9 @@
 <?php
 
-use App\Models\RideBooking;
 use App\Models\CarRental;
 use App\Models\Customer;
 use App\Models\Driver;
+use App\Models\RideBooking;
 use App\Models\TourBooking;
 use App\Models\User;
 use Illuminate\Support\Facades\Broadcast;
@@ -23,7 +23,7 @@ use Illuminate\Support\Facades\Broadcast;
 Broadcast::channel('ride.{bookingId}', function ($user, int $bookingId) {
     $booking = RideBooking::find($bookingId);
 
-    if (!$booking) {
+    if (! $booking) {
         return false;
     }
 
@@ -61,7 +61,7 @@ Broadcast::channel('drivers.available', function ($user) {
 Broadcast::channel('tour.{bookingId}', function ($user, int $bookingId) {
     $booking = TourBooking::find($bookingId);
 
-    if (!$booking) {
+    if (! $booking) {
         return false;
     }
 
@@ -79,7 +79,7 @@ Broadcast::channel('tour.{bookingId}', function ($user, int $bookingId) {
 Broadcast::channel('rental.{rentalId}', function ($user, int $rentalId) {
     $rental = CarRental::find($rentalId);
 
-    if (!$rental) {
+    if (! $rental) {
         return false;
     }
 

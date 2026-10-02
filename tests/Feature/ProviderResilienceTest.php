@@ -12,7 +12,6 @@ use Illuminate\Support\Facades\Http;
  * breaker that fails fast during an outage instead of piling on retries. A
  * client error (4xx) is a bad request, not an outage, and must never trip it.
  */
-
 it('opens after the failure threshold and then short-circuits the operation', function () {
     $breaker = new CircuitBreaker('cb-open-test', failureThreshold: 2, cooldownSeconds: 60);
 

@@ -15,15 +15,23 @@ use Illuminate\Database\Eloquent\Model;
 class ReconciliationMismatch extends Model
 {
     public const STATUS_OPEN = 'open';
+
     public const STATUS_RESOLVED = 'resolved';
+
     public const STATUS_IGNORED = 'ignored';
 
     public const TYPE_LEDGER_IMBALANCE = 'ledger_imbalance';
+
     public const TYPE_PAYMENT_MISSING_LEDGER = 'payment_missing_ledger';
+
     public const TYPE_PAYMENT_AMOUNT_MISMATCH = 'payment_amount_mismatch';
+
     public const TYPE_PAYOUT_MISSING_LEDGER = 'payout_missing_ledger';
+
     public const TYPE_PAYOUT_AMOUNT_MISMATCH = 'payout_amount_mismatch';
+
     public const TYPE_PROVIDER_SETTLEMENT_MISMATCH = 'provider_settlement_mismatch';
+
     public const TYPE_PROVIDER_UNREACHABLE = 'provider_unreachable';
 
     protected $fillable = [

@@ -55,6 +55,17 @@ return new class extends Migration
             $table->index('phone');
             $table->index(['status', 'is_online']);
             $table->index('is_approved');
+            $table->boolean('can_short_ride')->default(true);
+            $table->boolean('can_long_ride')->default(true);
+            $table->boolean('can_tour_lead')->default(false);
+            $table->boolean('can_tour_transport')->default(false);
+            $table->boolean('can_rental_delivery')->default(true);
+            $table->json('languages')->nullable();
+            $table->json('expertise_tags')->nullable();
+            $table->text('certification_notes')->nullable();
+            $table->softDeletes();
+            $table->boolean('funding_eligible')->default(false);
+            $table->timestamp('funding_activated_at')->nullable();
         });
     }
 

@@ -44,8 +44,23 @@ class TourDriverAssignment extends Model
         return $this->hasMany(TourBooking::class, 'tour_schedule_id', 'tour_schedule_id');
     }
 
-    public function isAccepted(): bool  { return $this->status === 'accepted'; }
-    public function isDeclined(): bool  { return $this->status === 'declined'; }
-    public function isPending(): bool   { return $this->status === 'assigned'; }
-    public function isCompleted(): bool { return $this->status === 'completed'; }
+    public function isAccepted(): bool
+    {
+        return $this->status === 'accepted';
+    }
+
+    public function isDeclined(): bool
+    {
+        return $this->status === 'declined';
+    }
+
+    public function isPending(): bool
+    {
+        return $this->status === 'assigned';
+    }
+
+    public function isCompleted(): bool
+    {
+        return $this->status === 'completed';
+    }
 }

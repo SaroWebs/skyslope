@@ -69,6 +69,10 @@ return new class extends Migration
 
             $table->index(['is_active', 'is_featured']);
             $table->index('tour_category_id');
+            $table->text('cancellation_policy')->nullable();
+            $table->string('brochure_path')->nullable();
+            $table->string('brochure_name')->nullable();
+            $table->timestamp('brochure_uploaded_at')->nullable();
         });
 
         Schema::create('tour_itineraries', function (Blueprint $table) {
@@ -83,8 +87,21 @@ return new class extends Migration
             $table->string('distance_km')->nullable();
             $table->timestamps();
 
-            $table->unique(['tour_id', 'day_number']);
+
             $table->index('tour_id');
+            $table->foreignId('place_id')->nullable()->constrained('places')->nullOnDelete();
+            $table->unsignedInteger('day_index')->nullable();
+            $table->time('time')->nullable();
+            $table->text('details')->nullable();
+            $table->unsignedInteger('stop_order')->default(1);
+            $table->unique(['tour_id', 'day_number', 'stop_order'], 'tour_itineraries_day_stop_unique');
+            $table->index(['tour_id', 'day_number'], 'tour_itineraries_day_index');
+            $table->string('start_location')->nullable();
+            $table->string('end_location')->nullable();
+            $table->string('travel_time')->nullable();
+            $table->json('key_stops')->nullable();
+            $table->json('inclusions')->nullable();
+            $table->json('exclusions')->nullable();
         });
     }
 

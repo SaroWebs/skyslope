@@ -16,7 +16,7 @@ class CustomerAuthController extends Controller
             'password' => ['required', 'string'],
         ]);
 
-        if (!Auth::guard('customer')->attempt($credentials, true)) {
+        if (! Auth::guard('customer')->attempt($credentials, true)) {
             throw ValidationException::withMessages([
                 'email' => ['The provided credentials are incorrect.'],
             ]);
@@ -33,9 +33,9 @@ class CustomerAuthController extends Controller
     public function register(Request $request)
     {
         $validated = $request->validate([
-            'name'     => ['required', 'string', 'max:255'],
-            'email'    => ['required', 'email', 'max:255', 'unique:customers,email'],
-            'phone'    => ['required', 'string', 'max:20', 'unique:customers,phone'],
+            'name' => ['required', 'string', 'max:255'],
+            'email' => ['required', 'email', 'max:255', 'unique:customers,email'],
+            'phone' => ['required', 'string', 'max:20', 'unique:customers,phone'],
             'password' => ['required', 'string', 'min:8'],
         ]);
 
@@ -45,7 +45,7 @@ class CustomerAuthController extends Controller
         $request->session()->regenerate();
 
         return response()->json([
-            'success'  => true,
+            'success' => true,
             'customer' => $customer,
         ], 201);
     }

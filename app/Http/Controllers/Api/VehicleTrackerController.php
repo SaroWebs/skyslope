@@ -7,8 +7,8 @@ use App\Models\DriverAvailability;
 use App\Models\VehicleLocation;
 use App\Models\VehicleTracker;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
 
 class VehicleTrackerController extends Controller
 {
@@ -16,6 +16,10 @@ class VehicleTrackerController extends Controller
     {
         $plainToken = $request->bearerToken();
         if (! $plainToken) {
+            if ($tracker->vehicle?->driver) {
+                app(\App\Services\JourneyTrackingService::class)->publishForDriver($tracker->vehicle->driver);
+            }
+
             return response()->json(['success' => false, 'message' => 'Tracker token is required.'], 401);
         }
 

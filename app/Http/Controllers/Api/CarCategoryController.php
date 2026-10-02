@@ -16,14 +16,14 @@ class CarCategoryController extends Controller
         $query = CarCategory::query();
 
         // Filter by vehicle type if provided
-        if ($request->has('type') && !empty($request->type)) {
+        if ($request->has('type') && ! empty($request->type)) {
             $query->where('vehicle_type', $request->type);
         }
 
         // Filter by active status
         if ($request->has('active') && $request->boolean('active')) {
             $query->where('is_active', true);
-        } elseif ($request->has('active') && !$request->boolean('active')) {
+        } elseif ($request->has('active') && ! $request->boolean('active')) {
             $query->where('is_active', false);
         }
 
@@ -64,7 +64,7 @@ class CarCategoryController extends Controller
             'images' => 'nullable|array',
             'images.*' => 'string',
             'fuel_type' => 'nullable|string|in:petrol,diesel,electric,hybrid',
-            'year' => 'nullable|integer|min:1900|max:' . (date('Y') + 1),
+            'year' => 'nullable|integer|min:1900|max:'.(date('Y') + 1),
             'is_active' => 'boolean',
             'sort_order' => 'nullable|integer|min:0',
         ]);
@@ -73,7 +73,7 @@ class CarCategoryController extends Controller
 
         return response()->json([
             'message' => 'Car category created successfully',
-            'car_category' => $carCategory
+            'car_category' => $carCategory,
         ], 201);
     }
 
@@ -91,7 +91,7 @@ class CarCategoryController extends Controller
     public function update(Request $request, CarCategory $carCategory)
     {
         $validated = $request->validate([
-            'name' => 'required|string|max:255|unique:car_categories,name,' . $carCategory->id,
+            'name' => 'required|string|max:255|unique:car_categories,name,'.$carCategory->id,
             'description' => 'nullable|string',
             'vehicle_type' => 'required|string|in:sedan,suv,hatchback,convertible,van,truck',
             'seats' => 'required|integer|min:1|max:20',
@@ -104,7 +104,7 @@ class CarCategoryController extends Controller
             'images' => 'nullable|array',
             'images.*' => 'string',
             'fuel_type' => 'nullable|string|in:petrol,diesel,electric,hybrid',
-            'year' => 'nullable|integer|min:1900|max:' . (date('Y') + 1),
+            'year' => 'nullable|integer|min:1900|max:'.(date('Y') + 1),
             'is_active' => 'boolean',
             'sort_order' => 'nullable|integer|min:0',
         ]);
@@ -113,7 +113,7 @@ class CarCategoryController extends Controller
 
         return response()->json([
             'message' => 'Car category updated successfully',
-            'car_category' => $carCategory
+            'car_category' => $carCategory,
         ]);
     }
 
@@ -125,14 +125,14 @@ class CarCategoryController extends Controller
         // Check if there are any car rentals using this category
         if ($carCategory->carRentals()->count() > 0) {
             return response()->json([
-                'message' => 'Cannot delete car category as it has associated car rentals'
+                'message' => 'Cannot delete car category as it has associated car rentals',
             ], 422);
         }
 
         $carCategory->delete();
 
         return response()->json([
-            'message' => 'Car category deleted successfully'
+            'message' => 'Car category deleted successfully',
         ]);
     }
 }

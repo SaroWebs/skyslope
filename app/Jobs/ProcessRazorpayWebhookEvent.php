@@ -33,6 +33,7 @@ class ProcessRazorpayWebhookEvent implements ShouldQueue
     use SerializesModels;
 
     public int $tries = 5;
+
     public array $backoff = [10, 30, 60, 300];
 
     public function __construct(public int $eventId) {}
@@ -97,6 +98,20 @@ class ProcessRazorpayWebhookEvent implements ShouldQueue
             return;
         }
 
+        if (($order->notes['purpose'] ?? null) === 'driver_topup') {
+            app(\App\Services\DriverFundingService::class)->capture($order, $entity);
+            $event->markProcessed();
+
+            return;
+        }
+
+        if ($order->payable_type === \App\Models\CarpoolBooking::class) {
+            app(\App\Services\CarpoolPayments::class)->capture($order, (string) $paymentId, $amountMinor, $entity['currency'] ?? $order->currency);
+            $event->markProcessed();
+
+            return;
+        }
+
         $payable = $order->payable;
         $owner = $order->owner;
 
@@ -107,8 +122,8 @@ class ProcessRazorpayWebhookEvent implements ShouldQueue
             'provider' => 'razorpay',
             'provider_payment_id' => $paymentId,
             'provider_order_id' => $orderId,
-            'amount_minor' => $amountMinor ?: (int) $order->amount_minor,
-            'currency' => $order->currency,
+            'amount_minor' => $amountMinor,
+            'currency' => $entity['currency'] ?? $order->currency,
             'method' => $method,
         ]);
 
@@ -120,6 +135,13 @@ class ProcessRazorpayWebhookEvent implements ShouldQueue
         $entity = data_get($event->payload, 'payload.payment.entity', []);
         $orderId = $entity['order_id'] ?? null;
         $order = $orderId ? PaymentOrder::where('provider_order_id', $orderId)->first() : null;
+
+        if ($order?->payable_type === \App\Models\CarpoolBooking::class) {
+            app(\App\Services\CarpoolPayments::class)->fail($order);
+            $event->markProcessed();
+
+            return;
+        }
 
         $payments->markPaymentFailed([
             'order' => $order,
@@ -171,6 +193,18 @@ class ProcessRazorpayWebhookEvent implements ShouldQueue
 
         if (! $payment || $amountMinor <= 0) {
             $event->markIgnored('No matching captured payment for refund');
+
+            return;
+        }
+
+        if ($payment->payable_type === \App\Models\CarpoolBooking::class) {
+            if ($event->event_type !== 'refund.processed' || ! $refundId) {
+                $event->markIgnored('Carpool refunds require a processed provider refund ID');
+
+                return;
+            }
+            app(\App\Services\CarpoolPayments::class)->recordRefund($payment, $amountMinor, $refundId);
+            $event->markProcessed();
 
             return;
         }

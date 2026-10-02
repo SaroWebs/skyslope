@@ -3,8 +3,10 @@ import { Head, Link, useForm } from '@inertiajs/react';
 import { Button, Checkbox, Group, NumberInput, Paper, Select, SimpleGrid, Stack, Text, Textarea, TextInput } from '@mantine/core';
 import { ArrowLeft, Save } from 'lucide-react';
 import AdminLayout from '../../../layouts/AdminLayout';
+import TourBrochurePanel from '../../../components/TourBrochurePanel';
 
 type Tour = {
+    brochure_name?: string | null; brochure_uploaded_at?: string | null;
     id: number; tour_category_id?: number | null; title: string; short_description?: string | null; description: string;
     duration_days: number; duration_nights: number; min_group_size: number; max_group_size: number;
     price_per_person: number | string; child_price: number | string; discount: number | string;
@@ -83,6 +85,7 @@ export default function Edit({ title, tour, categories }: { title: string; tour:
                         <Group justify="flex-end"><Button component={Link} href={`/admin/tours/${tour.id}`} variant="default">Cancel</Button><Button type="submit" loading={processing} leftSection={<Save size={17} />}>Save package</Button></Group>
                     </Stack></form>
                 </Paper>
+                <TourBrochurePanel tour={tour} />
             </Stack>
         </AdminLayout>
     );

@@ -58,7 +58,7 @@ return new class extends Migration
             // Status
             $table->enum('status', [
                 'pending', 'confirmed', 'driver_assigned',
-                'in_progress', 'completed', 'cancelled'
+                'in_progress', 'completed', 'cancelled',
             ])->default('pending');
             $table->enum('payment_status', ['pending', 'paid', 'failed', 'refunded'])->default('pending');
             $table->string('payment_method')->default('cash');
@@ -79,6 +79,27 @@ return new class extends Migration
             $table->index(['driver_id', 'status']);
             $table->index(['status', 'start_date']);
             $table->index('booking_number');
+            $table->timestamp('cancelled_at')->nullable();
+            $table->decimal('cancellation_fee', 10, 2)->default(0);
+            $table->decimal('refund_amount', 10, 2)->default(0);
+            $table->timestamp('refunded_at')->nullable();
+            $table->index(['driver_id', 'status', 'start_date'], 'idx_cr_driver_status_start');
+            $table->string('coupon_code')->nullable();
+            $table->decimal('tax_amount', 12, 2)->nullable();
+            $table->decimal('service_fee_amount', 12, 2)->nullable();
+            $table->decimal('security_deposit', 12, 2)->nullable();
+            $table->json('pricing_snapshot')->nullable();
+            $table->dateTime('hold_expires_at')->nullable()->index();
+            $table->decimal('actual_km', 10, 2)->nullable();
+            $table->dateTime('actual_return_at')->nullable();
+            $table->decimal('km_overage_charge', 10, 2)->default(0);
+            $table->decimal('extra_hours_charge', 10, 2)->default(0);
+            $table->decimal('surcharges', 10, 2)->default(0);
+            $table->json('surcharge_items')->nullable();
+            $table->decimal('settlement_total', 10, 2)->default(0);
+            $table->text('settlement_notes')->nullable();
+            $table->timestamp('settled_at')->nullable();
+            $table->string('cancelled_by_type', 30)->nullable();
         });
 
         Schema::create('car_rental_extras', function (Blueprint $table) {

@@ -5,21 +5,28 @@ namespace App\Services;
 use App\Exceptions\ProviderUnavailableException;
 use App\Support\CircuitBreaker;
 use Closure;
+use Exception;
 use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
-use Exception;
 
 class RazorpayService
 {
     protected string $apiKey;
+
     protected string $apiSecret;
+
     protected string $baseUrl;
+
     protected string $webhookSecret;
+
     protected int $connectTimeout;
+
     protected int $timeout;
+
     protected int $getRetries;
+
     protected int $retryDelayMs;
 
     public function __construct()
@@ -82,10 +89,10 @@ class RazorpayService
     /**
      * Create a Razorpay order
      *
-     * @param float $amount Amount in INR
-     * @param string $receipt Unique receipt ID
-     * @param array $notes Additional notes
-     * @return array
+     * @param  float  $amount  Amount in INR
+     * @param  string  $receipt  Unique receipt ID
+     * @param  array  $notes  Additional notes
+     *
      * @throws Exception
      */
     public function createOrder(float $amount, string $receipt, array $notes = []): array
@@ -93,7 +100,7 @@ class RazorpayService
         try {
             $response = $this->send('order creation', fn () => $this->client()
                 ->post("{$this->baseUrl}/orders", [
-                    'amount' => (int) ($amount * 100), // Convert to paise
+                    'amount' => \App\Support\Money::toMinor($amount),
                     'currency' => 'INR',
                     'receipt' => $receipt,
                     'notes' => array_merge([
@@ -103,7 +110,7 @@ class RazorpayService
                     'payment_capture' => 1, // Auto capture
                 ]));
 
-            if (!$response->successful()) {
+            if (! $response->successful()) {
                 Log::error('Razorpay order creation failed', [
                     'status' => $response->status(),
                     'body' => $response->body(),
@@ -123,15 +130,10 @@ class RazorpayService
 
     /**
      * Verify payment signature
-     *
-     * @param string $orderId
-     * @param string $paymentId
-     * @param string $signature
-     * @return bool
      */
     public function verifySignature(string $orderId, string $paymentId, string $signature): bool
     {
-        $data = $orderId . '|' . $paymentId;
+        $data = $orderId.'|'.$paymentId;
         $expectedSignature = hash_hmac('sha256', $data, $this->apiSecret);
 
         return hash_equals($expectedSignature, $signature);
@@ -140,8 +142,6 @@ class RazorpayService
     /**
      * Fetch payment details
      *
-     * @param string $paymentId
-     * @return array
      * @throws Exception
      */
     public function fetchPayment(string $paymentId): array
@@ -150,7 +150,7 @@ class RazorpayService
             $response = $this->send('fetch payment', fn () => $this->client(retryable: true)
                 ->get("{$this->baseUrl}/payments/{$paymentId}"));
 
-            if (!$response->successful()) {
+            if (! $response->successful()) {
                 throw new Exception('Failed to fetch payment details');
             }
 
@@ -167,8 +167,6 @@ class RazorpayService
     /**
      * Fetch order details
      *
-     * @param string $orderId
-     * @return array
      * @throws Exception
      */
     public function fetchOrder(string $orderId): array
@@ -177,7 +175,7 @@ class RazorpayService
             $response = $this->send('fetch order', fn () => $this->client(retryable: true)
                 ->get("{$this->baseUrl}/orders/{$orderId}"));
 
-            if (!$response->successful()) {
+            if (! $response->successful()) {
                 throw new Exception('Failed to fetch order details');
             }
 
@@ -198,8 +196,9 @@ class RazorpayService
      * (SKY-MRD-001 §13.3).
      *
      * @param  int  $fromTs  Unix timestamp, inclusive
-     * @param  int  $toTs    Unix timestamp, inclusive
+     * @param  int  $toTs  Unix timestamp, inclusive
      * @return array Razorpay settlement collection payload ({entity, count, items})
+     *
      * @throws Exception on provider failure (caller records provider_unreachable)
      */
     public function fetchSettlements(int $fromTs, int $toTs, int $count = 100): array
@@ -212,7 +211,7 @@ class RazorpayService
                     'count' => $count,
                 ]));
 
-            if (!$response->successful()) {
+            if (! $response->successful()) {
                 throw new Exception('Failed to fetch settlements');
             }
 
@@ -230,10 +229,8 @@ class RazorpayService
     /**
      * Process refund
      *
-     * @param string $paymentId
-     * @param float $amount Amount in INR (optional, defaults to full refund)
-     * @param string $reason
-     * @return array
+     * @param  float  $amount  Amount in INR (optional, defaults to full refund)
+     *
      * @throws Exception
      */
     public function refund(string $paymentId, ?float $amount = null, string $reason = ''): array
@@ -253,7 +250,7 @@ class RazorpayService
             $response = $this->send('refund', fn () => $this->client()
                 ->post("{$this->baseUrl}/payments/{$paymentId}/refund", $payload));
 
-            if (!$response->successful()) {
+            if (! $response->successful()) {
                 throw new Exception('Failed to process refund');
             }
 
@@ -270,25 +267,22 @@ class RazorpayService
 
     /**
      * Verify webhook signature
-     *
-     * @param string $payload
-     * @param string $signature
-     * @return bool
      */
     public function verifyWebhook(string $payload, string $signature): bool
     {
         $expectedSignature = hash_hmac('sha256', $payload, $this->webhookSecret);
+
         return hash_equals($expectedSignature, $signature);
     }
 
     /**
      * Create a payout to bank account (for driver withdrawals)
      *
-     * @param float $amount Amount in INR
-     * @param string $fundAccountId Razorpay fund account ID
-     * @param string $purpose Purpose of payout
-     * @param string $referenceId Reference ID for tracking
-     * @return array
+     * @param  float  $amount  Amount in INR
+     * @param  string  $fundAccountId  Razorpay fund account ID
+     * @param  string  $purpose  Purpose of payout
+     * @param  string  $referenceId  Reference ID for tracking
+     *
      * @throws Exception
      */
     public function createPayout(float $amount, string $fundAccountId, string $purpose, string $referenceId): array
@@ -307,7 +301,7 @@ class RazorpayService
                     'narration' => 'HappyMiles Driver Payout',
                 ]));
 
-            if (!$response->successful()) {
+            if (! $response->successful()) {
                 Log::error('Razorpay payout creation failed', [
                     'status' => $response->status(),
                     'body' => $response->body(),
@@ -329,11 +323,11 @@ class RazorpayService
     /**
      * Create a fund account for bank transfers
      *
-     * @param string $contactId Razorpay contact ID
-     * @param string $accountName Bank account holder name
-     * @param string $ifsc Bank IFSC code
-     * @param string $accountNumber Bank account number
-     * @return array
+     * @param  string  $contactId  Razorpay contact ID
+     * @param  string  $accountName  Bank account holder name
+     * @param  string  $ifsc  Bank IFSC code
+     * @param  string  $accountNumber  Bank account number
+     *
      * @throws Exception
      */
     public function createFundAccount(string $contactId, string $accountName, string $ifsc, string $accountNumber): array
@@ -350,7 +344,7 @@ class RazorpayService
                     ],
                 ]));
 
-            if (!$response->successful()) {
+            if (! $response->successful()) {
                 throw new Exception('Failed to create fund account');
             }
 
@@ -366,11 +360,11 @@ class RazorpayService
     /**
      * Create a contact for payouts
      *
-     * @param string $name Contact name
-     * @param string $email Contact email
-     * @param string $phone Contact phone
-     * @param string $type Contact type (vendor/employee/customer)
-     * @return array
+     * @param  string  $name  Contact name
+     * @param  string  $email  Contact email
+     * @param  string  $phone  Contact phone
+     * @param  string  $type  Contact type (vendor/employee/customer)
+     *
      * @throws Exception
      */
     public function createContact(string $name, string $email, string $phone, string $type = 'vendor'): array
@@ -382,10 +376,10 @@ class RazorpayService
                     'email' => $email,
                     'contact' => $phone,
                     'type' => $type,
-                    'reference_id' => 'contact_' . uniqid(),
+                    'reference_id' => 'contact_'.uniqid(),
                 ]));
 
-            if (!$response->successful()) {
+            if (! $response->successful()) {
                 throw new Exception('Failed to create contact');
             }
 
@@ -400,8 +394,6 @@ class RazorpayService
 
     /**
      * Get client configuration for frontend
-     *
-     * @return array
      */
     public function getClientConfig(): array
     {

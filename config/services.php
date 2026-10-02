@@ -1,6 +1,7 @@
 <?php
 
 return [
+    'testing' => ['mock_payments' => env('MOCK_PAYMENTS', false), 'mock_notifications' => env('MOCK_NOTIFICATIONS', false)],
 
     /*
     |--------------------------------------------------------------------------
@@ -62,6 +63,8 @@ return [
     ],
 
     'razorpay' => [
+        'booking_checkout_enabled' => env('BOOKING_CHECKOUT_ENABLED', false),
+        'booking_checkout_web_url' => env('BOOKING_CHECKOUT_WEB_URL'),
         'key' => env('RAZORPAY_KEY'),
         'secret' => env('RAZORPAY_SECRET'),
         'webhook_secret' => env('RAZORPAY_WEBHOOK_SECRET'),

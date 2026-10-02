@@ -33,10 +33,10 @@ class InsurancePolicy extends Model
     ];
 
     protected $casts = [
-        'premium'         => 'decimal:2',
+        'premium' => 'decimal:2',
         'coverage_amount' => 'decimal:2',
-        'start_date'      => 'date',
-        'end_date'        => 'date',
+        'start_date' => 'date',
+        'end_date' => 'date',
         'terms_accepted_at' => 'datetime',
         'issued_at' => 'datetime',
         'cancelled_at' => 'datetime',
@@ -61,7 +61,7 @@ class InsurancePolicy extends Model
     public static function generatePolicyNumber(): string
     {
         do {
-            $number = 'POL' . date('Ymd') . strtoupper(Str::random(4));
+            $number = 'POL'.date('Ymd').strtoupper(Str::random(4));
         } while (static::where('policy_number', $number)->exists());
 
         return $number;
@@ -73,5 +73,9 @@ class InsurancePolicy extends Model
             && ! $this->start_date->isFuture()
             && ! $this->end_date->isPast();
     }
-    public function isExpired(): bool { return $this->status === 'expired' || $this->end_date->isPast(); }
+
+    public function isExpired(): bool
+    {
+        return $this->status === 'expired' || $this->end_date->isPast();
+    }
 }

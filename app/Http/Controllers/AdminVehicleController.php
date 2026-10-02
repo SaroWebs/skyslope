@@ -2,14 +2,13 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\Vehicle;
 use App\Models\CarCategory;
 use App\Models\Driver;
-use App\Models\DriverLocation;
+use App\Models\Vehicle;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
-use Illuminate\Validation\Rule;
 use Illuminate\Support\Str;
+use Illuminate\Validation\Rule;
 
 class AdminVehicleController extends Controller
 {
@@ -19,8 +18,8 @@ class AdminVehicleController extends Controller
 
         if ($search = $request->input('search')) {
             $query->where('registration_number', 'like', "%{$search}%")
-                  ->orWhere('make', 'like', "%{$search}%")
-                  ->orWhere('model', 'like', "%{$search}%");
+                ->orWhere('make', 'like', "%{$search}%")
+                ->orWhere('model', 'like', "%{$search}%");
         }
 
         $vehicles = $query->latest()->paginate(15);
@@ -66,7 +65,7 @@ class AdminVehicleController extends Controller
         $validated = $request->validate([
             'car_category_id' => 'required|exists:car_categories,id',
             'driver_id' => ['nullable', 'exists:drivers,id', Rule::unique('vehicles', 'driver_id')->ignore($vehicle->id)],
-            'registration_number' => 'required|string|unique:vehicles,registration_number,' . $vehicle->id,
+            'registration_number' => 'required|string|unique:vehicles,registration_number,'.$vehicle->id,
             'make' => 'required|string',
             'model' => 'required|string',
             'year' => 'required|integer',
@@ -96,6 +95,7 @@ class AdminVehicleController extends Controller
     public function destroy(Vehicle $vehicle)
     {
         $vehicle->delete();
+
         return redirect()->back()->with('success', 'Vehicle removed successfully.');
     }
 
@@ -130,77 +130,21 @@ class AdminVehicleController extends Controller
      */
     private function resolveTracking(Vehicle $vehicle): array
     {
-        $tracker = $vehicle->tracker;
-        $trackerOnline = (bool) $tracker?->isOnline();
-        $hasTrackerFix = filled($tracker?->latitude) && filled($tracker?->longitude);
+        return app(\App\Services\JourneyTrackingService::class)->resolve($vehicle);
+    }
 
-        $vehicleLocations = $vehicle->locations()
-            ->latest('recorded_at')
-            ->limit(100)
-            ->get()
-            ->sortBy('recorded_at')
-            ->values();
+    public function trackingPreference(\Illuminate\Http\Request $request, Vehicle $vehicle)
+    {
+        $data = $request->validate(['tracking_preference' => 'required|in:automatic,driver_app,vehicle_gps']);
+        $before = $vehicle->tracking_preference;
+        $vehicle->update($data);
+        \App\Models\BookingAuditLog::create([
+            'auditable_type' => Vehicle::class, 'auditable_id' => $vehicle->id,
+            'admin_id' => $request->user()->id, 'action' => 'tracking.preference.updated',
+            'before' => ['tracking_preference' => $before], 'after' => $data,
+        ]);
 
-        $driverLocations = $vehicle->driver_id
-            ? DriverLocation::query()
-                ->where('driver_id', $vehicle->driver_id)
-                ->latest()
-                ->limit(100)
-                ->get()
-                ->sortBy('created_at')
-                ->values()
-            : collect();
-
-        $driverLatest = $driverLocations->last();
-        $driverOnline = (bool) $driverLatest?->created_at?->greaterThanOrEqualTo(now()->subMinutes(5));
-
-        if ($trackerOnline && $hasTrackerFix) {
-            $source = 'vehicle_gps';
-            $locations = $vehicleLocations;
-            $latestLocation = [
-                'latitude' => $tracker->latitude,
-                'longitude' => $tracker->longitude,
-                'speed_kmh' => $tracker->speed_kmh,
-                'heading' => $tracker->heading,
-                'accuracy_m' => $tracker->accuracy_m,
-                'recorded_at' => $tracker->last_recorded_at ?? $tracker->last_ping_at,
-            ];
-        } elseif ($driverLatest) {
-            $source = 'driver_app';
-            $locations = $driverLocations->map(fn (DriverLocation $location) => [
-                'id' => 'driver-'.$location->id,
-                'latitude' => $location->latitude,
-                'longitude' => $location->longitude,
-                'speed_kmh' => $location->speed,
-                'heading' => $location->heading,
-                'accuracy_m' => $location->accuracy,
-                'ignition_on' => null,
-                'recorded_at' => $location->created_at,
-            ])->values();
-            $latestLocation = $locations->last();
-        } elseif ($hasTrackerFix) {
-            $source = 'vehicle_gps_stale';
-            $locations = $vehicleLocations;
-            $latestLocation = [
-                'latitude' => $tracker->latitude,
-                'longitude' => $tracker->longitude,
-                'speed_kmh' => $tracker->speed_kmh,
-                'heading' => $tracker->heading,
-                'accuracy_m' => $tracker->accuracy_m,
-                'recorded_at' => $tracker->last_recorded_at ?? $tracker->last_ping_at,
-            ];
-        } else {
-            $source = 'unavailable';
-            $locations = collect();
-            $latestLocation = null;
-        }
-
-        return [
-            'is_online' => $source === 'vehicle_gps' ? $trackerOnline : ($source === 'driver_app' && $driverOnline),
-            'location_source' => $source,
-            'latest_location' => $latestLocation,
-            'locations' => $locations,
-        ];
+        return back()->with('success', 'Tracking source updated.');
     }
 
     public function provisionTracker(Request $request, Vehicle $vehicle)

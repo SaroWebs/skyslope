@@ -2,8 +2,8 @@
 
 namespace Database\Seeders;
 
-use Illuminate\Database\Seeder;
 use App\Models\Tour;
+use Illuminate\Database\Seeder;
 
 class TourSeeder extends Seeder
 {

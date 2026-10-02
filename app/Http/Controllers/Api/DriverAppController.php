@@ -11,10 +11,11 @@ use App\Models\RideBooking;
 use App\Models\TourBooking;
 use App\Models\TourDriverAssignment;
 use App\Models\Vehicle;
+use App\Rules\FileIsClean;
 use App\Services\BookingLifecycleNotifier;
 use App\Services\CommissionService;
 use App\Services\DriverDispatchService;
-use App\Rules\FileIsClean;
+use App\Services\DriverVerificationService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
@@ -23,8 +24,6 @@ use Illuminate\Validation\Rule;
 
 class DriverAppController extends Controller
 {
-    private const REQUIRED_DOCUMENTS = ['driving_license', 'government_id', 'police_verification'];
-
     public function dashboard(Request $request)
     {
         $driver = $request->user();
@@ -171,36 +170,42 @@ class DriverAppController extends Controller
     public function upsertDocument(Request $request)
     {
         $validated = $request->validate([
-            'type' => ['required', Rule::in(['driving_license', 'government_id', 'police_verification', 'tax_id'])],
+            'type' => ['required', Rule::in(array_keys(DriverVerificationService::DOCUMENTS))],
             'document_number' => ['nullable', 'string', 'max:120'],
-            'expires_at' => ['nullable', 'date', 'after:today'],
-            'file' => ['required', 'file', 'mimes:jpg,jpeg,png,pdf', 'max:10240', new FileIsClean()],
+            'expires_at' => ['nullable', 'date', 'after_or_equal:today'],
+            'file' => ['required', 'file', 'mimes:jpg,jpeg,png,pdf', 'max:10240', new FileIsClean],
         ]);
 
         $existing = $request->user()->documents()->where('type', $validated['type'])->first();
         $path = $request->file('file')->store('driver-documents/'.$request->user()->id, 'public');
 
-        if ($existing?->file_path) {
-            Storage::disk('public')->delete($existing->file_path);
+        try {
+            $document = DB::transaction(fn () => DriverDocument::updateOrCreate(
+                ['driver_id' => $request->user()->id, 'type' => $validated['type']],
+                [
+                    'document_number' => $validated['document_number'] ?? null,
+                    'expires_at' => $validated['expires_at'] ?? null,
+                    'file_path' => $path,
+                    'status' => 'pending',
+                    'rejection_reason' => null,
+                    'reviewed_at' => null,
+                    'reviewed_by' => null,
+                ]
+            ));
+        } catch (\Throwable $error) {
+            Storage::disk('public')->delete($path);
+            throw $error;
         }
 
-        $document = DriverDocument::updateOrCreate(
-            ['driver_id' => $request->user()->id, 'type' => $validated['type']],
-            [
-                'document_number' => $validated['document_number'] ?? null,
-                'expires_at' => $validated['expires_at'] ?? null,
-                'file_path' => $path,
-                'status' => 'pending',
-                'rejection_reason' => null,
-                'reviewed_at' => null,
-                'reviewed_by' => null,
-            ]
-        );
+        if ($existing?->file_path && $existing->file_path !== $path) {
+            Storage::disk('public')->delete($existing->file_path);
+        }
 
         return response()->json([
             'success' => true,
             'message' => 'Document submitted for verification.',
             'data' => $document,
+            'verification' => $this->documentVerification($request->user()),
         ]);
     }
 
@@ -208,6 +213,11 @@ class DriverAppController extends Controller
     {
         $driver = $request->user();
         $vehicle = $driver->vehicle()->first();
+
+        // Normalize before uniqueness validation, not after it.
+        if (is_string($request->input('registration_number'))) {
+            $request->merge(['registration_number' => strtoupper(preg_replace('/[\s-]+/', '', $request->input('registration_number')))]);
+        }
 
         $hasActiveWork = RideBooking::query()
             ->where('driver_id', $driver->id)
@@ -222,7 +232,7 @@ class DriverAppController extends Controller
         }
 
         $validated = $request->validate([
-            'car_category_id' => ['required', 'exists:car_categories,id'],
+            'car_category_id' => ['required', Rule::exists('car_categories', 'id')->where('is_active', true)],
             'registration_number' => [
                 'required', 'string', 'max:30',
                 Rule::unique('vehicles', 'registration_number')->ignore($vehicle?->id),
@@ -240,7 +250,15 @@ class DriverAppController extends Controller
             'pollution_expiry' => ['nullable', 'date'],
         ]);
 
-        $validated['registration_number'] = strtoupper(preg_replace('/\s+/', '', $validated['registration_number']));
+        if ($vehicle && ! (clone $vehicle)->fill($validated)->isDirty()) {
+            return response()->json([
+                'success' => true,
+                'message' => 'Your car details are already saved. Review status has not changed.',
+                'vehicle' => $vehicle->load('category'),
+                'vehicle_readiness' => $this->vehicleReadiness($vehicle, $driver),
+            ]);
+        }
+
         $validated['driver_id'] = $driver->id;
         $validated['is_active'] = false;
         $validated['is_available_for_rent'] = false;
@@ -295,6 +313,7 @@ class DriverAppController extends Controller
         $availableForRent = (bool) $validated['is_available_for_rent'];
         if ($availableForRent && (
             ! $driver->can_rental_delivery
+            || ! $this->documentVerification($driver)['is_complete']
             || $driver->status !== 'active'
             || ! $driver->is_active
             || ! $driver->is_approved
@@ -330,9 +349,9 @@ class DriverAppController extends Controller
         $verification = $driver ? $this->documentVerification($driver) : null;
         if ($verification && ! $verification['is_complete']) {
             return [
-                'status' => 'documents_required',
+                'status' => $verification['status'] === 'in_review' ? 'documents_pending' : 'documents_required',
                 'can_go_online' => false,
-                'message' => 'Submit all required driver documents and wait for admin verification.',
+                'message' => $verification['message'],
                 'action' => 'documents',
             ];
         }
@@ -378,19 +397,7 @@ class DriverAppController extends Controller
 
     private function documentVerification($driver): array
     {
-        $approvedTypes = $driver->documents()
-            ->where('status', 'approved')
-            ->where(fn ($query) => $query
-                ->whereNull('expires_at')
-                ->orWhereDate('expires_at', '>=', today()))
-            ->pluck('type');
-        $missing = collect(self::REQUIRED_DOCUMENTS)->diff($approvedTypes)->values();
-
-        return [
-            'required_types' => self::REQUIRED_DOCUMENTS,
-            'missing_or_unverified' => $missing,
-            'is_complete' => $missing->isEmpty(),
-        ];
+        return app(DriverVerificationService::class)->summary($driver);
     }
 
     public function history(Request $request)
@@ -439,6 +446,57 @@ class DriverAppController extends Controller
             ->paginate(20);
 
         return response()->json(['success' => true, 'data' => $assignments]);
+    }
+
+    public function tourCashSummary(Request $request, TourDriverAssignment $assignment)
+    {
+        abort_unless((int) $assignment->driver_id === $request->user()->id, 403, 'Unauthorized.');
+
+        $bookings = $assignment->bookings()->with('customer:id,name,phone')->get();
+        $settlementService = app(\App\Services\TourSettlementService::class);
+
+        $summary = $bookings->map(function ($booking) use ($settlementService) {
+            return [
+                'booking_id' => $booking->id,
+                'booking_number' => $booking->booking_number,
+                'customer' => $booking->customer,
+                'payment_status' => $booking->payment_status,
+                'remaining_cash_minor' => $settlementService->remainingCashMinor($booking),
+                'cash_collected_minor' => $settlementService->cashCollectedMinor($booking),
+            ];
+        });
+
+        return response()->json([
+            'success' => true,
+            'data' => [
+                'assignment_id' => $assignment->id,
+                'total_remaining_cash_minor' => $summary->sum('remaining_cash_minor'),
+                'bookings' => $summary,
+            ],
+        ]);
+    }
+
+    public function collectTourCash(Request $request, TourBooking $booking)
+    {
+        abort_unless(is_string($request->header('Idempotency-Key')) && strlen($request->header('Idempotency-Key')) >= 8 && strlen($request->header('Idempotency-Key')) <= 128, 422, 'A stable cash collection request key is required.');
+        $validated = $request->validate([
+            'amount_minor' => 'required|integer|min:1',
+            'evidence' => 'required|string|max:255',
+        ]);
+
+        $payment = app(\App\Services\PaymentService::class)->recordTourCashCollection(
+            $booking,
+            $request->user()->id,
+            $validated['amount_minor'],
+            $validated['evidence'],
+            $request->header('Idempotency-Key')
+        );
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Cash collection recorded successfully.',
+            'data' => $payment,
+        ]);
     }
 
     public function acceptTourAssignment(Request $request, int $id)
@@ -492,19 +550,83 @@ class DriverAppController extends Controller
         return $this->updateRental($request, $rental, 'completed', 'Rental completed.');
     }
 
+    public function markNoShow(Request $request, TourBooking $booking)
+    {
+        $validated = $request->validate([
+            'reason' => 'nullable|string|max:500',
+        ]);
+
+        abort_unless(
+            $booking->driverAssignments()->where('driver_id', $request->user()->id)->where('status', 'accepted')->whereIn('role', ['transport', 'both'])->exists(),
+            403,
+            'You are not assigned to this tour.'
+        );
+
+        try {
+            app(\App\Services\TourAttendanceService::class)->markNoShow(
+                $booking,
+                'driver',
+                $validated['reason'] ?? null
+            );
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Customer marked as no-show.',
+                'data' => $booking->fresh(),
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage(),
+            ], 422);
+        }
+    }
+
+    public function assignmentAttendance(Request $request, TourDriverAssignment $assignment)
+    {
+        abort_unless((int) $assignment->driver_id === $request->user()->id, 403, 'Unauthorized.');
+
+        $bookings = $assignment->bookings()->with('customer:id,name,phone')->get();
+        $attendance = $bookings->map(function ($booking) {
+            return [
+                'booking_id' => $booking->id,
+                'booking_number' => $booking->booking_number,
+                'customer' => $booking->customer,
+                'attendance_status' => $booking->attendance_status,
+                'waiting_started_at' => $booking->waiting_started_at,
+                'waiting_deadline_at' => $booking->waiting_deadline_at,
+                'joined_at' => $booking->joined_at,
+                'no_show_at' => $booking->no_show_at,
+                'no_show_review_status' => $booking->no_show_review_status,
+            ];
+        });
+
+        return response()->json([
+            'success' => true,
+            'data' => $attendance,
+        ]);
+    }
+
     private function updateTourAssignment(Request $request, int $id, string $status)
     {
         $assignment = TourDriverAssignment::with('schedule')
             ->where('driver_id', $request->user()->id)
             ->findOrFail($id);
 
+        if ($assignment->status === $status) {
+            return response()->json(['success' => true, 'data' => $assignment->load('bookings.customer')]);
+        }
+        abort_unless(in_array($status, match ($assignment->status) {
+            'assigned' => ['accepted', 'declined'], 'accepted' => ['completed'], default => []
+        }), 409, 'Invalid assignment transition.');
         if ($status === 'accepted') {
             $failures = app(DriverDispatchService::class)->eligibilityFailures(
                 $request->user(),
                 'tour',
                 $assignment->role ?? 'transport',
                 null,
-                $assignment->vehicle_id ? (int) $assignment->vehicle_id : null
+                $assignment->vehicle_id ? (int) $assignment->vehicle_id : null,
+                excludeTourAssignmentId: $assignment->id
             );
 
             if ($failures !== []) {
@@ -516,7 +638,34 @@ class DriverAppController extends Controller
             }
         }
 
-        $assignment->update(['status' => $status]);
+        DB::transaction(function () use ($assignment, $request, $status) {
+            $locked = TourDriverAssignment::lockForUpdate()->findOrFail($assignment->id);
+            abort_unless($locked->status === $assignment->status, 409, 'Assignment changed; refresh.');
+            app(\App\Services\ResourceCommitmentService::class)->lockResources($request->user()->id, $locked->vehicle_id);
+            if ($status === 'completed') {
+                $incomplete = $locked->bookings()
+                    ->whereNotIn('status', ['completed', 'cancelled'])
+                    ->where(fn ($q) => $q->whereNull('attendance_status')->orWhere('attendance_status', '!=', 'no_show'))
+                    ->exists();
+                abort_if($incomplete, 409, 'Complete all passenger bookings or mark as no-show before closing this assignment.');
+            }
+            if ($status === 'accepted') {
+                abort_unless(app(\App\Services\DriverFundingPolicy::class)->eligible($request->user()), 409, 'Driver funding requirements are not met.');
+                abort_if(app(DriverDispatchService::class)->hasActiveWorkload($request->user(), $locked->id), 409, 'Driver is already engaged.');
+                $schedule = $locked->schedule;
+                if ($schedule) {
+                    $conflicts = app(\App\Services\ResourceCommitmentService::class)->findConflicts(
+                        $request->user()->id,
+                        $locked->vehicle_id,
+                        $schedule->departure_date,
+                        $schedule->return_date ?? $schedule->departure_date,
+                        ['exclude_tour_assignment_id' => $locked->id, 'exclude_tour_schedule_id' => $schedule->id]
+                    );
+                    abort_if(! empty($conflicts), 409, implode(' ', $conflicts));
+                }
+            }
+            $locked->update(['status' => $status]);
+        });
 
         if ($status === 'accepted') {
             DriverAvailability::where('driver_id', $request->user()->id)->update([
@@ -536,7 +685,7 @@ class DriverAppController extends Controller
         $action = match ($status) {
             'accepted' => 'booking.accepted',
             'declined' => 'booking.declined',
-            'completed' => 'booking.completed',
+            'completed' => null,
             default => null,
         };
 
@@ -558,14 +707,28 @@ class DriverAppController extends Controller
         Gate::authorize('updateAssignment', $rental);
 
         DB::transaction(function () use ($request, $rental, $status) {
+            $locked = CarRental::lockForUpdate()->findOrFail($rental->id);
+            app(\App\Services\ResourceCommitmentService::class)->lockResources($request->user()->id, $locked->vehicle_id);
+
+            if ($status === 'driver_assigned') {
+                $conflicts = app(\App\Services\ResourceCommitmentService::class)->findConflicts(
+                    $request->user()->id,
+                    $locked->vehicle_id,
+                    $locked->start_date,
+                    $locked->end_date,
+                    ['exclude_car_rental_id' => $locked->id]
+                );
+                abort_if(! empty($conflicts), 409, implode(' ', $conflicts));
+            }
+
             $updates = ['status' => $status];
             if ($status === 'pending') {
                 $updates['driver_id'] = null;
                 $updates['vehicle_id'] = null;
             }
-            $rental->update($updates);
-            if ($status === 'completed' && $rental->fresh()->payment_status === 'paid') {
-                app(CommissionService::class)->settleRental($rental->fresh());
+            $locked->update($updates);
+            if ($status === 'completed' && $locked->fresh()->payment_status === 'paid') {
+                app(CommissionService::class)->settleRental($locked->fresh());
             }
 
             DriverAvailability::where('driver_id', $request->user()->id)->update([
@@ -589,5 +752,46 @@ class DriverAppController extends Controller
         }
 
         return response()->json(['success' => true, 'message' => $message, 'data' => $rental->fresh()]);
+    }
+
+    public function carRentalChecklists(Request $request, CarRental $carRental)
+    {
+        Gate::authorize('track', $carRental);
+
+        return response()->json([
+            'success' => true,
+            'data' => $carRental->checklists,
+        ]);
+    }
+
+    public function submitCarRentalChecklist(Request $request, CarRental $carRental)
+    {
+        Gate::authorize('track', $carRental);
+
+        $validated = $request->validate([
+            'type' => 'required|in:handover,return',
+            'odometer_reading' => 'nullable|numeric',
+            'fuel_level_percent' => 'nullable|integer|min:0|max:100',
+            'cleanliness' => 'nullable|in:clean,moderate,dirty',
+            'checklist_items' => 'nullable|array',
+            'photos' => 'nullable|array',
+            'damage_detected' => 'nullable|boolean',
+            'damage_notes' => 'nullable|string',
+            'customer_acknowledged' => 'nullable|boolean',
+        ]);
+
+        $checklist = app(\App\Services\RentalChecklistService::class)->submitChecklist(
+            $carRental,
+            $validated['type'],
+            $validated,
+            'driver',
+            $request->user()->id
+        );
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Checklist submitted successfully.',
+            'data' => $checklist,
+        ]);
     }
 }

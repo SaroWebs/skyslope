@@ -4,7 +4,6 @@ namespace App\Http\Controllers;
 
 use App\Models\Payout;
 use App\Models\Wallet;
-use App\Models\WalletTransaction;
 use App\Models\WithdrawalRequest;
 use App\Services\LedgerService;
 use App\Services\PaymentService;
@@ -24,7 +23,7 @@ class AdminFinancialController extends Controller
     public function wallets(Request $request)
     {
         $ownerType = $request->input('owner_type', 'driver'); // 'driver' or 'customer' or 'all'
-        
+
         $query = Wallet::with(['owner', 'transactions' => function ($q) {
             $q->latest()->take(5);
         }]);
@@ -60,13 +59,13 @@ class AdminFinancialController extends Controller
 
         $amount = (float) $validated['amount'];
         $type = $validated['type'];
-        $description = '[Admin adjustment] ' . $validated['description'];
+        $description = '[Admin adjustment] '.$validated['description'];
 
         try {
             if ($type === 'credit') {
                 $wallet->credit($amount, $description);
             } else {
-                if (!$wallet->hasSufficientBalance($amount)) {
+                if (! $wallet->hasSufficientBalance($amount)) {
                     return back()->with('error', 'Insufficient balance for debit adjustment.');
                 }
                 $wallet->debit($amount, $description);
@@ -74,7 +73,7 @@ class AdminFinancialController extends Controller
 
             return back()->with('success', 'Wallet balance adjusted successfully.');
         } catch (\Exception $e) {
-            return back()->with('error', 'Adjustment failed: ' . $e->getMessage());
+            return back()->with('error', 'Adjustment failed: '.$e->getMessage());
         }
     }
 
@@ -104,7 +103,7 @@ class AdminFinancialController extends Controller
                 'pending_count' => WithdrawalRequest::where('status', 'pending')->count(),
                 'processing_count' => WithdrawalRequest::where('status', 'processing')->count(),
                 'completed_sum' => WithdrawalRequest::where('status', 'completed')->sum('amount'),
-            ]
+            ],
         ]);
     }
 
@@ -116,7 +115,7 @@ class AdminFinancialController extends Controller
      */
     public function approveWithdrawal(Request $request, WithdrawalRequest $withdrawal, PaymentService $payments, RazorpayService $razorpay)
     {
-        if (!$withdrawal->isPending()) {
+        if (! $withdrawal->isPending()) {
             return back()->with('error', 'Only pending requests can be approved.');
         }
 
@@ -127,13 +126,13 @@ class AdminFinancialController extends Controller
             // Reuse a still-live payout on a re-click; open a fresh one otherwise
             // (a prior attempt that failed is terminal, so we start clean).
             $payout = $withdrawal->payout;
-            if (!$payout || $payout->isTerminal()) {
+            if (! $payout || $payout->isTerminal()) {
                 $payout = $payments->createPayout($withdrawal, Money::toMinor((float) $withdrawal->amount));
             }
 
             // Ensure a provider fund account exists for the payee's bank details.
             $fundAccountId = $withdrawal->razorpay_fund_account_id;
-            if (!$fundAccountId) {
+            if (! $fundAccountId) {
                 $owner = $withdrawal->owner;
                 $contact = $razorpay->createContact(
                     (string) ($owner->name ?? 'Payee'),
@@ -177,7 +176,7 @@ class AdminFinancialController extends Controller
                 'exception' => $e::class,
             ]);
 
-            return back()->with('error', 'Payout initiation failed: ' . $e->getMessage());
+            return back()->with('error', 'Payout initiation failed: '.$e->getMessage());
         }
     }
 
@@ -186,7 +185,7 @@ class AdminFinancialController extends Controller
      */
     public function rejectWithdrawal(Request $request, WithdrawalRequest $withdrawal)
     {
-        if (!$withdrawal->isPending() && !$withdrawal->isProcessing()) {
+        if (! $withdrawal->isPending() && ! $withdrawal->isProcessing()) {
             return back()->with('error', 'This request cannot be rejected.');
         }
 
@@ -198,8 +197,8 @@ class AdminFinancialController extends Controller
         DB::beginTransaction();
         try {
             $wallet = Wallet::where('owner_type', $withdrawal->owner_type)
-                            ->where('owner_id', $withdrawal->owner_id)
-                            ->first();
+                ->where('owner_id', $withdrawal->owner_id)
+                ->first();
 
             if ($wallet) {
                 // Release the hold back to the wallet. The 'driver_withdrawal' ref
@@ -207,20 +206,22 @@ class AdminFinancialController extends Controller
                 // a double-reject (or a later payout.failed webhook) a no-op.
                 $wallet->credit(
                     (float) $withdrawal->amount,
-                    'Refund: Withdrawal request rejected - ID #' . $withdrawal->id,
+                    'Refund: Withdrawal request rejected - ID #'.$withdrawal->id,
                     'driver_withdrawal',
                     (string) $withdrawal->id,
-                    'withdrawal_release:' . $withdrawal->id
+                    'withdrawal_release:'.$withdrawal->id
                 );
             }
 
             $withdrawal->reject(Auth::id(), $validated['rejection_reason'], $validated['admin_notes'] ?? null);
 
             DB::commit();
+
             return back()->with('success', 'Withdrawal request rejected and amount refunded.');
         } catch (\Exception $e) {
             DB::rollBack();
-            return back()->with('error', 'Rejection failed: ' . $e->getMessage());
+
+            return back()->with('error', 'Rejection failed: '.$e->getMessage());
         }
     }
 
@@ -232,7 +233,7 @@ class AdminFinancialController extends Controller
      */
     public function completeWithdrawal(Request $request, WithdrawalRequest $withdrawal, PaymentService $payments, LedgerService $ledger)
     {
-        if (!$withdrawal->isProcessing()) {
+        if (! $withdrawal->isProcessing()) {
             return back()->with('error', 'Only processing requests can be completed.');
         }
 
@@ -257,7 +258,7 @@ class AdminFinancialController extends Controller
                     [
                         'reference_type' => 'payout',
                         'reference_id' => (string) $withdrawal->id,
-                        'description' => 'Manual driver payout settlement — withdrawal #' . $withdrawal->id,
+                        'description' => 'Manual driver payout settlement — withdrawal #'.$withdrawal->id,
                     ]
                 );
                 $withdrawal->markAsCompleted($validated['utr_number']);
@@ -273,7 +274,7 @@ class AdminFinancialController extends Controller
                 'exception' => $e::class,
             ]);
 
-            return back()->with('error', 'Completion failed: ' . $e->getMessage());
+            return back()->with('error', 'Completion failed: '.$e->getMessage());
         }
     }
 }

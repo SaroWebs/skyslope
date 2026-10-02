@@ -27,12 +27,12 @@ class WalletTransaction extends Model
     ];
 
     protected $casts = [
-        'amount'               => 'decimal:2',
-        'balance_before'       => 'decimal:2',
-        'balance_after'        => 'decimal:2',
-        'amount_minor'         => 'integer',
+        'amount' => 'decimal:2',
+        'balance_before' => 'decimal:2',
+        'balance_after' => 'decimal:2',
+        'amount_minor' => 'integer',
         'balance_before_minor' => 'integer',
-        'balance_after_minor'  => 'integer',
+        'balance_after_minor' => 'integer',
     ];
 
     public function ledgerEntries(): \Illuminate\Database\Eloquent\Relations\HasMany
@@ -45,6 +45,13 @@ class WalletTransaction extends Model
         return $this->belongsTo(Wallet::class, 'wallet_id');
     }
 
-    public function isCredit(): bool { return $this->type === 'credit'; }
-    public function isDebit(): bool  { return $this->type === 'debit'; }
+    public function isCredit(): bool
+    {
+        return $this->type === 'credit';
+    }
+
+    public function isDebit(): bool
+    {
+        return $this->type === 'debit';
+    }
 }

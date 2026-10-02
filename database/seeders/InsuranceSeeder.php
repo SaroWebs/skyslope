@@ -2,11 +2,10 @@
 
 namespace Database\Seeders;
 
-use Illuminate\Database\Seeder;
-use App\Models\InsurancePolicy;
 use App\Models\Claim;
-use App\Models\ExtendedCare;
+use App\Models\InsurancePolicy;
 use App\Models\User;
+use Illuminate\Database\Seeder;
 
 class InsuranceSeeder extends Seeder
 {
@@ -100,7 +99,7 @@ class InsuranceSeeder extends Seeder
 
                 foreach ($careRequests as $careData) {
                     $user->extendedCareRequests()->create(array_merge($careData, [
-                        'insurance_id' => $policy->id
+                        'insurance_id' => $policy->id,
                     ]));
                 }
             }

@@ -13,14 +13,13 @@ class PermissionMiddleware
      * Handle an incoming request.
      *
      * @param  \Closure(\Illuminate\Http\Request): (\Symfony\Component\HttpFoundation\Response)  $next
-     * @param  string  $permission
      */
     public function handle(Request $request, Closure $next, string $permission): Response
     {
         $expectsJson = $request->expectsJson() || $request->is('api/*');
 
         // Check if user is authenticated
-        if (!Auth::check()) {
+        if (! Auth::check()) {
             if ($expectsJson) {
                 return response()->json(['error' => 'Unauthorized'], 401);
             }
@@ -31,7 +30,7 @@ class PermissionMiddleware
         $user = Auth::user();
 
         // Check if user has the required permission
-        if (!$user->hasPermission($permission)) {
+        if (! $user->hasPermission($permission)) {
             if ($expectsJson) {
                 return response()->json(['error' => 'Forbidden: Insufficient permissions'], 403);
             }

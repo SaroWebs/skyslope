@@ -54,6 +54,8 @@ class Driver extends Authenticatable
         'bank_account_name',
         'bank_name',
         'ifsc_code',
+        'funding_eligible',
+        'funding_activated_at',
         'phone_verified_at',
     ];
 
@@ -83,6 +85,8 @@ class Driver extends Authenticatable
             'can_rental_delivery' => 'boolean',
             'languages' => 'array',
             'expertise_tags' => 'array',
+            'funding_eligible' => 'boolean',
+            'funding_activated_at' => 'datetime',
             'password' => 'hashed',
         ];
     }
@@ -102,6 +106,11 @@ class Driver extends Authenticatable
     public function locations(): HasMany
     {
         return $this->hasMany(DriverLocation::class, 'driver_id');
+    }
+
+    public function latestLocation(): HasOne
+    {
+        return $this->hasOne(DriverLocation::class, 'driver_id')->latestOfMany('id');
     }
 
     public function rideBookings(): HasMany
@@ -160,6 +169,16 @@ class Driver extends Authenticatable
     }
 
     // ── Helpers ────────────────────────────────────────────────────
+
+    public function getWalletBalanceMinor(): int
+    {
+        return $this->wallet()->first()?->getBalanceMinor() ?? 0;
+    }
+
+    public function isFundingEligible(): bool
+    {
+        return app(\App\Services\DriverFundingPolicy::class)->eligible($this);
+    }
 
     public function isOnline(): bool
     {

@@ -4,9 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Events\DriverLocationUpdated;
 use App\Events\RentalLocationUpdated;
-use App\Events\RideLocationUpdated;
 use App\Events\RideStatusUpdated;
-use App\Events\TourLocationUpdated;
 use App\Http\Controllers\Controller;
 use App\Models\CarRental;
 use App\Models\Customer;
@@ -37,6 +35,7 @@ class TrackingController extends Controller
             'latitude' => 'required|numeric|between:-90,90',
             'longitude' => 'required|numeric|between:-180,180',
             'is_available' => 'nullable|boolean',
+            'recorded_at' => 'nullable|date|before_or_equal:now',
             'service_type' => 'nullable|in:ride,tour,rental',
             'booking_id' => 'nullable|integer|min:1',
             'heading' => 'nullable|numeric|between:0,360',
@@ -53,27 +52,30 @@ class TrackingController extends Controller
 
         $user = $request->user();
 
-        // Update driver availability
-        $availability = DriverAvailability::updateOrCreate(
-            ['driver_id' => $user->id],
-            [
-                'current_lat' => $request->latitude,
-                'current_lng' => $request->longitude,
-                'is_available' => $request->is_available ?? true,
-                'status' => ($request->is_available ?? true) ? 'online' : 'on_ride',
-                'last_updated' => now(),
-            ]
-        );
-
-        $this->updateActiveServiceLocation($request);
+        abort_unless($user instanceof Driver, 403);
+        $recordedAt = $request->filled('recorded_at') ? \Illuminate\Support\Carbon::parse($request->recorded_at) : now();
+        $latest = DriverLocation::where('driver_id', $user->id)->orderByRaw('COALESCE(recorded_at, created_at) DESC')->first();
+        if ($latest && $recordedAt->lessThanOrEqualTo($latest->recorded_at ?? $latest->created_at)) {
+            return response()->json(['success' => true, 'ignored' => 'out_of_order']);
+        }
+        $availability = DriverAvailability::firstOrNew(['driver_id' => $user->id]);
+        $busy = app(\App\Services\DriverDispatchService::class)->hasActiveWorkload($user);
+        $online = $availability->exists ? $availability->status !== 'offline' : $request->boolean('is_available', true);
+        $availability->fill([
+            'current_lat' => $request->latitude, 'current_lng' => $request->longitude,
+            'is_available' => $online && ! $busy,
+            'status' => ! $online ? 'offline' : ($busy ? 'on_ride' : 'online'),
+            'last_updated' => $recordedAt,
+        ])->save();
         $this->storeDriverLocationHistory($request);
+        app(\App\Services\JourneyTrackingService::class)->publishForDriver($user);
 
         // Broadcast location update
         broadcast(new DriverLocationUpdated(
             $user,
             $request->latitude,
             $request->longitude,
-            $request->is_available ?? true
+            $availability->is_available
         ));
 
         return response()->json([
@@ -106,27 +108,7 @@ class TrackingController extends Controller
 
         Gate::authorize('updateLocation', $booking);
 
-        // Update booking location
-        $booking->update([
-            'current_lat' => $request->latitude,
-            'current_lng' => $request->longitude,
-            'last_location_update' => now(),
-        ]);
-        $this->storeDriverLocationHistory($request, "ride:{$booking->id}");
-
-        // Broadcast location update
-        broadcast(new RideLocationUpdated(
-            $booking,
-            $request->latitude,
-            $request->longitude,
-            null,
-            $request->eta
-        ));
-
-        return response()->json([
-            'success' => true,
-            'message' => 'Ride location updated',
-        ]);
+        return $this->updateDriverLocation($request);
     }
 
     /**
@@ -134,10 +116,23 @@ class TrackingController extends Controller
      */
     public function updateRideStatus(Request $request, RideBooking $booking)
     {
+        return \Illuminate\Support\Facades\DB::transaction(function () use ($request, $booking) {
+            if ($booking->driver_id) {
+                Driver::whereKey($booking->driver_id)->lockForUpdate()->firstOrFail();
+            }
+            $booking = RideBooking::lockForUpdate()->findOrFail($booking->id);
+
+            return $this->updateLockedRideStatus($request, $booking);
+        });
+    }
+
+    private function updateLockedRideStatus(Request $request, RideBooking $booking)
+    {
         $validator = Validator::make($request->all(), [
             'status' => 'required|string',
             'message' => 'nullable|string|max:255',
             'start_pin' => 'nullable|digits:4',
+            'cash_received' => 'sometimes|boolean',
         ]);
 
         if ($validator->fails()) {
@@ -216,10 +211,18 @@ class TrackingController extends Controller
             $updateData['cancellation_reason'] = $request->message;
         }
 
-        $booking->update($updateData);
+        if ($requestedStatus === 'cancelled') {
+            $request->validate(['message' => 'required|string|max:255']);
+            app(\App\Services\BookingCancellationService::class)->cancel($booking, 'ride', $request->message, null, $actor, (int) $user->id);
+            $booking->refresh();
+        } else {
+            $booking->update($updateData);
+        }
         $cashPaymentConfirmed = false;
-        if ($requestedStatus === 'completed' && $booking->payment_method === 'cash' && $booking->payment_status !== 'paid') {
-            $booking->update(['payment_status' => 'paid']);
+        if ($requestedStatus === 'completed' && $booking->driver_id && $booking->payment_method === 'cash'
+            && $booking->payment_status !== 'paid' && $request->boolean('cash_received')) {
+            app(\App\Services\PaymentService::class)->recordCashCollection($booking, (int) $booking->driver_id, 'Cash ride completion confirmed by '.$actor);
+            $booking->refresh();
             $cashPaymentConfirmed = true;
         }
 
@@ -228,9 +231,7 @@ class TrackingController extends Controller
         }
 
         if (in_array($requestedStatus, ['completed', 'cancelled'], true) && $booking->driver_id) {
-            DriverAvailability::where('driver_id', $booking->driver_id)->update([
-                'is_available' => true,
-            ]);
+            app(\App\Services\BookingCancellationService::class)->releaseRideDriver($booking);
         }
 
         // Broadcast status update
@@ -276,14 +277,19 @@ class TrackingController extends Controller
     public function getTrackingInfo(Request $request, RideBooking $booking)
     {
         Gate::authorize('track', $booking);
+        $source = app(\App\Services\JourneyTrackingService::class)->forBooking($booking);
 
         $booking->load(['driver', 'customer']);
 
         return response()->json([
             'success' => true,
             'data' => [
+                'location_source' => $source['location_source'],
+                'server_time' => now()->toISOString(),
+                'location_reason' => $source['reason'],
+                'tracking_preference' => $source['tracking_preference'],
                 'booking' => $booking,
-                'current_location' => $booking->current_lat && $booking->current_lng ? [
+                'current_location' => $booking->current_lat !== null && $booking->current_lng !== null ? [
                     'latitude' => $booking->current_lat,
                     'longitude' => $booking->current_lng,
                     'last_update' => $booking->last_location_update,
@@ -306,7 +312,7 @@ class TrackingController extends Controller
                     'address' => $booking->dropoff_location,
                 ],
                 'service_type' => 'ride',
-                'eta_minutes' => app(MapsProviderService::class)->estimateEtaMinutes($booking->current_lat, $booking->current_lng, $booking->pickup_lat, $booking->pickup_lng),
+                'eta_minutes' => ! $source['is_online'] ? null : app(MapsProviderService::class)->estimateEtaMinutes($booking->current_lat, $booking->current_lng, $booking->pickup_lat, $booking->pickup_lng),
                 'weather' => app(WeatherProviderService::class)->snapshot($booking->current_lat ?? $booking->pickup_lat, $booking->current_lng ?? $booking->pickup_lng),
                 'protection' => $this->protectionSnapshot((int) $booking->customer_id),
                 'start_verification' => [
@@ -336,22 +342,15 @@ class TrackingController extends Controller
 
         Gate::authorize('updateLocation', $booking);
 
-        $booking->update([
-            'current_lat' => $validated['latitude'],
-            'current_lng' => $validated['longitude'],
-            'current_stop_index' => $validated['current_stop_index'] ?? $booking->current_stop_index,
-            'last_location_update' => now(),
-        ]);
-        $this->storeDriverLocationHistory($request, "tour:{$booking->id}");
+        abort_unless($booking->driverAssignments()->where('driver_id', $request->user()->id)->where('status', 'accepted')->whereIn('role', ['transport', 'both'])->exists(), 403);
+        if (isset($validated['current_stop_index'])) {
+            $count = $booking->tour->itineraries()->count();
+            abort_if($validated['current_stop_index'] >= $count, 422, 'Invalid itinerary stop.');
+            TourBooking::where('tour_schedule_id', $booking->tour_schedule_id)->whereIn('status', ['confirmed', 'in_progress'])
+                ->update(['current_stop_index' => $validated['current_stop_index']]);
+        }
 
-        broadcast(new TourLocationUpdated(
-            $booking,
-            (float) $validated['latitude'],
-            (float) $validated['longitude'],
-            $validated['current_stop_index'] ?? null
-        ));
-
-        return response()->json(['success' => true, 'message' => 'Tour location updated']);
+        return $this->updateDriverLocation($request);
     }
 
     public function updateTourStatus(Request $request, TourBooking $booking)
@@ -387,18 +386,25 @@ class TrackingController extends Controller
                 (string) $request->input('start_pin', ''),
                 $request->user()
             );
+
+            app(\App\Services\TourAttendanceService::class)->markJoined($booking);
         }
 
         $booking->update(['status' => $requestedStatus]);
 
-        if ($requestedStatus === 'completed' && $booking->fresh()->payment_status === 'paid') {
-            app(CommissionService::class)->settleTour($booking->fresh());
+        if ($requestedStatus === 'completed') {
+            $freshBooking = $booking->fresh();
+            // CommissionService routes deposit plans to the guarded settlement service.
+
+            if ($freshBooking->payment_plan || $freshBooking->payment_status === 'paid') {
+                app(\App\Services\CommissionService::class)->settleTour($freshBooking);
+            }
         }
 
         if (in_array($requestedStatus, ['completed', 'cancelled'], true)) {
             DriverAvailability::where('driver_id', $request->user()->id)->update([
-                'is_available' => true,
-                'status' => 'online',
+                'is_available' => ! app(\App\Services\DriverDispatchService::class)->hasActiveWorkload($request->user()),
+                'status' => app(\App\Services\DriverDispatchService::class)->hasActiveWorkload($request->user()) ? 'on_ride' : 'online',
                 'last_updated' => now(),
             ]);
         } elseif ($requestedStatus === 'in_progress') {
@@ -491,8 +497,39 @@ class TrackingController extends Controller
 
         $rental->update(['status' => $requestedStatus]);
 
-        if ($requestedStatus === 'completed' && $rental->fresh()->payment_status === 'paid') {
-            app(CommissionService::class)->settleRental($rental->fresh());
+        if ($requestedStatus === 'completed') {
+            $checklistService = app(\App\Services\RentalChecklistService::class);
+            $missing = $checklistService->validateReturnReadiness($rental);
+
+            if (! empty($missing)) {
+                // Log warning or return info, but don't block
+                \Illuminate\Support\Facades\Log::warning("Rental {$rental->id} completed with missing checklist: ".implode(', ', $missing));
+            } else {
+                $diff = $checklistService->compareChecklists($rental);
+
+                if (isset($diff['odometer_delta']) && $diff['odometer_delta'] > 0) {
+                    $rental->update(['actual_km' => $diff['odometer_delta']]);
+                }
+
+                if (! empty($diff['new_damage_detected'])) {
+                    $rental->incidents()->create([
+                        'customer_id' => $rental->customer_id,
+                        'driver_id' => $rental->driver_id,
+                        'opened_by_type' => 'system',
+                        'opened_by_id' => 0,
+                        'type' => 'damage',
+                        'severity' => 'high',
+                        'status' => 'open',
+                        'title' => 'Damage detected on return checklist',
+                        'description' => 'Damage was flagged in the return checklist compared to handover.',
+                        'reported_at' => now(),
+                    ]);
+                }
+            }
+
+            if ($rental->fresh()->payment_status === 'paid') {
+                app(\App\Services\CommissionService::class)->settleRental($rental->fresh());
+            }
         }
 
         DriverAvailability::where('driver_id', $request->user()->id)->update([
@@ -525,12 +562,16 @@ class TrackingController extends Controller
     public function getTourTrackingInfo(Request $request, TourBooking $booking)
     {
         Gate::authorize('track', $booking);
+        $source = app(\App\Services\JourneyTrackingService::class)->forBooking($booking);
 
         return response()->json([
             'success' => true,
             'data' => [
+                'location_source' => $source['location_source'],
+                'location_reason' => $source['reason'],
+                'tracking_preference' => $source['tracking_preference'],
                 'booking' => $booking->load(['tour.itineraries', 'driverAssignments.driver:id,name,phone']),
-                'current_location' => $booking->current_lat && $booking->current_lng ? [
+                'current_location' => $booking->current_lat !== null && $booking->current_lng !== null ? [
                     'latitude' => $booking->current_lat,
                     'longitude' => $booking->current_lng,
                     'last_update' => $booking->last_location_update,
@@ -562,12 +603,16 @@ class TrackingController extends Controller
     public function getRentalTrackingInfo(Request $request, CarRental $rental)
     {
         Gate::authorize('track', $rental);
+        $source = app(\App\Services\JourneyTrackingService::class)->forBooking($rental);
 
         return response()->json([
             'success' => true,
             'data' => [
+                'location_source' => $source['location_source'],
+                'location_reason' => $source['reason'],
+                'tracking_preference' => $source['tracking_preference'],
                 'rental' => $rental->load(['driver:id,name,phone', 'carCategory']),
-                'current_location' => $rental->current_lat && $rental->current_lng ? [
+                'current_location' => $rental->current_lat !== null && $rental->current_lng !== null ? [
                     'latitude' => $rental->current_lat,
                     'longitude' => $rental->current_lng,
                     'last_update' => $rental->last_location_update,
@@ -590,7 +635,7 @@ class TrackingController extends Controller
                     'address' => $rental->dropoff_location,
                 ],
                 'service_type' => 'rental',
-                'eta_minutes' => app(MapsProviderService::class)->estimateEtaMinutes($rental->current_lat, $rental->current_lng, $rental->pickup_lat, $rental->pickup_lng),
+                'eta_minutes' => ! $source['is_online'] ? null : app(MapsProviderService::class)->estimateEtaMinutes($rental->current_lat, $rental->current_lng, $rental->pickup_lat, $rental->pickup_lng),
                 'weather' => app(WeatherProviderService::class)->snapshot($rental->current_lat ?? $rental->pickup_lat, $rental->current_lng ?? $rental->pickup_lng),
                 'protection' => $this->protectionSnapshot((int) $rental->customer_id),
                 'start_verification' => [
@@ -647,6 +692,7 @@ class TrackingController extends Controller
             'speed' => $request->input('speed'),
             'accuracy' => $request->input('accuracy'),
             'context' => $context ?? $this->driverLocationContext($request),
+            'recorded_at' => $request->input('recorded_at', now()),
         ]);
     }
 
@@ -683,7 +729,7 @@ class TrackingController extends Controller
         $terminal = in_array($status, ['completed', 'cancelled'], true);
         $hasLocation = filled($latitude) && filled($longitude) && filled($lastLocationUpdate);
         $lastUpdate = $lastLocationUpdate ? \Illuminate\Support\Carbon::parse($lastLocationUpdate) : null;
-        $staleAfterSeconds = 120;
+        $staleAfterSeconds = (int) setting('tracking.freshness_seconds', 60);
         $ageSeconds = $lastUpdate ? now()->diffInSeconds($lastUpdate, true) : null;
 
         $state = match (true) {

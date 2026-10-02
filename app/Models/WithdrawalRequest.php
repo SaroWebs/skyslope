@@ -27,9 +27,9 @@ class WithdrawalRequest extends Model
     ];
 
     protected $casts = [
-        'amount'          => 'decimal:2',
+        'amount' => 'decimal:2',
         'account_details' => 'array',
-        'processed_at'    => 'datetime',
+        'processed_at' => 'datetime',
     ];
 
     public function owner(): MorphTo
@@ -47,10 +47,25 @@ class WithdrawalRequest extends Model
         return $this->hasOne(Payout::class)->latestOfMany();
     }
 
-    public function isPending(): bool    { return $this->status === 'pending'; }
-    public function isProcessing(): bool { return $this->status === 'processing'; }
-    public function isCompleted(): bool  { return $this->status === 'completed'; }
-    public function isRejected(): bool   { return $this->status === 'rejected'; }
+    public function isPending(): bool
+    {
+        return $this->status === 'pending';
+    }
+
+    public function isProcessing(): bool
+    {
+        return $this->status === 'processing';
+    }
+
+    public function isCompleted(): bool
+    {
+        return $this->status === 'completed';
+    }
+
+    public function isRejected(): bool
+    {
+        return $this->status === 'rejected';
+    }
 
     public function reject(int $adminId, string $rejectionReason, ?string $adminNotes = null): bool
     {
@@ -83,7 +98,7 @@ class WithdrawalRequest extends Model
     {
         return $this->update([
             'status' => 'rejected',
-            'admin_notes' => 'Payout failed: ' . $error,
+            'admin_notes' => 'Payout failed: '.$error,
             'processed_at' => now(),
         ]);
     }
@@ -91,6 +106,6 @@ class WithdrawalRequest extends Model
     public function scopeForOwner($query, $user)
     {
         return $query->where('owner_type', get_class($user))
-                     ->where('owner_id', $user->id);
+            ->where('owner_id', $user->id);
     }
 }

@@ -79,6 +79,11 @@ class CommissionService
 
     public function settleTour(TourBooking $booking): bool
     {
+        // Deposit/cash-aware settlement requires its own policy and ledger flow (G-60).
+        if ($booking->payment_plan) {
+            return app(TourSettlementService::class)->settle($booking);
+        }
+
         return $this->settleDriverEarnings(
             $booking,
             $booking->assigned_driver_id,
@@ -149,7 +154,7 @@ class CommissionService
             $driver = Driver::find($driverId);
             $driverWallet = $driver ? Wallet::forOwner($driver)->first() : null;
 
-            if (!$driverWallet) {
+            if (! $driverWallet) {
                 throw new \RuntimeException('Driver wallet not found');
             }
 
@@ -162,7 +167,7 @@ class CommissionService
 
             return true;
         } catch (\Throwable $exception) {
-            Log::error('Driver withdrawal failed: ' . $exception->getMessage(), [
+            Log::error('Driver withdrawal failed: '.$exception->getMessage(), [
                 'driver_id' => $driverId,
                 'amount' => $amount,
             ]);
@@ -178,12 +183,12 @@ class CommissionService
         float $commission,
         string $referenceId
     ): bool {
-        if (!$driverId || $grossAmount <= 0 || $booking->status !== 'completed' || $booking->payment_status !== 'paid') {
+        if (! $driverId || $grossAmount <= 0 || $booking->status !== 'completed' || $booking->payment_status !== 'paid') {
             return false;
         }
 
         $driver = Driver::find($driverId);
-        if (!$driver) {
+        if (! $driver) {
             return false;
         }
 

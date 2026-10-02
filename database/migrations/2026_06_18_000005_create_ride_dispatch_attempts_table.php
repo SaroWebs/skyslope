@@ -8,7 +8,7 @@ return new class extends Migration
 {
     public function up(): void
     {
-        if (!Schema::hasTable('ride_dispatch_attempts')) {
+        if (! Schema::hasTable('ride_dispatch_attempts')) {
             Schema::create('ride_dispatch_attempts', function (Blueprint $table) {
                 $table->id();
                 $table->foreignId('ride_booking_id')->constrained('ride_bookings')->cascadeOnDelete();
@@ -27,7 +27,12 @@ return new class extends Migration
                 $table->index(['driver_id', 'status']);
                 $table->index(['ride_booking_id', 'status']);
                 $table->index('expires_at');
-            });
+            $table->index(['status', 'expires_at'], 'idx_rda_status_expires');
+            $table->index(['driver_id', 'status', 'created_at'], 'idx_rda_driver_status_created');
+            $table->unsignedInteger('wave_number')->default(1);
+            $table->index(['ride_booking_id', 'wave_number']);
+            $table->integer('response_time_seconds')->nullable();
+        });
         }
     }
 

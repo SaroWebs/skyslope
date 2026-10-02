@@ -21,7 +21,7 @@ class AdminRoleController extends Controller
 
         return Inertia::render('admin/Roles/Index', [
             'title' => 'Roles & Permissions',
-            'user'  => Auth::user(),
+            'user' => Auth::user(),
             'roles' => $roles,
         ]);
     }
@@ -35,9 +35,9 @@ class AdminRoleController extends Controller
         $grouped = $allPermissions->groupBy('group')->toArray();
 
         return Inertia::render('admin/Roles/Create', [
-            'title'               => 'Create Role',
-            'user'                => Auth::user(),
-            'permissions'         => $allPermissions,
+            'title' => 'Create Role',
+            'user' => Auth::user(),
+            'permissions' => $allPermissions,
             'grouped_permissions' => $grouped,
         ]);
     }
@@ -48,17 +48,17 @@ class AdminRoleController extends Controller
     public function store(Request $request)
     {
         $request->validate([
-            'name'         => 'required|string|max:255|unique:roles,name|regex:/^[a-z_]+$/',
+            'name' => 'required|string|max:255|unique:roles,name|regex:/^[a-z_]+$/',
             'display_name' => 'required|string|max:255',
-            'description'  => 'nullable|string|max:500',
-            'permissions'  => 'nullable|array',
+            'description' => 'nullable|string|max:500',
+            'permissions' => 'nullable|array',
             'permissions.*' => 'integer|exists:permissions,id',
         ]);
 
         $role = Role::create([
-            'name'         => $request->name,
+            'name' => $request->name,
             'display_name' => $request->display_name,
-            'description'  => $request->description,
+            'description' => $request->description,
         ]);
 
         if ($request->permissions) {
@@ -76,8 +76,8 @@ class AdminRoleController extends Controller
         $role->load(['permissions', 'users']);
 
         return Inertia::render('admin/Roles/Show', [
-            'title'       => 'Role Details',
-            'user'        => Auth::user(),
+            'title' => 'Role Details',
+            'user' => Auth::user(),
             'target_role' => $role,
         ]);
     }
@@ -92,10 +92,10 @@ class AdminRoleController extends Controller
         $grouped = $allPermissions->groupBy('group')->toArray();
 
         return Inertia::render('admin/Roles/Edit', [
-            'title'               => 'Edit Role',
-            'user'                => Auth::user(),
-            'target_role'         => $role,
-            'permissions'         => $allPermissions,
+            'title' => 'Edit Role',
+            'user' => Auth::user(),
+            'target_role' => $role,
+            'permissions' => $allPermissions,
             'grouped_permissions' => $grouped,
         ]);
     }
@@ -106,17 +106,17 @@ class AdminRoleController extends Controller
     public function update(Request $request, Role $role)
     {
         $request->validate([
-            'name'         => 'required|string|max:255|unique:roles,name,' . $role->id . '|regex:/^[a-z_]+$/',
+            'name' => 'required|string|max:255|unique:roles,name,'.$role->id.'|regex:/^[a-z_]+$/',
             'display_name' => 'required|string|max:255',
-            'description'  => 'nullable|string|max:500',
-            'permissions'  => 'nullable|array',
+            'description' => 'nullable|string|max:500',
+            'permissions' => 'nullable|array',
             'permissions.*' => 'integer|exists:permissions,id',
         ]);
 
         $role->update([
-            'name'         => $request->name,
+            'name' => $request->name,
             'display_name' => $request->display_name,
-            'description'  => $request->description,
+            'description' => $request->description,
         ]);
 
         $role->permissions()->sync($request->permissions ?? []);

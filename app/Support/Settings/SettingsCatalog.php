@@ -25,6 +25,14 @@ class SettingsCatalog
     public function all(): array
     {
         return [
+            'ride.dispatch.window_minutes' => ['group' => 'ride_dispatch', 'label' => 'Scheduled dispatch lead time', 'description' => 'Release scheduled requests this many minutes before pickup.', 'type' => 'int', 'default' => 15, 'min' => 1, 'max' => 120, 'scopes' => ['global']],
+            'ride.lifecycle.stale_assigned_seconds' => ['group' => 'ride_dispatch', 'label' => 'Abandoned pickup timeout', 'description' => 'Cancel assigned rides that have not started after this many seconds.', 'type' => 'int', 'default' => 7200, 'min' => 300, 'max' => 86400, 'scopes' => ['global']],
+            'ride.lifecycle.stale_in_transit_seconds' => ['group' => 'ride_dispatch', 'label' => 'Long-running ride review threshold', 'description' => 'Flag trips for review without automatically releasing an occupied driver.', 'type' => 'int', 'default' => 86400, 'min' => 3600, 'max' => 604800, 'scopes' => ['global']],
+            'tour.hold_minutes' => ['group' => 'tours', 'label' => 'Unpaid tour seat hold', 'description' => 'Release unpaid reservations after this many minutes.', 'type' => 'int', 'default' => 30, 'min' => 5, 'max' => 1440, 'scopes' => ['global']],
+            'tracking.freshness_seconds' => ['group' => 'ride_dispatch', 'label' => 'Live GPS freshness', 'description' => 'Live GPS freshness. Paid, assigned and disputed bookings are protected.', 'type' => 'int', 'default' => 60, 'min' => 15, 'max' => 600, 'scopes' => ['global']],
+            'ride.request.timeout_seconds' => ['group' => 'ride_dispatch', 'label' => 'Immediate request expiry', 'description' => 'Fixed ten-minute search deadline. Paid expired requests enter the refund workflow; history is preserved.', 'type' => 'int', 'default' => 600, 'min' => 600, 'max' => 600, 'scopes' => ['global']],
+            'ride.retention.days' => ['group' => 'ride_dispatch', 'label' => 'Unanswered request retention (days)', 'description' => 'Unanswered request retention (days). Paid, assigned and disputed bookings are protected.', 'type' => 'int', 'default' => 30, 'min' => 1, 'max' => 365, 'scopes' => ['global']],
+            'ride.retention.purge_enabled' => ['group' => 'ride_dispatch', 'label' => 'Enable deletion of old unanswered requests', 'description' => 'Enable deletion of old unanswered requests. Paid, assigned and disputed bookings are protected.', 'type' => 'bool', 'default' => false, 'min' => 0, 'max' => 1, 'scopes' => ['global']],
             // ---------------------------------------------------------------
             // Ride — dispatch  (App\Services\DriverDispatchService)
             // ---------------------------------------------------------------
@@ -251,6 +259,45 @@ class SettingsCatalog
                 'min' => 0, 'max' => 720, 'scopes' => ['global'],
             ],
 
+            // Rental-specific cancellation tiers (G-42)
+            'cancellation.rental_free_hours' => [
+                'group' => 'cancellation',
+                'label' => 'Rental free-cancel window',
+                'description' => 'No fee if cancelled at least this many hours before rental start.',
+                'type' => 'int', 'default' => 48, 'unit' => 'hours',
+                'min' => 0, 'max' => 720, 'scopes' => ['global'],
+            ],
+            'cancellation.rental_medium_hours' => [
+                'group' => 'cancellation',
+                'label' => 'Rental medium-fee window',
+                'description' => 'Medium fee applies when between this and the free threshold.',
+                'type' => 'int', 'default' => 24, 'unit' => 'hours',
+                'min' => 0, 'max' => 720, 'scopes' => ['global'],
+            ],
+            'cancellation.rental_medium_fee_percent' => [
+                'group' => 'cancellation',
+                'label' => 'Rental medium-cancel fee',
+                'description' => 'Fee charged when cancelling in the medium window (24-48 h before start by default).',
+                'type' => 'percent', 'default' => 0.25, 'unit' => '%',
+                'min' => 0, 'max' => 1, 'scopes' => ['global'],
+            ],
+            'cancellation.rental_late_fee_percent' => [
+                'group' => 'cancellation',
+                'label' => 'Rental late-cancel fee',
+                'description' => 'Fee charged when cancelling within the late window (<24 h before start by default).',
+                'type' => 'percent', 'default' => 0.50, 'unit' => '%',
+                'min' => 0, 'max' => 1, 'scopes' => ['global'],
+            ],
+
+            // Rental settlement — overtime grace (G-43)
+            'rental.overtime_grace_minutes' => [
+                'group' => 'rentals',
+                'label' => 'Overtime grace period',
+                'description' => 'Minutes past scheduled return before overtime charges apply.',
+                'type' => 'int', 'default' => 30, 'unit' => 'minutes',
+                'min' => 0, 'max' => 180, 'scopes' => ['global'],
+            ],
+
             // ---------------------------------------------------------------
             // Tours  (App\Http\Controllers\Api\CustomerAppController::bookTour)
             // ---------------------------------------------------------------
@@ -313,6 +360,13 @@ class SettingsCatalog
                 'description' => 'Refundable security deposit collected per rental. 0 = none.',
                 'type' => 'float', 'default' => 0.0, 'unit' => '₹',
                 'min' => 0, 'max' => 1000000, 'scopes' => ['global', 'category'],
+            ],
+            'rental.hold_minutes' => [
+                'group' => 'rentals',
+                'label' => 'Checkout hold duration',
+                'description' => 'Minutes a reserved car is held while awaiting customer payment confirmation.',
+                'type' => 'int', 'default' => 30, 'unit' => 'minutes',
+                'min' => 5, 'max' => 1440, 'scopes' => ['global', 'category'],
             ],
 
             // ---------------------------------------------------------------

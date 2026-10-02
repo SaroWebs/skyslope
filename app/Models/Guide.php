@@ -53,17 +53,17 @@ class Guide extends Authenticatable
     protected function casts(): array
     {
         return [
-            'email_verified_at'    => 'datetime',
-            'phone_verified_at'    => 'datetime',
-            'date_of_birth'        => 'date',
+            'email_verified_at' => 'datetime',
+            'phone_verified_at' => 'datetime',
+            'date_of_birth' => 'date',
             'certification_expiry' => 'date',
-            'approved_at'          => 'datetime',
-            'languages'            => 'array',
-            'specializations'      => 'array',
-            'is_active'            => 'boolean',
-            'is_approved'          => 'boolean',
-            'rating'               => 'decimal:2',
-            'password'             => 'hashed',
+            'approved_at' => 'datetime',
+            'languages' => 'array',
+            'specializations' => 'array',
+            'is_active' => 'boolean',
+            'is_approved' => 'boolean',
+            'rating' => 'decimal:2',
+            'password' => 'hashed',
         ];
     }
 
@@ -86,9 +86,28 @@ class Guide extends Authenticatable
 
     // ── Helpers ────────────────────────────────────────────────────
 
-    public function isApproved(): bool { return (bool) $this->is_approved; }
-    public function isAdmin(): bool    { return false; }
-    public function isDriver(): bool   { return false; }
-    public function isCustomer(): bool { return false; }
-    public function isGuide(): bool    { return true; }
+    public function isApproved(): bool
+    {
+        return (bool) $this->is_approved;
+    }
+
+    public function isAdmin(): bool
+    {
+        return false;
+    }
+
+    public function isDriver(): bool
+    {
+        return false;
+    }
+
+    public function isCustomer(): bool
+    {
+        return false;
+    }
+
+    public function isGuide(): bool
+    {
+        return true;
+    }
 }

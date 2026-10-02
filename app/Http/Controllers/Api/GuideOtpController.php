@@ -25,7 +25,7 @@ class GuideOtpController extends Controller
 
         // Only pre-approved existing guides can log in
         $guide = Guide::where('phone', $phone)->first();
-        if (!$guide) {
+        if (! $guide) {
             return response()->json([
                 'success' => false,
                 'message' => 'No guide account found with this phone number. Please contact admin.',
@@ -52,27 +52,27 @@ class GuideOtpController extends Controller
 
         $result = $this->otpService->verify($phone, $code, 'guide');
 
-        if (!$result['success']) {
+        if (! $result['success']) {
             return response()->json($result, $result['status_code'] ?? 422);
         }
 
         $guide = Guide::where('phone', $phone)->first();
 
-        if (!$guide) {
+        if (! $guide) {
             return response()->json([
                 'success' => false,
                 'message' => 'Guide account not found.',
             ], 404);
         }
 
-        if (!$guide->is_active) {
+        if (! $guide->is_active) {
             return response()->json([
                 'success' => false,
                 'message' => 'Guide account is inactive. Please contact admin.',
             ], 403);
         }
 
-        if (!$guide->is_approved) {
+        if (! $guide->is_approved) {
             return response()->json([
                 'success' => false,
                 'message' => 'Guide account is pending approval.',

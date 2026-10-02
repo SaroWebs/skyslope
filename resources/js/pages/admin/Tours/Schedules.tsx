@@ -101,6 +101,7 @@ export default function Schedules({ title, tour, schedules, drivers, vehicles }:
     const [assignmentOpened, { open: openAssignment, close: closeAssignment }] = useDisclosure(false);
     const [editingSchedule, setEditingSchedule] = useState<TourSchedule | null>(null);
     const [assignmentSchedule, setAssignmentSchedule] = useState<TourSchedule | null>(null);
+    const [amendmentReason, setAmendmentReason] = useState('');
 
     const [formData, setFormData] = useState({
         departure_date: '',
@@ -124,6 +125,7 @@ export default function Schedules({ title, tour, schedules, drivers, vehicles }:
     };
 
     const handleEdit = (schedule: TourSchedule) => {
+        setAmendmentReason('');
         setEditingSchedule(schedule);
         setFormData({
             departure_date: schedule.departure_date,
@@ -175,6 +177,7 @@ export default function Schedules({ title, tour, schedules, drivers, vehicles }:
         e.preventDefault();
         const payload = {
             ...formData,
+            amendment_reason: amendmentReason,
             price_override: formData.price_override ? Number(formData.price_override) : null,
             child_price_override: formData.child_price_override ? Number(formData.child_price_override) : null,
         };
@@ -278,6 +281,7 @@ export default function Schedules({ title, tour, schedules, drivers, vehicles }:
                                         </Table.Td>
                                         <Table.Td>
                                             <Group gap={8} justify="flex-end">
+                                                <Button component={Link} href={`/admin/tours/${tour.id}/schedules/${schedule.id}/manifest`} variant="subtle" size="xs">Manifest</Button>
                                                 <Tooltip label="Assign tour driver role">
                                                     <ActionIcon onClick={() => openAssignmentModal(schedule)} color="orange" variant="light">
                                                         <Truck size={16} />
@@ -352,6 +356,7 @@ export default function Schedules({ title, tour, schedules, drivers, vehicles }:
                             onChange={(e) => setFormData({ ...formData, child_price_override: e.target.value })}
                         />
                         <TextInput label="Operations Notes" value={formData.notes} onChange={(e) => setFormData({ ...formData, notes: e.target.value })} />
+                        {editingSchedule && <TextInput label="Reason for schedule change" required maxLength={2000} value={amendmentReason} onChange={(e) => setAmendmentReason(e.currentTarget.value)} />}
                         <Select
                             label="Status"
                             data={[
@@ -371,6 +376,7 @@ export default function Schedules({ title, tour, schedules, drivers, vehicles }:
             </Modal>
 
             <Modal opened={assignmentOpened} onClose={closeAssignment} title="Assign Tour Driver Role" size="md">
+                <Text size="sm" c="dimmed" mb="md">Resource conflicts currently reserve whole calendar days across tours and rentals. A short ride on a boundary day may make a driver unavailable.</Text>
                 <form onSubmit={handleAssignmentSubmit}>
                     <Stack>
                         <Text size="sm" color="dimmed">

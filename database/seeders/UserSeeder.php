@@ -2,11 +2,11 @@
 
 namespace Database\Seeders;
 
-use Illuminate\Database\Seeder;
-use Illuminate\Support\Facades\Hash;
 use App\Models\Customer;
 use App\Models\Driver;
 use App\Models\User;
+use Illuminate\Database\Seeder;
+use Illuminate\Support\Facades\Hash;
 
 class UserSeeder extends Seeder
 {
@@ -104,7 +104,7 @@ class UserSeeder extends Seeder
 
             if ($accountType === 'driver') {
                 unset($userData['account_type']);
-                
+
                 // Add driver specific fields
                 $userData['is_approved'] = true;
                 $userData['is_active'] = true;

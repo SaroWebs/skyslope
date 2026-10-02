@@ -18,8 +18,8 @@ class AdminCustomerController extends Controller
         if ($search = $request->input('search')) {
             $query->where(function ($q) use ($search) {
                 $q->where('name', 'like', "%{$search}%")
-                  ->orWhere('email', 'like', "%{$search}%")
-                  ->orWhere('phone', 'like', "%{$search}%");
+                    ->orWhere('email', 'like', "%{$search}%")
+                    ->orWhere('phone', 'like', "%{$search}%");
             });
         }
 
@@ -45,9 +45,9 @@ class AdminCustomerController extends Controller
     public function show(Customer $customer)
     {
         $customer->load([
-            'rideBookings' => fn($q) => $q->latest()->take(10),
-            'carRentals' => fn($q) => $q->latest()->take(10),
-            'bookings' => fn($q) => $q->latest()->take(10),
+            'rideBookings' => fn ($q) => $q->latest()->take(10),
+            'carRentals' => fn ($q) => $q->latest()->take(10),
+            'bookings' => fn ($q) => $q->latest()->take(10),
             'wallet',
         ]);
 
@@ -82,13 +82,13 @@ class AdminCustomerController extends Controller
 
         if (request()->expectsJson() || request()->is('api/*')) {
             return response()->json([
-                'message' => "Customer {$customer->name} has been " . ($newStatus === 'suspended' ? 'suspended' : 'activated') . ".",
+                'message' => "Customer {$customer->name} has been ".($newStatus === 'suspended' ? 'suspended' : 'activated').'.',
                 'customer' => $customer->fresh(),
             ]);
         }
 
         return redirect()->back()->with('success',
-            "Customer {$customer->name} has been " . ($newStatus === 'suspended' ? 'suspended' : 'activated') . "."
+            "Customer {$customer->name} has been ".($newStatus === 'suspended' ? 'suspended' : 'activated').'.'
         );
     }
 
@@ -111,8 +111,8 @@ class AdminCustomerController extends Controller
     {
         $request->validate([
             'name' => 'required|string|max:255',
-            'email' => 'nullable|email|unique:customers,email,' . $customer->id,
-            'phone' => 'required|string|unique:customers,phone,' . $customer->id,
+            'email' => 'nullable|email|unique:customers,email,'.$customer->id,
+            'phone' => 'required|string|unique:customers,phone,'.$customer->id,
             'status' => 'required|in:active,suspended',
             'date_of_birth' => 'nullable|date',
             'gender' => 'nullable|in:male,female,other',

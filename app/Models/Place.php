@@ -38,19 +38,19 @@ class Place extends Model
     ];
 
     protected $casts = [
-        'latitude'     => 'decimal:8',
-        'longitude'    => 'decimal:8',
-        'rating'       => 'decimal:2',
+        'latitude' => 'decimal:8',
+        'longitude' => 'decimal:8',
+        'rating' => 'decimal:2',
         'review_count' => 'integer',
-        'tags'         => 'array',
+        'tags' => 'array',
         'google_rating' => 'decimal:2',
         'google_review_count' => 'integer',
         'google_reviews' => 'array',
         'google_photos' => 'array',
         'google_details' => 'array',
         'google_synced_at' => 'datetime',
-        'is_active'    => 'boolean',
-        'is_featured'  => 'boolean',
+        'is_active' => 'boolean',
+        'is_featured' => 'boolean',
     ];
 
     public function category(): BelongsTo

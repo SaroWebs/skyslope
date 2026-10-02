@@ -2,11 +2,11 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Validation\ValidationException;
-use App\Models\User;
 
 class AuthController extends Controller
 {
@@ -37,20 +37,20 @@ class AuthController extends Controller
         $user = User::where('email', $request->email)->first();
 
         // Check if user exists and password is correct
-        if (!$user || !Hash::check($request->password, $user->password)) {
+        if (! $user || ! Hash::check($request->password, $user->password)) {
             throw ValidationException::withMessages([
                 'email' => ['The provided credentials are incorrect.'],
             ]);
         }
 
         // Check if user is active (if you have an active field)
-        if (isset($user->active) && !$user->active) {
+        if (isset($user->active) && ! $user->active) {
             throw ValidationException::withMessages([
                 'email' => ['Your account is deactivated. Please contact administrator.'],
             ]);
         }
-        
-        if (!$user->isAdmin()) {
+
+        if (! $user->isAdmin()) {
             throw ValidationException::withMessages([
                 'email' => ['This login is restricted to admin users.'],
             ]);

@@ -9,14 +9,14 @@ class GooglePlaceDetailsService
 {
     public function sync(Place $place, bool $force = false): array
     {
-        if (!$place->google_place_id) {
+        if (! $place->google_place_id) {
             return [
                 'status' => 'skipped',
                 'message' => 'Place has no Google place id.',
             ];
         }
 
-        if (!$force && $this->isFresh($place)) {
+        if (! $force && $this->isFresh($place)) {
             return [
                 'status' => 'fresh',
                 'message' => 'Google place cache is still fresh.',
@@ -24,7 +24,7 @@ class GooglePlaceDetailsService
         }
 
         $apiKey = config('services.google_maps.api_key');
-        if (!$apiKey) {
+        if (! $apiKey) {
             return [
                 'status' => 'skipped',
                 'message' => 'Google Maps API key is not configured.',
@@ -42,7 +42,7 @@ class GooglePlaceDetailsService
             ]),
         ]);
 
-        if (!$response->ok()) {
+        if (! $response->ok()) {
             return [
                 'status' => 'failed',
                 'message' => 'Google Place Details request failed.',
@@ -82,7 +82,7 @@ class GooglePlaceDetailsService
 
     public function isFresh(Place $place): bool
     {
-        if (!$place->google_synced_at) {
+        if (! $place->google_synced_at) {
             return false;
         }
 

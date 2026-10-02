@@ -47,7 +47,7 @@ it('creates a tour first and derives duration from sequential itinerary days', f
             'title' => $place->name,
             'start_location' => $index === 0 ? 'Shillong' : 'Village stop',
             'end_location' => $place->name,
-            'details' => "Plan for visit ".($index + 1),
+            'details' => 'Plan for visit '.($index + 1),
             'activities' => ['Guided visit'],
             'meals_included' => ['breakfast'],
             'distance_km' => '85',
@@ -155,7 +155,7 @@ it('completes the customer booking and cancellation cycle while keeping seat inv
     $this->getJson("/api/customer-app/tour-bookings/{$bookingId}/next-steps")
         ->assertOk()
         ->assertJsonPath('data.service_type', 'tour')
-        ->assertJsonPath('data.actions.can_check_in', true);
+        ->assertJsonPath('data.actions.can_check_in', false); // Cash booking is still pending confirmation.
 
     $this->postJson("/api/customer-app/tour-bookings/{$bookingId}/cancel", [
         'reason' => 'Plans changed',

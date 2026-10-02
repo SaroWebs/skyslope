@@ -38,21 +38,24 @@ class SendBookingLifecycleNotification implements ShouldQueue
 
     public function handle(NotificationService $notifications): void
     {
-        $booking = $this->booking();
-        if (! $booking || ! $booking->customer) {
-            Log::warning('Booking notification skipped: booking or customer missing', $this->logContext());
+        $target = $this->target();
+        $recipient = $this->recipient($target);
+        if (! $target || ! $recipient) {
+            Log::warning('Booking notification skipped: booking or recipient missing', $this->logContext());
 
             return;
         }
 
-        $content = $this->contentFor($booking);
-        $channels = $this->channelsFor($booking);
+        $content = $this->contentFor($target);
+        $channels = $this->channelsFor($target, $recipient);
 
         // Write durable outbox rows rather than delivering inline. Delivery,
         // retry/backoff and dead-lettering are owned by ProcessOutboxMessage;
         // the dedup key makes a job redelivery enqueue each channel exactly once.
-        $messages = $notifications->enqueue($booking->customer, $channels, $content, [
-            'dedup_key' => "booking:{$this->bookingType}:{$this->bookingId}:{$this->action}",
+        $amendmentSuffix = $this->action === 'booking.departure_amended' ? ':'.($this->metadata['amendment_id'] ?? 'legacy') : '';
+        $reminderSuffix = $this->action === 'booking.departure_reminder' ? ':'.($this->metadata['reminder_window'] ?? '24h') : '';
+        $messages = $notifications->enqueue($recipient, $channels, $content, [
+            'dedup_key' => "booking:{$this->bookingType}:{$this->bookingId}:{$this->action}{$amendmentSuffix}{$reminderSuffix}",
         ]);
 
         Log::info('Booking notification enqueued to outbox', $this->logContext([
@@ -68,30 +71,53 @@ class SendBookingLifecycleNotification implements ShouldQueue
         ]));
     }
 
-    private function booking(): ?Model
+    private function target(): ?Model
     {
         return match ($this->bookingType) {
             'ride' => RideBooking::with('customer', 'driver')->find($this->bookingId),
             'tour' => TourBooking::with('customer', 'assignedDriver')->find($this->bookingId),
             'rental' => CarRental::with('customer', 'driver')->find($this->bookingId),
+            'driver' => \App\Models\Driver::find($this->bookingId),
             default => null,
         };
+    }
+
+    private function recipient(?Model $target): ?object
+    {
+        if (! $target) {
+            return null;
+        }
+
+        if ($target instanceof \App\Models\Driver) {
+            return $target;
+        }
+
+        return $target->customer ?? null;
     }
 
     /**
      * @return array<int, string>
      */
-    private function channelsFor(Model $booking): array
+    private function channelsFor(Model $target, object $recipient): array
     {
+        if ($target instanceof \App\Models\Driver) {
+            $channels = ['sms', 'whatsapp'];
+            if (! empty($recipient->email)) {
+                $channels[] = 'email';
+            }
+
+            return $channels;
+        }
+
         $channels = [];
 
-        if ($booking->sms_notification ?? true) {
+        if ($target->sms_notification ?? true) {
             $channels[] = 'sms';
         }
-        if ($booking->whatsapp_notification ?? true) {
+        if ($target->whatsapp_notification ?? true) {
             $channels[] = 'whatsapp';
         }
-        if (($booking->email_notification ?? false) && ! empty($booking->customer?->email)) {
+        if (($target->email_notification ?? false) && ! empty($recipient->email)) {
             $channels[] = 'email';
         }
 
@@ -107,15 +133,19 @@ class SendBookingLifecycleNotification implements ShouldQueue
         $bookingNumber = $booking->booking_number ?: (string) $booking->id;
         $message = match ($this->action) {
             'booking.created' => "{$label} booking #{$bookingNumber} has been created.",
+            'booking.confirmed' => "{$label} booking #{$bookingNumber} is confirmed after online payment. Check your booking for any remaining cash balance.",
             'driver.assigned' => "A driver has been assigned to {$label} booking #{$bookingNumber}.",
             'booking.accepted' => "{$label} booking #{$bookingNumber} has been accepted.",
             'booking.declined' => "{$label} booking #{$bookingNumber} has been declined.",
             'booking.started' => "{$label} booking #{$bookingNumber} has started.",
             'booking.completed' => "{$label} booking #{$bookingNumber} has been completed.",
             'booking.cancelled' => "{$label} booking #{$bookingNumber} has been cancelled.",
+            'booking.departure_amended' => "{$label} booking #{$bookingNumber} has moved to departure ".($this->metadata['schedule_id'] ?? '').' on '.($this->metadata['travel_date'] ?? '').'. Your agreed price is unchanged. Check your booking for departure details.',
+            'booking.departure_reminder' => "Reminder: Your {$label} booking #{$bookingNumber} departs on ".($this->metadata['travel_date'] ?? '').' at '.($this->metadata['departure_time'] ?? '').'. Departure point: '.($this->metadata['departure_point'] ?? 'standard pickup').'. Have a safe journey!',
             'payment.paid' => "Payment received for {$label} booking #{$bookingNumber}.",
             'payment.failed' => "Payment failed for {$label} booking #{$bookingNumber}.",
             'refund.processed' => "Refund processed for {$label} booking #{$bookingNumber}.",
+            'rental.driver_assigned' => 'You have been assigned to Car Rental #'.($this->metadata['booking_number'] ?? $this->metadata['rental_id'] ?? '').' from '.($this->metadata['start_date'] ?? '').' to '.($this->metadata['end_date'] ?? '').'. Pickup: '.($this->metadata['pickup_location'] ?? '').'.',
             default => "{$label} booking #{$bookingNumber} update: {$this->action}.",
         };
 

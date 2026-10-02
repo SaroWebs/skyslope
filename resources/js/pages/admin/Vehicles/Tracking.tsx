@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Head, Link, router } from '@inertiajs/react';
 import {
     Alert,
+    Select,
     Badge,
     Button,
     Card,
@@ -57,6 +58,7 @@ interface LocationPoint {
 
 interface Vehicle {
     id: number;
+    tracking_preference?: string;
     registration_number: string;
     make: string;
     model: string;
@@ -152,6 +154,7 @@ export default function VehicleTracking({ title, vehicle, tracker: initialTracke
 
     return (
         <AdminLayout title={title}>
+            <Paper p="md" mb="md" withBorder><Group justify="space-between"><div><Text fw={600}>Tracking source</Text><Text size="sm" c="dimmed">Automatic uses a fresh vehicle tracker, then the assigned driver's phone.</Text></div><Select aria-label="Tracking source" defaultValue={vehicle.tracking_preference || 'automatic'} data={[{value:'automatic',label:'Automatic'},{value:'driver_app',label:'Driver phone'},{value:'vehicle_gps',label:'Vehicle tracker'}]} onChange={(value) => value && router.post(`/admin/vehicles/${vehicle.id}/tracking-preference`, {tracking_preference:value}, {preserveScroll:true})} /></Group></Paper>
             <Head title={`${vehicle.registration_number} GPS`} />
             <Stack gap="lg">
                 <Group justify="space-between" align="flex-start">

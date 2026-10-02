@@ -2,12 +2,14 @@ import { Head, Link } from '@inertiajs/react';
 import { Badge, Box, Button, Group, Paper, Progress, SimpleGrid, Stack, Text, ThemeIcon, Timeline } from '@mantine/core';
 import { ArrowLeft, CalendarDays, CarFront, IndianRupee, MapPin, Pencil, Route, Users } from 'lucide-react';
 import AdminLayout from '../../../layouts/AdminLayout';
+import TourBrochurePanel from '../../../components/TourBrochurePanel';
 
 type Assignment = { id: number; role: string; status: string; driver?: { name: string; phone?: string }; vehicle?: { registration_number: string; make?: string; model?: string } };
 type Schedule = { id: number; departure_date: string; return_date: string; departure_time?: string; departure_point?: string; total_seats: number; booked_seats: number; reserved_seats: number; status: string; driver_assignments?: Assignment[] };
 type Itinerary = { id: number; day_index?: number; day_number: number; time?: string; title: string; details?: string; description?: string; place?: { name: string } };
 type Booking = { id: number; booking_number?: string; status: string; total_price: number; created_at: string; customer?: { name: string; phone?: string } };
 type Tour = {
+    brochure_name?: string | null; brochure_uploaded_at?: string | null;
     id: number; title: string; short_description?: string; description?: string; region?: string; start_location?: string; end_location?: string;
     duration_days: number; duration_nights: number; min_group_size: number; max_group_size: number; price_per_person: number; child_price: number;
     discount: number; available_from?: string; available_to?: string; is_active: boolean; is_featured: boolean; difficulty: string;
@@ -42,6 +44,8 @@ export default function Show({ title, tour }: { title: string; tour: Tour }) {
                     <Metric icon={<Users size={18} />} label="Seat inventory" value={`${soldSeats} / ${inventory}`} detail={`${tour.bookings.length} customer bookings`} />
                     <Metric icon={<CarFront size={18} />} label="Transport roles" value={String(assignments.length)} detail={assignments.length ? 'Assigned across departures' : 'Driver assignment required'} />
                 </SimpleGrid>
+
+                <TourBrochurePanel tour={tour} />
 
                 <SimpleGrid cols={{ base: 1, lg: 2 }} spacing="lg">
                     <Stack gap="lg">

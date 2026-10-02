@@ -42,7 +42,7 @@ class PlaceCategoryController extends Controller
     {
         $category = PlaceCategory::find($id);
 
-        if (!$category) {
+        if (! $category) {
             return response()->json([
                 'success' => false,
                 'message' => 'Category not found',
@@ -61,7 +61,7 @@ class PlaceCategoryController extends Controller
     public function store(Request $request)
     {
         // Check if user has admin role
-        if (!$request->user()->hasRole('admin')) {
+        if (! $request->user()->hasRole('admin')) {
             return response()->json([
                 'success' => false,
                 'message' => 'Unauthorized',
@@ -98,7 +98,7 @@ class PlaceCategoryController extends Controller
     public function update(Request $request, $id)
     {
         // Check if user has admin role
-        if (!$request->user()->hasRole('admin')) {
+        if (! $request->user()->hasRole('admin')) {
             return response()->json([
                 'success' => false,
                 'message' => 'Unauthorized',
@@ -107,7 +107,7 @@ class PlaceCategoryController extends Controller
 
         $category = PlaceCategory::find($id);
 
-        if (!$category) {
+        if (! $category) {
             return response()->json([
                 'success' => false,
                 'message' => 'Category not found',
@@ -115,7 +115,7 @@ class PlaceCategoryController extends Controller
         }
 
         $validator = Validator::make($request->all(), [
-            'name' => 'string|max:100|unique:place_categories,name,' . $id,
+            'name' => 'string|max:100|unique:place_categories,name,'.$id,
             'description' => 'nullable|string|max:500',
             'icon' => 'nullable|string|max:50',
             'color' => 'nullable|string|regex:/^#[0-9A-F]{6}$/i',
@@ -144,7 +144,7 @@ class PlaceCategoryController extends Controller
     public function destroy(Request $request, $id)
     {
         // Check if user has admin role
-        if (!$request->user()->hasRole('admin')) {
+        if (! $request->user()->hasRole('admin')) {
             return response()->json([
                 'success' => false,
                 'message' => 'Unauthorized',
@@ -153,7 +153,7 @@ class PlaceCategoryController extends Controller
 
         $category = PlaceCategory::find($id);
 
-        if (!$category) {
+        if (! $category) {
             return response()->json([
                 'success' => false,
                 'message' => 'Category not found',

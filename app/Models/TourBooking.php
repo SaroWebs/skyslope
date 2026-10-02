@@ -17,6 +17,9 @@ class TourBooking extends Model
 
     protected $fillable = [
         'booking_number',
+        'payment_plan',
+        'online_paid_minor',
+        'hold_expires_at',
         'customer_id',
         'tour_id',
         'tour_schedule_id',
@@ -57,13 +60,39 @@ class TourBooking extends Model
         'whatsapp_notification',
         'email_notification',
         'sms_notification',
+        'attendance_status',
+        'joined_at',
+        'waiting_started_at',
+        'waiting_deadline_at',
+        'no_show_at',
+        'no_show_marked_by',
+        'no_show_review_status',
+        'margin_minor',
+        'driver_entitlement_minor',
+        'cash_collected_minor',
+        'net_settlement_minor',
+        'settled_at',
+        'settlement_breakdown',
     ];
 
     protected $casts = [
+        'payment_plan' => 'array',
+        'settlement_breakdown' => 'array',
+        'online_paid_minor' => 'integer',
+        'margin_minor' => 'integer',
+        'driver_entitlement_minor' => 'integer',
+        'cash_collected_minor' => 'integer',
+        'net_settlement_minor' => 'integer',
+        'settled_at' => 'datetime',
+        'hold_expires_at' => 'datetime',
         'travel_date' => 'date',
         'cancelled_at' => 'datetime',
         'refunded_at' => 'datetime',
         'last_location_update' => 'datetime',
+        'joined_at' => 'datetime',
+        'waiting_started_at' => 'datetime',
+        'waiting_deadline_at' => 'datetime',
+        'no_show_at' => 'datetime',
         'whatsapp_notification' => 'boolean',
         'email_notification' => 'boolean',
         'sms_notification' => 'boolean',
@@ -85,7 +114,28 @@ class TourBooking extends Model
     protected static function boot()
     {
         parent::boot();
+        static::updating(function ($booking) {
+            if (! $booking->getOriginal('payment_plan')) {
+                return;
+            }
+            if ($booking->isDirty('payment_plan') || $booking->isDirty('total_price')) {
+                throw \Illuminate\Validation\ValidationException::withMessages(['booking' => 'A tour deposit payment plan is immutable.']);
+            }
+            if ($booking->payment_status === 'paid' && (int) $booking->online_paid_minor + app(\App\Services\TourSettlementService::class)->cashCollectedMinor($booking) < (int) $booking->payment_plan['total_minor']) {
+                throw \Illuminate\Validation\ValidationException::withMessages(['payment_status' => 'A partial online deposit is not full payment.']);
+            }
+            if (in_array($booking->status, ['confirmed', 'in_progress', 'completed'], true)
+                && (int) $booking->online_paid_minor < (int) $booking->payment_plan['selected_minor']) {
+                throw \Illuminate\Validation\ValidationException::withMessages(['booking' => 'Verified online deposit is required before confirming this tour.']);
+            }
+        });
         static::creating(function ($booking) {
+            if (config('tour_deposits.enabled') && ! $booking->payment_plan) {
+                throw \Illuminate\Validation\ValidationException::withMessages(['booking' => 'New tour reservations require a deposit payment plan.']);
+            }
+            if ($booking->payment_plan && ($booking->status !== 'pending' || (int) $booking->online_paid_minor !== 0)) {
+                throw \Illuminate\Validation\ValidationException::withMessages(['booking' => 'Deposit reservations must begin unpaid and pending.']);
+            }
             if (empty($booking->booking_number)) {
                 $booking->booking_number = static::generateBookingNumber();
             }

@@ -6,11 +6,11 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
-use App\Models\Driver;
-use App\Models\Guide;
 
 class Tour extends Model
 {
+    protected $hidden = ['brochure_path'];
+
     protected $fillable = [
         'tour_category_id',
         'title',
@@ -42,18 +42,19 @@ class Tour extends Model
     ];
 
     protected $casts = [
-        'available_from'   => 'date',
-        'available_to'     => 'date',
-        'highlights'       => 'array',
-        'inclusions'       => 'array',
-        'exclusions'       => 'array',
-        'faqs'             => 'array',
-        'gallery'          => 'array',
-        'is_active'        => 'boolean',
-        'is_featured'      => 'boolean',
+        'brochure_uploaded_at' => 'datetime',
+        'available_from' => 'date',
+        'available_to' => 'date',
+        'highlights' => 'array',
+        'inclusions' => 'array',
+        'exclusions' => 'array',
+        'faqs' => 'array',
+        'gallery' => 'array',
+        'is_active' => 'boolean',
+        'is_featured' => 'boolean',
         'price_per_person' => 'decimal:2',
-        'child_price'      => 'decimal:2',
-        'discount'         => 'decimal:2',
+        'child_price' => 'decimal:2',
+        'discount' => 'decimal:2',
     ];
 
     // ── Relationships ──────────────────────────────────────────────
@@ -84,21 +85,31 @@ class Tour extends Model
     public function drivers(): BelongsToMany
     {
         return $this->belongsToMany(Driver::class, 'tour_driver_assignments', 'tour_schedule_id', 'driver_id')
-                    ->join('tour_schedules', 'tour_driver_assignments.tour_schedule_id', '=', 'tour_schedules.id')
-                    ->where('tour_schedules.tour_id', $this->getKey())
-                    ->using(TourDriverAssignment::class)
-                    ->withPivot('vehicle_id', 'status', 'fee', 'notes')
-                    ->withTimestamps();
+            ->join('tour_schedules', 'tour_driver_assignments.tour_schedule_id', '=', 'tour_schedules.id')
+            ->where('tour_schedules.tour_id', $this->getKey())
+            ->using(TourDriverAssignment::class)
+            ->withPivot('vehicle_id', 'status', 'fee', 'notes')
+            ->withTimestamps();
     }
 
     public function guides(): BelongsToMany
     {
         return $this->belongsToMany(Guide::class, 'tour_guide_assignments', 'tour_schedule_id', 'guide_id')
-                    ->join('tour_schedules', 'tour_guide_assignments.tour_schedule_id', '=', 'tour_schedules.id')
-                    ->where('tour_schedules.tour_id', $this->getKey())
-                    ->using(TourGuideAssignment::class)
-                    ->withPivot('role', 'status', 'fee', 'notes')
-                    ->withTimestamps();
+            ->join('tour_schedules', 'tour_guide_assignments.tour_schedule_id', '=', 'tour_schedules.id')
+            ->where('tour_schedules.tour_id', $this->getKey())
+            ->using(TourGuideAssignment::class)
+            ->withPivot('role', 'status', 'fee', 'notes')
+            ->withTimestamps();
+    }
+
+    public function wishlistItems()
+    {
+        return $this->hasMany(Wishlist::class, 'service_id', 'id')->where('service_type', 'tour');
+    }
+
+    public function isInWishlistFor(int $customerId): bool
+    {
+        return $this->wishlistItems()->where('customer_id', $customerId)->exists();
     }
 
     // ── Helpers ────────────────────────────────────────────────────
@@ -110,17 +121,27 @@ class Tour extends Model
 
     public function getDurationLabelAttribute(): string
     {
-        $d = $this->duration_days . 'D';
-        $n = $this->duration_nights . 'N';
+        $d = $this->duration_days.'D';
+        $n = $this->duration_nights.'N';
+
         return "{$d}/{$n}";
     }
 
-    public function getNextAvailableSchedule(): ?TourSchedule
+    public function getNextAvailableSchedule(int $guests = 1): ?TourSchedule
     {
         return $this->schedules()
-            ->where('status', 'open')
-            ->where('departure_date', '>=', now()->toDateString())
+            ->bookable($guests)
+            ->orderByRaw('COALESCE(departure_at, departure_date) ASC')
+            ->orderBy('id', 'ASC')
             ->first();
+    }
+
+    /**
+     * Check if the tour meets customer availability and group size constraints.
+     */
+    public function isAvailableForGuests(int $guests = 1): bool
+    {
+        return $this->exists && static::query()->whereKey($this->getKey())->bookableForGuests($guests)->exists();
     }
 
     /**
@@ -129,5 +150,23 @@ class Tour extends Model
     public function scopeActive($query)
     {
         return $query->where('is_active', true);
+    }
+
+    /**
+     * Scope a query to include tours bookable for a given guest count.
+     */
+    public function scopeBookableForGuests($query, int $guests = 1)
+    {
+        $localDate = now()->timezone(config('app.business_timezone', 'Asia/Kolkata'))->toDateString();
+        $query->active()
+            ->where(fn ($q) => $q->whereNull('available_from')->orWhereDate('available_from', '<=', $localDate))
+            ->where(fn ($q) => $q->whereNull('available_to')->orWhereDate('available_to', '>=', $localDate));
+
+        if (setting('tour.enforce_group_size', false)) {
+            $query->where(fn ($q) => $q->whereNull('min_group_size')->orWhere('min_group_size', '<=', $guests))
+                ->where(fn ($q) => $q->whereNull('max_group_size')->orWhere('max_group_size', '>=', $guests));
+        }
+
+        return $query;
     }
 }

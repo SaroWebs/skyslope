@@ -92,8 +92,8 @@ class MigrateGuidesToDrivers extends Command
 
         $created = false;
 
-        if (!$driver) {
-            $driver = new Driver();
+        if (! $driver) {
+            $driver = new Driver;
             $created = true;
         }
 

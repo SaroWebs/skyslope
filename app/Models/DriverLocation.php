@@ -17,14 +17,16 @@ class DriverLocation extends Model
         'speed',
         'accuracy',
         'context',
+        'recorded_at',
     ];
 
     protected $casts = [
-        'latitude'  => 'decimal:8',
+        'recorded_at' => 'datetime',
+        'latitude' => 'decimal:8',
         'longitude' => 'decimal:8',
-        'heading'   => 'decimal:2',
-        'speed'     => 'decimal:2',
-        'accuracy'  => 'decimal:2',
+        'heading' => 'decimal:2',
+        'speed' => 'decimal:2',
+        'accuracy' => 'decimal:2',
     ];
 
     public function driver(): BelongsTo

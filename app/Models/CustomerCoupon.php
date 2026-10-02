@@ -22,6 +22,8 @@ class CustomerCoupon extends Model
         'starts_at',
         'ends_at',
         'is_active',
+        'is_deal',
+        'deal_tag',
         'metadata',
     ];
 
@@ -34,6 +36,7 @@ class CustomerCoupon extends Model
         'starts_at' => 'datetime',
         'ends_at' => 'datetime',
         'is_active' => 'boolean',
+        'is_deal' => 'boolean',
     ];
 
     public function redemptions(): HasMany

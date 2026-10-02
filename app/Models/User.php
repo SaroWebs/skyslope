@@ -30,7 +30,7 @@ class User extends Authenticatable
     {
         return [
             'email_verified_at' => 'datetime',
-            'password'          => 'hashed',
+            'password' => 'hashed',
         ];
     }
 
@@ -46,7 +46,7 @@ class User extends Authenticatable
         $role = Role::where('name', $roleName)->first();
 
         // Backward compatibility: older datasets use super_admin instead of admin
-        if (!$role && $roleName === 'admin') {
+        if (! $role && $roleName === 'admin') {
             $role = Role::where('name', 'super_admin')->first();
         }
 
@@ -79,13 +79,28 @@ class User extends Authenticatable
 
     public function hasPermission(string $permission): bool
     {
-        return $this->roles->flatMap(fn($r) => $r->permissions->pluck('name'))->contains($permission);
+        return $this->roles->flatMap(fn ($r) => $r->permissions->pluck('name'))->contains($permission);
     }
 
     // ── Helpers ────────────────────────────────────────────────────
 
-    public function isAdmin(): bool    { return $this->hasRole('admin'); }
-    public function isDriver(): bool   { return $this->hasRole('driver'); }
-    public function isCustomer(): bool { return $this->hasRole('customer'); }
-    public function isGuide(): bool    { return $this->hasRole('guide'); }
+    public function isAdmin(): bool
+    {
+        return $this->hasRole('admin');
+    }
+
+    public function isDriver(): bool
+    {
+        return $this->hasRole('driver');
+    }
+
+    public function isCustomer(): bool
+    {
+        return $this->hasRole('customer');
+    }
+
+    public function isGuide(): bool
+    {
+        return $this->hasRole('guide');
+    }
 }

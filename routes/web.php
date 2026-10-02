@@ -1,15 +1,15 @@
 <?php
 
-use App\Http\Controllers\AdminController;
+use App\Http\Controllers\Admin\ServiceZoneController;
+use App\Http\Controllers\Admin\SettingsController;
 use App\Http\Controllers\AdminCmsController;
+use App\Http\Controllers\AdminController;
 use App\Http\Controllers\AdminCouponController;
 use App\Http\Controllers\AdminCustomerController;
 use App\Http\Controllers\AdminDriverController;
 use App\Http\Controllers\AdminFinancialController;
 use App\Http\Controllers\AdminRoleController;
 use App\Http\Controllers\AdminVehicleController;
-use App\Http\Controllers\Admin\ServiceZoneController;
-use App\Http\Controllers\Admin\SettingsController;
 use App\Http\Controllers\AuthController;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Auth;
@@ -59,6 +59,11 @@ Route::middleware('guest')->group(function () {
 });
 
 Route::middleware(['auth', 'role:admin'])->prefix('admin')->name('admin.')->group(function () {
+    Route::get('/carpool', [\App\Http\Controllers\AdminCarpoolController::class, 'index'])->name('carpool');
+    Route::post('/carpool/policies', [\App\Http\Controllers\AdminCarpoolController::class, 'policy']);
+    Route::post('/carpool/{kind}/{id}', [\App\Http\Controllers\AdminCarpoolController::class, 'action'])->where('kind', 'rides|bookings|reviews|complaints');
+    Route::get('/journey-operations', [\App\Http\Controllers\AdminJourneyController::class, 'index'])->name('journey-operations');
+    Route::post('/journey-operations/purge-preview', [\App\Http\Controllers\AdminJourneyController::class, 'previewPurge']);
     Route::post('/logout', [AuthController::class, 'logout'])->name('logout');
     Route::get('/dashboard', [AdminController::class, 'dashboard'])->name('dashboard');
 
@@ -150,6 +155,7 @@ Route::middleware(['auth', 'role:admin'])->prefix('admin')->name('admin.')->grou
         Route::post('/vehicles', 'store')->name('vehicles.store');
         Route::put('/vehicles/{vehicle}', 'update')->name('vehicles.update');
         Route::get('/vehicles/{vehicle}/tracking', 'tracking')->name('vehicles.tracking');
+        Route::post('/vehicles/{vehicle}/tracking-preference', 'trackingPreference')->name('vehicles.tracking-preference');
         Route::get('/vehicles/{vehicle}/tracking-data', 'trackingData')->name('vehicles.tracking-data');
         Route::post('/vehicles/{vehicle}/tracker/provision', 'provisionTracker')->name('vehicles.tracker.provision');
         Route::post('/vehicles/{vehicle}/tracker/suspend', 'suspendTracker')->name('vehicles.tracker.suspend');
@@ -157,6 +163,9 @@ Route::middleware(['auth', 'role:admin'])->prefix('admin')->name('admin.')->grou
     });
 
     // Tour Management Routes
+    Route::get('/tours/{tour}/brochure', [\App\Http\Controllers\TourBrochureController::class, 'download'])->name('tours.brochure');
+    Route::post('/tours/{tour}/brochure', [\App\Http\Controllers\TourBrochureController::class, 'upload'])->name('tours.brochure.upload');
+    Route::delete('/tours/{tour}/brochure', [\App\Http\Controllers\TourBrochureController::class, 'remove'])->name('tours.brochure.remove');
     Route::get('/tours', [AdminController::class, 'tours'])->name('tours');
     Route::get('/tours/create', [AdminController::class, 'createTour'])->name('tours.create');
     Route::post('/tours', [AdminController::class, 'storeTour'])->name('tours.store');
@@ -176,17 +185,22 @@ Route::middleware(['auth', 'role:admin'])->prefix('admin')->name('admin.')->grou
 
     // Tour Schedules Management Routes
     Route::get('/tours/{tour}/schedules', [AdminController::class, 'tourSchedules'])->name('tours.schedules');
+    Route::get('/tours/{tour}/schedules/{schedule}/manifest', [AdminController::class, 'tourManifest'])->name('tours.schedules.manifest');
     Route::get('/tours/{tour}/schedules/create', [AdminController::class, 'createTourSchedule'])->name('tours.schedules.create');
     Route::post('/tours/{tour}/schedules', [AdminController::class, 'storeTourSchedule'])->name('tours.schedules.store');
     Route::put('/tours/{tour}/schedules/{schedule}', [AdminController::class, 'updateTourSchedule'])->name('tours.schedules.update');
     Route::delete('/tours/{tour}/schedules/{schedule}', [AdminController::class, 'deleteTourSchedule'])->name('tours.schedules.delete');
     Route::post('/tours/{tour}/schedules/{schedule}/assign-driver', [AdminController::class, 'assignDriverToSchedule'])->name('tours.schedules.assign-driver');
+    Route::get('/tour-inquiries', [AdminController::class, 'tourInquiries'])->name('tour-inquiries');
+    Route::patch('/tour-inquiries/{inquiry}', [AdminController::class, 'updateTourInquiry'])->name('tour-inquiries.update');
+    Route::post('/tour-inquiries/{inquiry}/notify', [AdminController::class, 'notifyTourInquiry'])->name('tour-inquiries.notify');
 
     // Other Management Routes
     Route::get('/wallet-reconciliation', [AdminController::class, 'walletReconciliation'])->name('wallet-reconciliation');
     Route::get('/bookings', [AdminController::class, 'bookings'])->name('bookings');
     Route::get('/tour-bookings', [AdminController::class, 'tourBookings'])->name('tour-bookings');
     Route::get('/tour-bookings/{tourBooking}', [AdminController::class, 'showTourBooking'])->name('tour-bookings.show');
+    Route::post('/tour-bookings/{tourBooking}/amend-departure', [AdminController::class, 'amendTourBooking'])->name('tour-bookings.amend-departure');
     Route::post('/tour-bookings/{tourBooking}/update-status', [AdminController::class, 'updateTourBookingStatus'])->name('tour-bookings.update-status');
     Route::post('/tour-bookings/{tourBooking}/confirm-payment', [AdminController::class, 'confirmTourBookingPayment'])->name('tour-bookings.confirm-payment');
     Route::post('/tour-bookings/{tourBooking}/incidents', [AdminController::class, 'storeTourBookingIncident'])->name('tour-bookings.incidents.store');
@@ -206,9 +220,18 @@ Route::middleware(['auth', 'role:admin'])->prefix('admin')->name('admin.')->grou
     Route::get('/car-rentals/{carRental}', [AdminController::class, 'showCarRental'])->name('car-rentals.show');
     Route::get('/car-rentals/{carRental}/edit', [AdminController::class, 'editCarRental'])->name('car-rentals.edit');
     Route::put('/car-rentals/{carRental}', [AdminController::class, 'updateCarRental'])->name('car-rentals.update');
+    
+    Route::get('/car-rentals/{carRental}/checklists', [AdminController::class, 'carRentalChecklists'])->name('car-rentals.checklists');
+    Route::post('/car-rentals/{carRental}/checklist', [AdminController::class, 'storeCarRentalChecklist'])->name('car-rentals.checklist.store');
+    Route::post('/car-rentals/{carRental}/amend-preview', [AdminController::class, 'previewCarRentalAmendment'])->name('car-rentals.amend-preview');
+    Route::post('/car-rentals/{carRental}/amend', [AdminController::class, 'amendCarRental'])->name('car-rentals.amend');
+    
     Route::post('/car-rentals/{carRental}/assign-driver', [AdminController::class, 'assignCarRentalDriver'])->name('car-rentals.assign-driver');
+    Route::get('/car-rentals/{carRental}/candidates', [AdminController::class, 'carRentalCandidates'])->name('car-rentals.candidates');
     Route::post('/car-rentals/{carRental}/update-status', [AdminController::class, 'updateCarRentalStatus'])->name('car-rentals.update-status');
     Route::post('/car-rentals/{carRental}/confirm-payment', [AdminController::class, 'confirmCarRentalPayment'])->name('car-rentals.confirm-payment');
+    Route::post('/car-rentals/{carRental}/settlement-preview', [AdminController::class, 'previewRentalSettlement'])->name('car-rentals.settlement-preview');
+    Route::post('/car-rentals/{carRental}/settle', [AdminController::class, 'settleRental'])->name('car-rentals.settle');
     Route::post('/car-rentals/{carRental}/incidents', [AdminController::class, 'storeCarRentalIncident'])->name('car-rentals.incidents.store');
     Route::delete('/car-rentals/{carRental}', [AdminController::class, 'deleteCarRental'])->name('car-rentals.delete');
 

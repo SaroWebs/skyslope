@@ -19,6 +19,7 @@ return new class extends Migration
             $table->timestamps();
 
             $table->index(['phone', 'type', 'is_used']);
+            $table->unsignedTinyInteger('attempts')->default(0);
         });
     }
 

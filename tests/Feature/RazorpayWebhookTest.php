@@ -117,7 +117,7 @@ it('does not double-credit the wallet when the same payment is redelivered', fun
 it('captures a booking payment against a matching order on webhook', function () {
     $customer = Customer::create(['name' => 'WH Booking', 'phone' => '9500000003']);
     $tour = Tour::create([
-        'title' => 'WH Tour', 'slug' => 'wh-tour-' . uniqid(),
+        'title' => 'WH Tour', 'slug' => 'wh-tour-'.uniqid(),
         'duration_days' => 1, 'duration_nights' => 0,
         'price_per_person' => 1000, 'child_price' => 500,
         'available_from' => now(), 'available_to' => now()->addMonth(), 'is_active' => true,
@@ -151,7 +151,7 @@ it('captures a booking payment against a matching order on webhook', function ()
         ->and($order->fresh()->isPaid())->toBeTrue()
         ->and(Payment::where('provider_payment_id', 'pay_book_1')->firstOrFail()->isCaptured())->toBeTrue()
         ->and((int) LedgerEntry::where('direction', 'debit')->sum('amount_minor'))
-            ->toBe((int) LedgerEntry::where('direction', 'credit')->sum('amount_minor'));
+        ->toBe((int) LedgerEntry::where('direction', 'credit')->sum('amount_minor'));
 });
 
 it('marks a payment failed on a payment.failed webhook', function () {
@@ -217,7 +217,7 @@ it('applies a refund to a captured payment and posts to the refunds ledger', fun
             ->where('direction', 'debit')->sum('amount_minor'))->toBe(50000)
         // ledger stays balanced overall
         ->and((int) LedgerEntry::where('direction', 'debit')->sum('amount_minor'))
-            ->toBe((int) LedgerEntry::where('direction', 'credit')->sum('amount_minor'));
+        ->toBe((int) LedgerEntry::where('direction', 'credit')->sum('amount_minor'));
 });
 
 it('does not double-apply a redelivered refund', function () {
@@ -280,7 +280,7 @@ it('marks a payout processed and completes the withdrawal on a payout.processed 
         ->and((int) LedgerEntry::where('reference_type', 'payout')
             ->where('direction', 'debit')->sum('amount_minor'))->toBe(100000)
         ->and((int) LedgerEntry::where('direction', 'debit')->sum('amount_minor'))
-            ->toBe((int) LedgerEntry::where('direction', 'credit')->sum('amount_minor'));
+        ->toBe((int) LedgerEntry::where('direction', 'credit')->sum('amount_minor'));
 });
 
 it('marks a payout failed on a payout.failed webhook', function () {

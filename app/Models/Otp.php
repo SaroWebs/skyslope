@@ -21,8 +21,8 @@ class Otp extends Model
     {
         return [
             'expires_at' => 'datetime',
-            'is_used'    => 'boolean',
-            'attempts'   => 'integer',
+            'is_used' => 'boolean',
+            'attempts' => 'integer',
         ];
     }
 
@@ -38,7 +38,7 @@ class Otp extends Model
 
     public function isValid(): bool
     {
-        return !$this->isExpired() && !$this->isUsed();
+        return ! $this->isExpired() && ! $this->isUsed();
     }
 
     /**
@@ -48,9 +48,9 @@ class Otp extends Model
     {
         return match ($this->type) {
             'customer' => Customer::where('phone', $this->phone)->first(),
-            'driver'   => Driver::where('phone', $this->phone)->first(),
-            'guide'    => Guide::where('phone', $this->phone)->first(),
-            default    => null,
+            'driver' => Driver::where('phone', $this->phone)->first(),
+            'guide' => Guide::where('phone', $this->phone)->first(),
+            default => null,
         };
     }
 }

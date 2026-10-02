@@ -3,7 +3,7 @@
 use App\Services\BookingStatusService;
 
 it('normalizes booking status aliases', function () {
-    $service = new BookingStatusService();
+    $service = new BookingStatusService;
 
     expect($service->normalize(BookingStatusService::RIDE, 'on_the_way'))->toBe('driver_arriving')
         ->and($service->normalize(BookingStatusService::RIDE, 'arrived'))->toBe('pickup')
@@ -14,7 +14,7 @@ it('normalizes booking status aliases', function () {
 });
 
 it('allows and blocks ride transitions by actor', function () {
-    $service = new BookingStatusService();
+    $service = new BookingStatusService;
 
     expect($service->canTransition(BookingStatusService::RIDE, 'pending', 'confirmed', 'admin'))->toBeTrue()
         ->and($service->canTransition(BookingStatusService::RIDE, 'confirmed', 'driver_assigned', 'admin'))->toBeTrue()
@@ -30,7 +30,7 @@ it('allows and blocks ride transitions by actor', function () {
 });
 
 it('allows and blocks tour transitions', function () {
-    $service = new BookingStatusService();
+    $service = new BookingStatusService;
 
     expect($service->canTransition(BookingStatusService::TOUR, 'pending', 'confirmed', 'admin'))->toBeTrue()
         ->and($service->canTransition(BookingStatusService::TOUR, 'confirmed', 'in_progress', 'admin'))->toBeTrue()
@@ -42,7 +42,7 @@ it('allows and blocks tour transitions', function () {
 });
 
 it('allows and blocks rental transitions', function () {
-    $service = new BookingStatusService();
+    $service = new BookingStatusService;
 
     expect($service->canTransition(BookingStatusService::RENTAL, 'pending', 'confirmed', 'admin'))->toBeTrue()
         ->and($service->canTransition(BookingStatusService::RENTAL, 'confirmed', 'driver_assigned', 'admin'))->toBeTrue()
@@ -56,7 +56,7 @@ it('allows and blocks rental transitions', function () {
 });
 
 it('keeps service state definitions isolated', function () {
-    $service = new BookingStatusService();
+    $service = new BookingStatusService;
 
     expect($service->definition(BookingStatusService::RIDE)['states'])->toContain('pickup', 'in_transit')
         ->not->toContain('in_progress')

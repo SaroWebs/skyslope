@@ -160,6 +160,7 @@ class MarketplaceSeeder extends Seeder
                 ['slug' => $row[0]],
                 ['name' => $row[1], 'description' => "{$row[1]} across Northeast India", 'is_active' => true],
             );
+
             return [$row[0] => $category];
         })->all();
 

@@ -13,9 +13,20 @@ class SupportTicket extends Model
 
     protected $casts = ['last_message_at' => 'datetime', 'resolved_at' => 'datetime'];
 
-    public function requester(): MorphTo { return $this->morphTo(); }
-    public function booking(): MorphTo { return $this->morphTo(); }
-    public function messages(): HasMany { return $this->hasMany(SupportTicketMessage::class); }
+    public function requester(): MorphTo
+    {
+        return $this->morphTo();
+    }
+
+    public function booking(): MorphTo
+    {
+        return $this->morphTo();
+    }
+
+    public function messages(): HasMany
+    {
+        return $this->hasMany(SupportTicketMessage::class);
+    }
 
     public static function generateNumber(): string
     {

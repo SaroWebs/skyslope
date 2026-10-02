@@ -58,6 +58,13 @@ return Application::configure(basePath: dirname(__DIR__))
         //
     })
     ->withSchedule(function (Schedule $schedule) {
+        $schedule->command('rides:expire-requests')->everyMinute()->withoutOverlapping();
+        $schedule->command('tours:start-attendance')->everyMinute()->withoutOverlapping();
+        $schedule->command('tours:expire-holds')->everyMinute()->withoutOverlapping();
+        $schedule->command('tours:reconcile-inventory')->hourly()->withoutOverlapping();
+        $schedule->command('rides:dispatch-due')->everyMinute()->withoutOverlapping();
+        $schedule->command('rides:expire-stale-assigned')->everyMinute()->withoutOverlapping();
+        $schedule->command('rides:purge-requests --execute')->daily()->withoutOverlapping()->when(fn () => (bool) setting('ride.retention.purge_enabled', false));
         // SKY-MRD-001 §13.3 — background sweeps. Every minute, non-overlapping
         // so a slow run never stacks on top of the next tick. These commands
         // were defined but had no scheduler to run them until now.

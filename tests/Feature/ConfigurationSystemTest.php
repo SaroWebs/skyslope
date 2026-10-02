@@ -1,12 +1,12 @@
 <?php
 
 use App\Models\CarCategory;
+use App\Models\Driver;
+use App\Models\DriverAvailability;
 use App\Models\Role;
 use App\Models\ServiceZone;
 use App\Models\Setting;
 use App\Models\User;
-use App\Models\Driver;
-use App\Models\DriverAvailability;
 use App\Services\DriverDispatchService;
 use App\Support\Pricing\PricingService;
 use App\Support\Settings\SettingsService;

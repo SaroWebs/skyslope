@@ -37,7 +37,7 @@ it('returns the strict success envelope on the v1 meta endpoint', function () {
 
 it('merges an additive meta block onto a legacy object body but leaves lists alone', function () {
     Context::add('request_id', 'req_unit_meta');
-    $middleware = new EnsureResponseMeta();
+    $middleware = new EnsureResponseMeta;
     $request = Request::create('/legacy', 'GET');
 
     // Object-shaped legacy body → meta is merged in, existing keys untouched.
@@ -82,7 +82,7 @@ it('rejects an unsafe client-supplied request id and mints a fresh one instead',
 });
 
 it('scrubs secrets and masks PII in log context, recursing into nested arrays', function () {
-    $scrubbed = (new RedactSensitiveData())->scrub([
+    $scrubbed = (new RedactSensitiveData)->scrub([
         'password' => 'hunter2',
         'api_key' => 'sk_live_x',
         'token' => 'tok_abc',

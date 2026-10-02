@@ -56,6 +56,11 @@ it('lets a driver publish an approved vehicle to the rental marketplace', functi
     $category = marketplaceCategory();
     $driver = marketplaceDriver('8800001001');
     $vehicle = marketplaceVehicle($category, $driver);
+    foreach (['driving_license', 'government_id', 'police_verification'] as $type) {
+        $driver->documents()->create([
+            'type' => $type, 'file_path' => "test/{$type}.pdf", 'status' => 'approved',
+        ]);
+    }
 
     $this->getJson('/api/customer-app/public/rental-vehicles')
         ->assertOk()
@@ -107,5 +112,17 @@ it('books the selected vehicle and rejects overlapping dates', function () {
 
     $this->postJson('/api/customer-app/car-rentals', $payload)
         ->assertUnprocessable()
-        ->assertJsonPath('message', 'This vehicle is already reserved for the selected dates.');
+        ->assertJsonPath('message', 'This car or driver is already booked for the selected dates.');
+});
+
+it('rejects self drive inputs and cannot start a rental without a driver', function () {
+    $category = marketplaceCategory();
+    $customer = Customer::create(['name' => 'Family', 'phone' => '9876501234']);
+    Sanctum::actingAs($customer);
+    $payload = ['car_category_id' => $category->id, 'start_date' => today()->addDays(2)->toDateString(),
+        'end_date' => today()->addDays(4)->toDateString(), 'pickup_location' => 'Airport', 'payment_method' => 'cash'];
+    $this->postJson('/api/customer-app/car-rentals', [...$payload, 'self_drive' => true])->assertUnprocessable();
+    $this->postJson('/api/customer-app/car-rentals', $payload)->assertUnprocessable();
+    expect(fn () => app(\App\Services\RentalDriverService::class)->assertReady(new \App\Models\CarRental))
+        ->toThrow(\Illuminate\Validation\ValidationException::class);
 });

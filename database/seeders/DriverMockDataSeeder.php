@@ -2,14 +2,13 @@
 
 namespace Database\Seeders;
 
-use Illuminate\Database\Seeder;
-use App\Models\Driver;
-use App\Models\Customer;
-use App\Models\RideBooking;
 use App\Models\CarCategory;
+use App\Models\Customer;
+use App\Models\Driver;
+use App\Models\RideBooking;
 use App\Models\Wallet;
-use App\Models\WalletTransaction;
 use Carbon\Carbon;
+use Illuminate\Database\Seeder;
 use Illuminate\Support\Str;
 
 class DriverMockDataSeeder extends Seeder
@@ -19,12 +18,14 @@ class DriverMockDataSeeder extends Seeder
         $drivers = Driver::all();
         if ($drivers->isEmpty()) {
             $this->command->error('No drivers found. Run UserSeeder first.');
+
             return;
         }
 
         $customers = Customer::all();
         if ($customers->isEmpty()) {
             $this->command->error('No customers found. Run UserSeeder first.');
+
             return;
         }
 
@@ -37,13 +38,13 @@ class DriverMockDataSeeder extends Seeder
             for ($i = 1; $i <= 5; $i++) {
                 $customer = $customers->random();
                 $scheduledAt = Carbon::now()->subDays(rand(1, 30))->subHours(rand(1, 10));
-                
+
                 $fare = rand(200, 1500);
                 $commission = $fare * 0.1;
                 $driverShare = $fare - $commission;
 
                 RideBooking::create([
-                    'booking_number' => 'RIDE' . strtoupper(Str::random(10)),
+                    'booking_number' => 'RIDE'.strtoupper(Str::random(10)),
                     'customer_id' => $customer->id,
                     'driver_id' => $driver->id,
                     'car_category_id' => $carCategory->id,
@@ -75,7 +76,7 @@ class DriverMockDataSeeder extends Seeder
                 'amount' => 1200.00,
                 'balance_before' => $balance - 1200.00,
                 'balance_after' => $balance,
-                'description' => 'Ride Earnings - ' . Str::random(8),
+                'description' => 'Ride Earnings - '.Str::random(8),
                 'status' => 'completed',
                 'created_at' => Carbon::now()->subHours(2),
             ]);
@@ -87,9 +88,9 @@ class DriverMockDataSeeder extends Seeder
             $scheduledAt = Carbon::now()->addHours(rand(1, 24));
 
             RideBooking::create([
-                'booking_number' => 'RIDE' . strtoupper(Str::random(10)),
+                'booking_number' => 'RIDE'.strtoupper(Str::random(10)),
                 'customer_id' => $customer->id,
-                'driver_id' => null, 
+                'driver_id' => null,
                 'car_category_id' => $carCategory->id,
                 'customer_name' => $customer->name,
                 'customer_phone' => $customer->phone,

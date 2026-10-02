@@ -42,16 +42,29 @@ return new class extends Migration
 
             $table->index(['is_active', 'is_featured']);
             $table->index(['city', 'state']);
+            $table->string('google_place_id')->nullable();
+            $table->decimal('google_rating', 3, 2)->nullable();
+            $table->unsignedInteger('google_review_count')->default(0);
+            $table->json('google_reviews')->nullable();
+            $table->json('google_photos')->nullable();
+            $table->timestamp('google_synced_at')->nullable();
+            $table->json('google_details')->nullable();
         });
 
         Schema::create('place_media', function (Blueprint $table) {
             $table->id();
             $table->foreignId('place_id')->constrained('places')->cascadeOnDelete();
             $table->string('path');
-            $table->enum('type', ['image', 'video'])->default('image');
+            $table->enum('type', ['image', 'panorama', 'video'])->default('image');
             $table->string('caption')->nullable();
             $table->integer('sort_order')->default(0);
             $table->timestamps();
+            $table->foreignId('uploaded_by_customer_id')->nullable()->constrained('customers')->nullOnDelete();
+            $table->string('source', 20)->default('admin');
+            $table->string('approval_status', 20)->default('approved')->index();
+            $table->foreignId('reviewed_by')->nullable()->constrained('users')->nullOnDelete();
+            $table->timestamp('reviewed_at')->nullable();
+            $table->text('rejection_reason')->nullable();
         });
 
         Schema::create('destinations', function (Blueprint $table) {

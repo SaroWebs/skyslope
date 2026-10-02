@@ -18,7 +18,7 @@ use App\Support\Money;
 it('routes a wallet booking refund to the system:refunds ledger account', function () {
     $customer = Customer::create(['name' => 'Refund Router', 'phone' => '9600000001']);
     $tour = Tour::create([
-        'title' => 'Refund Tour', 'slug' => 'refund-tour-' . uniqid(),
+        'title' => 'Refund Tour', 'slug' => 'refund-tour-'.uniqid(),
         'duration_days' => 1, 'duration_nights' => 0,
         'price_per_person' => 1000, 'child_price' => 500,
         'available_from' => now(), 'available_to' => now()->addMonth(), 'is_active' => true,
@@ -53,5 +53,5 @@ it('routes a wallet booking refund to the system:refunds ledger account', functi
         ->and($booking->fresh()->payment_status)->toBe('refunded')
         // ledger stays balanced
         ->and((int) LedgerEntry::where('direction', 'debit')->sum('amount_minor'))
-            ->toBe((int) LedgerEntry::where('direction', 'credit')->sum('amount_minor'));
+        ->toBe((int) LedgerEntry::where('direction', 'credit')->sum('amount_minor'));
 });

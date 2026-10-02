@@ -37,5 +37,8 @@ class RideBookingTip extends Model
         return $this->belongsTo(Driver::class, 'driver_id');
     }
 
-    public function isPaid(): bool { return $this->status === 'paid'; }
+    public function isPaid(): bool
+    {
+        return $this->status === 'paid';
+    }
 }
