@@ -27,6 +27,8 @@ class TourResource extends JsonResource
         return [
             'id' => $this->id,
             'title' => $this->title,
+            'rating' => $this->rating === null ? null : round((float) $this->rating, 1),
+            'next_departure_at' => $nextSchedule?->departure_at?->toISOString(),
             'slug' => $this->slug,
             'brochure_url' => route('public.tours.brochure', ['tour' => $this->id]),
             'generated_brochure_url' => route('public.tours.brochure', ['tour' => $this->id, 'source' => 'generated']),

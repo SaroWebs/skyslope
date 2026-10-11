@@ -332,3 +332,28 @@ it('completes rental payment transition upon capture verification (G-38)', funct
         return $event->action === 'payment.paid' && (int) $event->bookingId === (int) $rental->id;
     });
 });
+
+it('issues a quote and books a single day rental with 1 day price when start and end date match', function () {
+    $date = today()->addDays(2)->toDateString();
+    $payload = [
+        'car_category_id' => $this->category->id,
+        'start_date' => $date,
+        'end_date' => $date,
+        'pickup_location' => 'Indiranagar, Bangalore',
+        'payment_method' => 'cash',
+    ];
+
+    $response = $this->postJson('/api/customer-app/rentals/quote', $payload)
+        ->assertOk()
+        ->assertJsonPath('data.pricing_components.number_of_days', 1)
+        ->assertJsonPath('data.base_price', 3000);
+
+    $quote = $response->json('data');
+
+    $bookingResponse = $this->postJson('/api/customer-app/car-rentals', array_merge($payload, [
+        'quote_token' => $quote['quote_token'],
+    ]))->assertCreated();
+
+    expect($bookingResponse->json('data.pricing_snapshot.number_of_days'))->toBe(1);
+    expect((float) $bookingResponse->json('data.base_price'))->toBe(3000.0);
+});

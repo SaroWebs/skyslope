@@ -27,6 +27,11 @@ class DriverDocument extends Model
 
     protected $appends = ['file_url'];
 
+    public function verificationAttempts(): \Illuminate\Database\Eloquent\Relations\HasMany
+    {
+        return $this->hasMany(DocumentVerificationAttempt::class)->orderByDesc('id');
+    }
+
     public function driver(): BelongsTo
     {
         return $this->belongsTo(Driver::class);

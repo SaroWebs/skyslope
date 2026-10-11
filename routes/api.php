@@ -106,6 +106,8 @@ Route::prefix('customer-app')->group(function () {
         Route::get('/referrals', [LoyaltyController::class, 'referralDetails']);
         Route::post('/logout', [CustomerOtpController::class, 'logout']);
         Route::get('/me', [CustomerOtpController::class, 'me']);
+        Route::match(['put', 'patch', 'post'], '/profile', [CustomerOtpController::class, 'updateProfile'])->middleware('throttle:customer-write');
+        Route::post('/profile/photo', [CustomerOtpController::class, 'uploadProfilePhoto'])->middleware('throttle:customer-write');
         Route::get('/dashboard', [CustomerAppController::class, 'dashboard']);
         Route::post('/coupons/preview', [CustomerAppController::class, 'previewCoupon'])->middleware('throttle:customer-write');
         Route::get('/coupons/available', [CustomerAppController::class, 'availableCoupons']);
@@ -192,7 +194,7 @@ Route::prefix('driver-app')->group(function () {
         Route::get('/documents', [DriverAppController::class, 'documents']);
         Route::post('/documents', [DriverAppController::class, 'upsertDocument'])->middleware('throttle:customer-write');
         Route::get('/insurance/policies', [InsuranceController::class, 'getDriverPolicies']);
-        Route::put('/vehicle', [DriverAppController::class, 'upsertVehicle'])->middleware('throttle:customer-write');
+        Route::match(['put', 'post'], '/vehicle', [DriverAppController::class, 'upsertVehicle'])->middleware('throttle:customer-write');
         Route::put('/vehicle/rental-availability', [DriverAppController::class, 'updateRentalAvailability'])->middleware('throttle:customer-write');
         Route::put('/availability', [DriverAppController::class, 'updateAvailability'])->middleware('throttle:customer-write');
         Route::get('/active-ride', [DriverController::class, 'activeRide']);
@@ -240,6 +242,8 @@ Route::prefix('driver-app')->group(function () {
         Route::get('/wallet', [WalletController::class, 'getWallet']);
         Route::get('/wallet/transactions', [WalletController::class, 'getTransactions']);
         Route::get('/wallet/stats', [WalletController::class, 'getStats']);
+        Route::post('/wallet/topup/order', [WalletController::class, 'createTopUpOrder'])->middleware(['throttle:payment-write', 'idempotency']);
+        Route::post('/wallet/topup/verify', [WalletController::class, 'verifyTopUp'])->middleware(['throttle:payment-write', 'idempotency']);
         Route::get('/withdrawals', [WithdrawalController::class, 'index']);
         Route::post('/withdrawals', [WithdrawalController::class, 'store'])->middleware(['throttle:payment-write', 'idempotency']);
     });

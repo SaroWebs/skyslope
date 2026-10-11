@@ -582,9 +582,13 @@ const AdminLayout = ({ children, title = 'Admin Panel' }: AdminLayoutProps) => {
         },
         {
             name: 'Drivers',
-            href: '/admin/drivers',
+            href: '#',
             icon: Truck,
-            current: url.startsWith('/admin/drivers'),
+            current: url.startsWith('/admin/drivers') || url.startsWith('/admin/vehicles'),
+            children: [
+                { name: 'Driver Directory', href: '/admin/drivers' },
+                { name: 'Vehicle Inventory', href: '/admin/vehicles' },
+            ],
         },
         {
             name: 'Bookings',
@@ -598,21 +602,24 @@ const AdminLayout = ({ children, title = 'Admin Panel' }: AdminLayoutProps) => {
         },
         { name: 'Carpool', href: '/admin/carpool', icon: Car, current: url.startsWith('/admin/carpool') },
         { name: 'Tour Packages', href: '/admin/tours', icon: Map, current: url.startsWith('/admin/tours') },
+        {
+            name: 'Destinations',
+            href: '#',
+            icon: MapPin,
+            current: url.startsWith('/admin/destinations') || url.startsWith('/admin/places'),
+            children: [
+                { name: 'Destination Directory', href: '/admin/destinations' },
+                { name: 'Points of Interest', href: '/admin/places' },
+            ],
+        },
         { name: 'Coupons & Offers', href: '/admin/coupons', icon: TicketPercent, current: url.startsWith('/admin/coupons') },
         {
             name: 'Master Data',
             href: '#',
             icon: MapPin,
-            current:
-                url.startsWith('/admin/places') ||
-                url.startsWith('/admin/car-categories') ||
-                url.startsWith('/admin/destinations') ||
-                url.startsWith('/admin/vehicles'),
+            current: url.startsWith('/admin/car-categories'),
             children: [
-                { name: 'Point of Interest', href: '/admin/places' },
                 { name: 'Car Categories', href: '/admin/car-categories' },
-                { name: 'Vehicles', href: '/admin/vehicles' },
-                { name: 'Destinations', href: '/admin/destinations' },
             ],
         },
         {

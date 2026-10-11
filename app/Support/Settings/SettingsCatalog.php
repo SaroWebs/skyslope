@@ -201,22 +201,22 @@ class SettingsCatalog
             'commission.ride.hourly' => [
                 'group' => 'commission',
                 'label' => 'Ride commission — hourly',
-                'description' => 'Platform commission on hourly rides.',
-                'type' => 'percent', 'default' => 0.25, 'unit' => '%',
+                'description' => 'Platform commission on hourly rides (minimum 2% to 3%).',
+                'type' => 'percent', 'default' => 0.03, 'unit' => '%',
                 'min' => 0, 'max' => 1, 'scopes' => ['global'],
             ],
             'commission.ride.round_trip' => [
                 'group' => 'commission',
                 'label' => 'Ride commission — round trip',
-                'description' => 'Platform commission on round-trip rides.',
-                'type' => 'percent', 'default' => 0.18, 'unit' => '%',
+                'description' => 'Platform commission on round-trip rides (minimum 2% to 3%).',
+                'type' => 'percent', 'default' => 0.025, 'unit' => '%',
                 'min' => 0, 'max' => 1, 'scopes' => ['global'],
             ],
             'commission.ride.default' => [
                 'group' => 'commission',
                 'label' => 'Ride commission — default',
-                'description' => 'Platform commission on all other rides (point-to-point, etc.).',
-                'type' => 'percent', 'default' => 0.20, 'unit' => '%',
+                'description' => 'Platform commission on all other rides (minimum 2% to 3%).',
+                'type' => 'percent', 'default' => 0.025, 'unit' => '%',
                 'min' => 0, 'max' => 1, 'scopes' => ['global'],
             ],
             'commission.rental' => [

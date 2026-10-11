@@ -72,7 +72,8 @@ class PlaceCategorySeeder extends Seeder
         ];
 
         foreach ($categories as $category) {
-            PlaceCategory::create($category);
+            unset($category['color']);
+            PlaceCategory::updateOrCreate(['slug' => \Illuminate\Support\Str::slug($category['name'])], $category);
         }
     }
 }

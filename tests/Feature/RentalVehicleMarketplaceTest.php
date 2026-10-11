@@ -56,7 +56,7 @@ it('lets a driver publish an approved vehicle to the rental marketplace', functi
     $category = marketplaceCategory();
     $driver = marketplaceDriver('8800001001');
     $vehicle = marketplaceVehicle($category, $driver);
-    foreach (['driving_license', 'government_id', 'police_verification'] as $type) {
+    foreach (['driving_license', 'government_id', 'vehicle_rc'] as $type) {
         $driver->documents()->create([
             'type' => $type, 'file_path' => "test/{$type}.pdf", 'status' => 'approved',
         ]);

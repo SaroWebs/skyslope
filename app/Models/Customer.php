@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Support\MediaUrl;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\MorphMany;
@@ -16,7 +17,7 @@ class Customer extends Authenticatable
 
     protected $table = 'customers';
 
-    protected $appends = ['status'];
+    protected $appends = ['status', 'profile_photo_url'];
 
     protected $fillable = [
         'name',
@@ -127,5 +128,10 @@ class Customer extends Authenticatable
     public function setStatusAttribute(string $value): void
     {
         $this->attributes['is_active'] = ($value === 'active');
+    }
+
+    public function getProfilePhotoUrlAttribute(): ?string
+    {
+        return $this->profile_photo ? MediaUrl::resolve($this->profile_photo) : null;
     }
 }

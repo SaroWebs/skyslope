@@ -36,18 +36,44 @@ it('stores the driver current location used by dispatch eligibility', function (
 });
 
 it('shows customers the same pickup radius used by driver dispatch', function () {
+    $category = \App\Models\CarCategory::firstOrCreate(['slug' => 'comfort'], [
+        'name' => 'Comfort',
+        'vehicle_type' => 'sedan',
+        'seats' => 4,
+        'base_price_per_day' => 1000,
+        'is_active' => true,
+        'base_fare' => 50,
+        'per_km_rate' => 12,
+    ]);
+
     $driver = Driver::create([
         'name' => 'Nearby Online Driver',
         'phone' => '8000000100',
         'status' => 'active',
         'is_active' => true,
         'is_approved' => true,
+        'can_short_ride' => true,
+    ]);
+
+    \App\Models\Vehicle::create([
+        'driver_id' => $driver->id,
+        'car_category_id' => $category->id,
+        'make' => 'Toyota',
+        'model' => 'Etios',
+        'year' => 2022,
+        'color' => 'White',
+        'fuel_type' => 'petrol',
+        'seats' => 4,
+        'registration_number' => 'AS-01-AB-1234',
+        'approval_status' => 'approved',
+        'is_active' => true,
     ]);
 
     DriverAvailability::create([
         'driver_id' => $driver->id,
         'status' => 'online',
         'is_available' => true,
+        'last_updated' => now(),
         // Roughly 20 km north of the pickup: outside the old 5 km estimate
         // radius, but inside the dispatch radius.
         'current_lat' => 26.3242,

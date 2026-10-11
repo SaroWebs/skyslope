@@ -280,3 +280,51 @@ it('preserves backwards compatibility for offset pagination and unpaginated disc
     expect($unpaginatedRes->json('pagination'))->toBeNull()
         ->and($unpaginatedRes->json('data'))->toHaveCount(3);
 });
+
+it('orders tours by date and availability by default', function () {
+    $category = TourCategory::create(['name' => 'Culture', 'slug' => 'culture', 'is_active' => true]);
+
+    // Tour A: departs in 3 days with 5 seats
+    $tourA = Tour::create(['tour_category_id' => $category->id, 'title' => 'Tour Later', 'slug' => 'tour-later', 'price_per_person' => 100, 'is_active' => true]);
+    TourSchedule::create(['tour_id' => $tourA->id, 'departure_date' => now()->addDays(3)->toDateString(), 'departure_time' => '09:00:00', 'return_date' => now()->addDays(4)->toDateString(), 'total_seats' => 5, 'booked_seats' => 0, 'reserved_seats' => 0, 'status' => 'open']);
+
+    // Tour B: departs in 2 days with 2 available seats
+    $tourB = Tour::create(['tour_category_id' => $category->id, 'title' => 'Tour Soon Few Seats', 'slug' => 'tour-soon-few', 'price_per_person' => 100, 'is_active' => true]);
+    TourSchedule::create(['tour_id' => $tourB->id, 'departure_date' => now()->addDays(2)->toDateString(), 'departure_time' => '09:00:00', 'return_date' => now()->addDays(3)->toDateString(), 'total_seats' => 10, 'booked_seats' => 8, 'reserved_seats' => 0, 'status' => 'open']);
+
+    // Tour C: departs in 2 days with 8 available seats (same date as B, but more available seats)
+    $tourC = Tour::create(['tour_category_id' => $category->id, 'title' => 'Tour Soon Many Seats', 'slug' => 'tour-soon-many', 'price_per_person' => 100, 'is_active' => true]);
+    TourSchedule::create(['tour_id' => $tourC->id, 'departure_date' => now()->addDays(2)->toDateString(), 'departure_time' => '09:00:00', 'return_date' => now()->addDays(3)->toDateString(), 'total_seats' => 10, 'booked_seats' => 2, 'reserved_seats' => 0, 'status' => 'open']);
+
+    $response = $this->getJson('/api/customer-app/public/tours?page=1&per_page=10')->assertOk();
+    $data = $response->json('data');
+
+    // First two must be departure in 2 days, with Tour C (8 seats) before Tour B (2 seats)
+    $ids = collect($data)->pluck('id')->all();
+    $indexC = array_search($tourC->id, $ids);
+    $indexB = array_search($tourB->id, $ids);
+    $indexA = array_search($tourA->id, $ids);
+
+    expect($indexC)->toBeLessThan($indexB)
+        ->and($indexB)->toBeLessThan($indexA);
+});
+
+it('filters tours by relational destination_id via itineraries', function () {
+    $category = TourCategory::create(['name' => 'Sightseeing', 'slug' => 'sightseeing', 'is_active' => true]);
+    $place = \App\Models\Place::create(['name' => 'Kamakhya Temple', 'slug' => 'kamakhya-temple', 'city' => 'Guwahati', 'is_active' => true]);
+    $otherPlace = \App\Models\Place::create(['name' => 'Umananda Island', 'slug' => 'umananda-island', 'city' => 'Guwahati', 'is_active' => true]);
+
+    $tourMatch = Tour::create(['tour_category_id' => $category->id, 'title' => 'Guwahati Spiritual Tour', 'slug' => 'guwahati-spiritual', 'price_per_person' => 100, 'is_active' => true]);
+    TourSchedule::create(['tour_id' => $tourMatch->id, 'departure_date' => now()->addDays(2)->toDateString(), 'departure_time' => '09:00:00', 'return_date' => now()->addDays(3)->toDateString(), 'total_seats' => 10, 'status' => 'open']);
+    \App\Models\TourItinerary::create(['tour_id' => $tourMatch->id, 'place_id' => $place->id, 'day_number' => 1, 'stop_order' => 1, 'title' => 'Visit Temple']);
+
+    $tourOther = Tour::create(['tour_category_id' => $category->id, 'title' => 'River Island Tour', 'slug' => 'river-island', 'price_per_person' => 100, 'is_active' => true]);
+    TourSchedule::create(['tour_id' => $tourOther->id, 'departure_date' => now()->addDays(2)->toDateString(), 'departure_time' => '09:00:00', 'return_date' => now()->addDays(3)->toDateString(), 'total_seats' => 10, 'status' => 'open']);
+    \App\Models\TourItinerary::create(['tour_id' => $tourOther->id, 'place_id' => $otherPlace->id, 'day_number' => 1, 'stop_order' => 1, 'title' => 'Visit Island']);
+
+    $response = $this->getJson("/api/customer-app/public/tours?destination_id={$place->id}")->assertOk();
+    $ids = collect($response->json('data'))->pluck('id')->all();
+
+    expect($ids)->toContain($tourMatch->id)
+        ->and($ids)->not->toContain($tourOther->id);
+});

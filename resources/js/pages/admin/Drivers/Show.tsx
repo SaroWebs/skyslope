@@ -49,6 +49,28 @@ import {
     FileCheck2,
 } from 'lucide-react';
 
+function DocumentProviderForm({ driverId, documentId, providers, disabled }: {
+    driverId: number; documentId: number; providers: Array<{ value: string; label: string; simulated: boolean }>; disabled: boolean;
+}) {
+    const form = useForm({ provider: providers[0]?.value || '', outcome: 'approved' });
+    const simulated = providers.find((provider) => provider.value === form.data.provider)?.simulated;
+    return <form onSubmit={(event) => {
+        event.preventDefault();
+        form.transform((data) => simulated ? data : { provider: data.provider, outcome: null });
+        form.post(`/admin/drivers/${driverId}/documents/${documentId}/verify`, { preserveScroll: true });
+    }}>
+        <Stack gap="xs">
+            <Select label="Verification provider" data={providers.map(({ value, label }) => ({ value, label }))} value={form.data.provider} onChange={(value) => form.setData('provider', value || '')} disabled={disabled || form.processing} error={form.errors.provider} allowDeselect={false} />
+            {simulated && <>
+                <Text size="xs" c="orange">Simulation only: no third-party registry is contacted.</Text>
+                <Select label="Simulated result" data={[{ value: 'approved', label: 'Pass' }, { value: 'rejected', label: 'Reject' }, { value: 'error', label: 'Provider unavailable' }]} value={form.data.outcome} onChange={(value) => form.setData('outcome', value || 'approved')} disabled={disabled || form.processing} error={form.errors.outcome} allowDeselect={false} />
+            </>}
+            {Object.entries(form.errors).filter(([key]) => !['provider', 'outcome'].includes(key)).map(([key, message]) => <Text key={key} size="xs" c="red">{message}</Text>)}
+            <Button type="submit" size="xs" loading={form.processing} disabled={disabled || !form.data.provider}>{simulated ? 'Run simulated verification' : 'Verify with provider'}</Button>
+        </Stack>
+    </form>;
+}
+
 interface DriverRideBooking {
     id: number;
     booking_number: string;
@@ -106,6 +128,7 @@ interface Driver {
         registration_number: string;
         make: string;
         model: string;
+        photo_urls?: Partial<Record<'front' | 'rear' | 'left' | 'right', string>>;
         approval_status: 'pending' | 'approved' | 'rejected';
         condition: 'excellent' | 'good' | 'fair' | 'under_maintenance';
         rejection_reason?: string | null;
@@ -133,6 +156,8 @@ interface Driver {
 }
 
 interface DriverShowProps {
+    verification_providers: Record<string, Array<{ value: string; label: string; simulated: boolean }>>;
+    verification_attempts: Record<number, Array<{ id: number; provider: string; simulated: boolean; status: string; reference: string | null; message: string | null; created_at: string; requested_by: number | null }>>;
     title: string;
     driver: Driver;
     document_verification: {
@@ -172,7 +197,7 @@ interface DriverReview {
     created_at: string | null;
 }
 
-export default function DriverShow({ title, driver, document_verification, stats, reviews, available_vehicles }: DriverShowProps) {
+export default function DriverShow({ title, driver, document_verification, verification_providers, verification_attempts, stats, reviews, available_vehicles }: DriverShowProps) {
     const documentsReady = document_verification.is_complete;
     const { data, setData, put, processing, errors } = useForm({
         can_short_ride: Boolean(driver.can_short_ride),
@@ -383,6 +408,14 @@ export default function DriverShow({ title, driver, document_verification, stats
                                                 <div>
                                                     <Text fw={700}>{driver.vehicle.make} {driver.vehicle.model}</Text>
                                                     <Text size="xs" c="dimmed">{driver.vehicle.registration_number} · {driver.vehicle.category?.name || 'Uncategorised'}</Text>
+                                                    <div className="mt-3 grid grid-cols-2 gap-3">
+                                                        {Object.entries(driver.vehicle.photo_urls || {}).map(([side, url]) => (
+                                                            <a key={side} href={url} target="_blank" rel="noreferrer" className="rounded-lg border p-2">
+                                                                <img src={url} alt={`${side} view of vehicle`} className="h-28 w-full rounded object-cover" />
+                                                                <Text size="xs" mt={4} tt="capitalize">{side} view</Text>
+                                                            </a>
+                                                        ))}
+                                                    </div>
                                                 </div>
                                                 <Badge color={driver.vehicle.approval_status === 'approved' ? 'green' : driver.vehicle.approval_status === 'rejected' ? 'red' : 'yellow'}>
                                                     {driver.vehicle.approval_status}
@@ -410,7 +443,7 @@ export default function DriverShow({ title, driver, document_verification, stats
 
                             <Paper p="xl" radius="md" withBorder>
                                 <Stack gap="md">
-                                    <Group gap="sm"><ThemeIcon variant="light" color="teal"><FileCheck2 size={18} /></ThemeIcon><div><Text fw={700}>Document verification</Text><Text size="xs" c="dimmed">Licence, identity and police verification.</Text></div></Group>
+                                    <Group gap="sm"><ThemeIcon variant="light" color="teal"><FileCheck2 size={18} /></ThemeIcon><div><Text fw={700}>Document verification</Text><Text size="xs" c="dimmed">Licence, identity and RC are required. Police verification is optional.</Text></div></Group>
                                     <Badge color={documentsReady ? 'green' : 'yellow'} variant="light">
                                         {documentsReady ? 'Ready for driver activation' : 'Required documents pending'}
                                     </Badge>
@@ -428,9 +461,14 @@ export default function DriverShow({ title, driver, document_verification, stats
                                                 {document.rejection_reason && <Text size="xs" c="red">{document.rejection_reason}</Text>}
                                                 <Group gap="xs">
                                                     <Button size="xs" variant="light" component="a" href={document.file_url} target="_blank">View file</Button>
-                                                    <Button size="xs" color="green" disabled={document_verification.requirements.find((item) => item.type === document.type)?.status === 'expired' || document.status === 'approved'} onClick={() => reviewDocument(document.id, 'approved')}>Approve</Button>
                                                     <Button size="xs" color="red" variant="outline" onClick={() => reviewDocument(document.id, 'rejected')}>Reject</Button>
                                                 </Group>
+                                                <DocumentProviderForm driverId={driver.id} documentId={document.id} providers={verification_providers[document.type] || []} disabled={document.status === 'approved' || document_verification.requirements.find((item) => item.type === document.type)?.status === 'expired'} />
+                                                {(verification_attempts[document.id] || []).map((attempt) => <Paper key={attempt.id} p="xs" bg="gray.0">
+                                                    <Text size="xs" fw={600}>{attempt.provider} · {attempt.status}{attempt.simulated ? ' · Simulation' : ''}</Text>
+                                                    <Text size="xs">{attempt.message}</Text>
+                                                    <Text size="xs" c="dimmed">{attempt.reference || 'Awaiting reference'} · {new Date(attempt.created_at).toLocaleString()} · Reviewer #{attempt.requested_by ?? 'deleted'}</Text>
+                                                </Paper>)}
                                             </Stack>
                                         </Paper>
                                     )) : <Text size="sm" c="dimmed">No documents submitted yet.</Text>}

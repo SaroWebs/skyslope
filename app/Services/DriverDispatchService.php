@@ -483,7 +483,7 @@ class DriverDispatchService
                 'tourDriverAssignments as has_active_tour' => fn ($r) => $r->whereIn('status', ['assigned', 'accepted'])->whereHas('schedule', fn ($t) => $t->inProgressWindow()),
             ])])
             ->active()
-            ->where('last_updated', '>=', now()->subSeconds((int) setting('ride.dispatch.stale_availability_seconds', 300)))
+            ->where(fn ($q) => $q->whereNull('last_updated')->orWhere('last_updated', '>=', now()->subSeconds((int) setting('ride.dispatch.stale_availability_seconds', 300))))
             ->whereBetween('current_lat', [max(-90, $pickupLat - $radiusKm / 110), min(90, $pickupLat + $radiusKm / 110)])
             ->whereBetween('current_lng', [-180, 180]);
         if (DB::connection()->getDriverName() !== 'sqlite') {

@@ -43,9 +43,11 @@ class DriverFundingService
 
         return [
             'order_id' => $razorpayOrder['id'],
+            'id' => $razorpayOrder['id'],
             'amount' => $amountMinor / 100,
             'currency' => 'INR',
             'receipt' => $receipt,
+            'is_simulation' => rescue(fn () => $razorpayService->isSimulationMode(), false, false),
             'razorpay_config' => $razorpayService->getClientConfig(),
         ];
     }

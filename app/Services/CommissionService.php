@@ -25,9 +25,9 @@ class CommissionService
     public function calculateRideCommission(RideBooking $booking): float
     {
         $baseRate = match ($booking->service_type) {
-            'hourly' => (float) setting('commission.ride.hourly', 0.25),
-            'round_trip' => (float) setting('commission.ride.round_trip', 0.18),
-            default => (float) setting('commission.ride.default', 0.20),
+            'hourly' => (float) setting('commission.ride.hourly', 0.03),
+            'round_trip' => (float) setting('commission.ride.round_trip', 0.025),
+            default => (float) setting('commission.ride.default', 0.025),
         };
 
         return round(((float) $booking->total_fare) * $baseRate * (float) ($booking->surge_multiplier ?? 1), 2);
@@ -202,7 +202,17 @@ class CommissionService
             'is_active' => true,
         ]);
 
-        if (($booking->payment_method ?? null) !== 'cash' && $driverShare > 0) {
+        if (($booking->payment_method ?? null) === 'cash') {
+            if ($commission > 0) {
+                $wallet->debit(
+                    $commission,
+                    'System charge deduction for cash ride',
+                    'system_charge',
+                    $referenceId,
+                    "system_charge:{$referenceId}"
+                );
+            }
+        } elseif ($driverShare > 0) {
             $wallet->credit(
                 $driverShare,
                 'Driver earning settlement',

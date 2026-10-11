@@ -134,6 +134,7 @@ Route::middleware(['auth', 'role:admin'])->prefix('admin')->name('admin.')->grou
         Route::put('/drivers/{driver}/vehicle', 'assignVehicle')->name('drivers.vehicle');
         Route::put('/drivers/{driver}/vehicle/review', 'reviewVehicle')->name('drivers.vehicle.review');
         Route::put('/drivers/{driver}/documents/{document}', 'reviewDocument')->name('drivers.documents.review');
+        Route::post('/drivers/{driver}/documents/{document}/verify', 'verifyDocument')->name('drivers.documents.verify');
         Route::post('/drivers/{driver}/approve', 'approve')->name('drivers.approve');
         Route::post('/drivers/{driver}/suspend', 'suspend')->name('drivers.suspend');
         Route::post('/drivers/{driver}/activate', 'activate')->name('drivers.activate');

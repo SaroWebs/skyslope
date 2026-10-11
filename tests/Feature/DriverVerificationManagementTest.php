@@ -61,7 +61,7 @@ it('requires approved documents before activating a driver', function () {
         ->post("/admin/drivers/{$driver->id}/approve")
         ->assertSessionHasErrors('documents');
 
-    foreach (['driving_license', 'government_id', 'police_verification'] as $type) {
+    foreach (['driving_license', 'government_id', 'vehicle_rc'] as $type) {
         DriverDocument::create([
             'driver_id' => $driver->id,
             'type' => $type,

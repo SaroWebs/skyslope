@@ -96,7 +96,7 @@ it('allows a driver to publish sharing preference and seat capacity', function (
         'year' => 2024, 'color' => 'Blue', 'seats' => 4,
         'is_active' => true, 'approval_status' => 'approved',
     ]);
-    foreach (['driving_license', 'government_id', 'police_verification'] as $type) {
+    foreach (['driving_license', 'government_id', 'vehicle_rc'] as $type) {
         DriverDocument::create([
             'driver_id' => $driver->id,
             'type' => $type,

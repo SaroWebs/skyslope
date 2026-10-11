@@ -13,7 +13,7 @@ function carpoolFixture(array $overrides = []): array
 {
     $driver = Driver::create(['name' => 'Carpool Driver', 'phone' => '91'.random_int(100000000, 999999999), 'phone_verified_at' => now(), 'is_active' => true, 'is_approved' => true, 'approved_at' => now(), 'status' => 'active', 'can_long_ride' => true, 'license_expiry' => now()->addYear()]);
     $category = CarCategory::create(['name' => 'Carpool sedan', 'slug' => 'cp-'.uniqid(), 'vehicle_type' => 'sedan', 'seats' => 4, 'base_price_per_day' => 1000, 'is_active' => true]);
-    foreach (['driving_license', 'government_id', 'police_verification'] as $type) {
+    foreach (['driving_license', 'government_id', 'vehicle_rc'] as $type) {
         \App\Models\DriverDocument::create(['driver_id' => $driver->id, 'type' => $type, 'file_path' => 'test/'.$type.'.pdf', 'status' => 'approved']);
     }
     $vehicle = Vehicle::create(['driver_id' => $driver->id, 'car_category_id' => $category->id, 'registration_number' => 'CP'.uniqid(), 'make' => 'Test', 'model' => 'Sedan', 'color' => 'White', 'year' => 2025, 'fuel_type' => 'petrol', 'seats' => 4, 'is_active' => true, 'approval_status' => 'approved']);

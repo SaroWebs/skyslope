@@ -66,7 +66,7 @@ it('allows an admin to edit and approve a driver while preserving unique fields'
         'email' => 'existing-driver@example.com',
         'phone' => '8111111188',
     ]));
-    foreach (['driving_license', 'government_id', 'police_verification'] as $type) {
+    foreach (['driving_license', 'government_id', 'vehicle_rc'] as $type) {
         DriverDocument::create([
             'driver_id' => $driver->id,
             'type' => $type,

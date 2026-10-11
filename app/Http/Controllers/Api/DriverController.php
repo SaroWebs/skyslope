@@ -378,13 +378,22 @@ class DriverController extends Controller
             return response()->json(['success' => false, 'message' => 'Unauthorized'], 403);
         }
 
+        $balanceMinor = $user->getWalletBalanceMinor();
+        $minTopUp = (int) setting('driver.minimum_topup_minor', 50000);
+        $dispatchMin = (int) setting('driver.dispatch_eligible_balance_minor', 10000);
+        $warningThreshold = (int) setting('driver.warning_balance_minor', 50000);
+
         return response()->json([
             'success' => true,
             'data' => [
                 'funding_eligible' => $user->isFundingEligible(),
-                'balance_minor' => $user->getWalletBalanceMinor(),
-                'minimum_topup_minor' => (int) setting('driver.minimum_topup_minor', 0),
-                'dispatch_eligible_balance_minor' => (int) setting('driver.dispatch_eligible_balance_minor', 0),
+                'balance_minor' => $balanceMinor,
+                'balance' => round($balanceMinor / 100, 2),
+                'minimum_topup_minor' => $minTopUp,
+                'dispatch_eligible_balance_minor' => $dispatchMin,
+                'warning_balance_minor' => $warningThreshold,
+                'needs_topup_warning' => $balanceMinor < $warningThreshold,
+                'is_dispatch_eligible' => $balanceMinor >= $dispatchMin,
             ],
         ]);
     }
@@ -396,8 +405,11 @@ class DriverController extends Controller
             return response()->json(['success' => false, 'message' => 'Unauthorized'], 403);
         }
 
+        $minTopUp = (int) setting('driver.minimum_topup_minor', 50000);
         $validated = $request->validate([
-            'amount_minor' => 'required|integer|min:100',
+            'amount_minor' => 'required|integer|min:'.$minTopUp,
+        ], [
+            'amount_minor.min' => 'The minimum top-up amount is ₹'.($minTopUp / 100).'.',
         ]);
 
         try {
@@ -415,20 +427,26 @@ class DriverController extends Controller
             return response()->json(['success' => false, 'message' => 'Unauthorized'], 403);
         }
 
-        $validated = $request->validate([
-            'razorpay_order_id' => 'required|string',
-            'razorpay_payment_id' => 'required|string',
-            'razorpay_signature' => 'required|string',
-            'idempotency_key' => 'nullable|string',
-        ]);
+        $orderId = $request->input('razorpay_order_id') ?? $request->input('order_id');
+        $paymentId = $request->input('razorpay_payment_id') ?? $request->input('payment_id');
+        $signature = $request->input('razorpay_signature') ?? $request->input('signature') ?? 'sig_demo_'.time();
+        $idempotencyKey = $request->input('idempotency_key')
+            ?: ($orderId && $paymentId ? "driver_topup:{$orderId}:{$paymentId}" : null);
+
+        if (! $orderId || ! $paymentId) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Missing order ID or payment ID.',
+            ], 422);
+        }
 
         try {
             $transaction = app(\App\Services\DriverFundingService::class)->verifyTopUp(
                 $user,
-                $validated['razorpay_order_id'],
-                $validated['razorpay_payment_id'],
-                $validated['razorpay_signature'],
-                $validated['idempotency_key'] ?? null
+                $orderId,
+                $paymentId,
+                $signature,
+                $idempotencyKey
             );
 
             return response()->json([
@@ -468,6 +486,8 @@ class DriverController extends Controller
             'service_type' => $ride->service_type,
             'payment_status' => $ride->payment_status,
             'payment_method' => $ride->payment_method,
+            'commission_amount' => $ride->commission_amount !== null ? (float) $ride->commission_amount : app(\App\Services\CommissionService::class)->calculateRideCommission($ride),
+            'driver_share' => $ride->driver_share !== null ? (float) $ride->driver_share : max(0, round((float) $ride->total_fare - app(\App\Services\CommissionService::class)->calculateRideCommission($ride), 2)),
             'driver_notes' => $ride->driver_notes,
             'vehicle_number' => $ride->driver?->vehicle_number,
             'customer_name' => $ride->customer_name ?: ($ride->customer?->name ?? 'Customer'),

@@ -209,6 +209,8 @@ class AdminDriverController extends Controller
             'user' => Auth::user(),
             'driver' => $driver,
             'document_verification' => app(DriverVerificationService::class)->summary($driver),
+            'verification_providers' => app(\App\Services\DocumentVerification\DocumentVerifier::class)->catalog(),
+            'verification_attempts' => $driver->documents()->with('verificationAttempts')->get()->mapWithKeys(fn ($document) => [$document->id => $document->verificationAttempts]),
             'stats' => $stats,
             'reviews' => $reviews,
             'available_vehicles' => Vehicle::query()
@@ -349,6 +351,20 @@ class AdminDriverController extends Controller
         return redirect()->back()->with('success', 'Driver vehicle review updated.');
     }
 
+    public function verifyDocument(Request $request, Driver $driver, DriverDocument $document)
+    {
+        abort_unless((int) $document->driver_id === (int) $driver->id, 404);
+        $validated = $request->validate([
+            'provider' => ['required', 'string', 'max:100'],
+            'outcome' => ['nullable', Rule::in(['approved', 'rejected', 'error'])],
+        ]);
+        $attempt = app(\App\Services\DocumentVerification\DocumentVerifier::class)->verify(
+            $document, $validated['provider'], (int) Auth::id(), $validated['outcome'] ?? null
+        );
+
+        return redirect()->back()->with($attempt->status === 'approved' ? 'success' : 'error', $attempt->message);
+    }
+
     public function reviewDocument(Request $request, Driver $driver, DriverDocument $document)
     {
         abort_unless((int) $document->driver_id === (int) $driver->id, 404);
@@ -359,6 +375,10 @@ class AdminDriverController extends Controller
 
         if ($validated['status'] === 'approved' && $document->expires_at?->lt(today())) {
             throw ValidationException::withMessages(['status' => 'This document has expired. Ask the driver to upload a valid replacement.']);
+        }
+
+        if ($validated['status'] === 'approved') {
+            throw ValidationException::withMessages(['status' => 'Run provider verification to approve this document.']);
         }
 
         $document->update([

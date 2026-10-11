@@ -73,11 +73,19 @@ class CustomerAppController extends Controller
             'page' => 'nullable|integer|min:1', 'per_page' => 'nullable|integer|min:1|max:50',
             'cursor' => 'nullable|string|max:255',
             'pagination' => 'nullable|string|in:cursor,offset',
+            'destination_id' => 'nullable|integer|exists:places,id',
+            'price_range' => 'nullable|in:all,under_5k,5k_to_15k,above_15k',
+            'duration' => 'nullable|in:all,day_trip,2_3_days,4_plus_days',
+            'min_rating' => 'nullable|numeric|min:1|max:5',
+            'sort' => 'nullable|in:departure,availability,price_asc,price_desc,duration',
         ]);
         $searchService = app(\App\Services\TourSearchService::class);
 
         // Opt-in cursor pagination: stable under concurrent bookings/cancellations
         if ($request->has('cursor') || $request->input('pagination') === 'cursor') {
+            if (! empty($filters['sort'])) {
+                throw \Illuminate\Validation\ValidationException::withMessages(['sort' => 'Custom ordering requires offset pagination.']);
+            }
             $perPage = (int) ($filters['per_page'] ?? 20);
             $cursorResult = $searchService->paginateCursor($filters, $perPage, $request->input('cursor'));
 
@@ -617,7 +625,7 @@ class CustomerAppController extends Controller
             'with_driver' => 'sometimes|accepted',
             'vehicle_id' => 'nullable|integer|exists:vehicles,id',
             'start_date' => 'required|date|after:today',
-            'end_date' => 'required|date|after:start_date',
+            'end_date' => 'required|date|after_or_equal:start_date',
             'pickup_location' => 'required|string|max:255',
             'pickup_lat' => 'nullable|numeric|between:-90,90',
             'pickup_lng' => 'nullable|numeric|between:-180,180',
@@ -1914,58 +1922,11 @@ class CustomerAppController extends Controller
 
     private function relatedToursForPlace(Place $place)
     {
-        $terms = collect([
-            $place->name,
-            $place->slug,
-            $place->location,
-            $place->city,
-            $place->state,
-            ...($place->tags ?? []),
-        ])
-            ->filter()
-            ->map(fn ($term) => Str::lower((string) $term))
-            ->filter(fn ($term) => Str::length($term) > 2)
-            ->values();
-
-        if ($terms->isEmpty()) {
-            return collect();
-        }
-
-        $explicitTours = Tour::with(['itineraries.place.media' => fn ($query) => $query->approved(), 'schedules' => function ($q) {
-            $q->bookable()->orderByRaw('COALESCE(departure_at, departure_date) ASC');
-        }])
-            ->bookableForGuests()
-            ->whereHas('itineraries', fn ($query) => $query->where('place_id', $place->id))
+        return app(\App\Services\TourSearchService::class)
+            ->query(['destination_id' => $place->id, 'sort' => 'departure'])
+            ->with(['itineraries.place.media' => fn ($query) => $query->approved()])
+            ->limit(6)
             ->get();
-
-        if ($explicitTours->isNotEmpty()) {
-            return $explicitTours->values();
-        }
-
-        return Tour::with(['itineraries.place.media' => fn ($query) => $query->approved(), 'schedules' => function ($q) {
-            $q->bookable()->orderByRaw('COALESCE(departure_at, departure_date) ASC');
-        }])
-            ->bookableForGuests()
-            ->get()
-            ->filter(function (Tour $tour) use ($terms) {
-                $haystack = Str::lower(collect([
-                    $tour->title,
-                    $tour->description,
-                    $tour->short_description,
-                    $tour->start_location,
-                    $tour->end_location,
-                    $tour->region,
-                    ...($tour->highlights ?? []),
-                    ...$tour->itineraries->flatMap(fn ($itinerary) => [
-                        $itinerary->title,
-                        $itinerary->description,
-                        ...($itinerary->activities ?? []),
-                    ])->all(),
-                ])->filter()->join(' '));
-
-                return $terms->contains(fn ($term) => Str::contains($haystack, $term));
-            })
-            ->values();
     }
 
     private function relatedPlacesForTour(Tour $tour)

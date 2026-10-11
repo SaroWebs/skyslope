@@ -96,7 +96,7 @@ class CarCategorySeeder extends Seeder
         ];
 
         foreach ($carCategories as $category) {
-            CarCategory::create($category);
+            CarCategory::updateOrCreate(['slug' => $category['slug']], $category);
         }
     }
 }

@@ -5,10 +5,13 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\Customer;
 use App\Models\Wallet;
+use App\Rules\FileIsClean;
 use App\Services\OtpService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Crypt;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 
 class CustomerOtpController extends Controller
 {
@@ -143,6 +146,120 @@ class CustomerOtpController extends Controller
         return response()->json([
             'success' => true,
             'customer' => $request->user(),
+        ]);
+    }
+
+    /**
+     * Update current customer's profile.
+     */
+    public function updateProfile(Request $request): JsonResponse
+    {
+        /** @var Customer $customer */
+        $customer = $request->user();
+
+        $validated = $request->validate([
+            'name' => 'sometimes|required|string|max:120',
+            'email' => 'nullable|email|max:120|unique:customers,email,'.$customer->id,
+            'gender' => 'nullable|string|in:male,female,other',
+            'date_of_birth' => 'nullable|date|before:today',
+            'emergency_contact_name' => 'nullable|string|max:120',
+            'emergency_contact_phone' => 'nullable|string|max:20',
+            'photo' => ['nullable', 'image', 'mimes:jpeg,png,jpg,webp', 'max:5120', new FileIsClean],
+            'profile_photo' => 'nullable|string|max:500',
+            'profile_photo_url' => 'nullable|string|max:500',
+        ]);
+
+        if ($request->hasFile('photo')) {
+            if ($customer->profile_photo && ! Str::startsWith($customer->profile_photo, ['http://', 'https://'])) {
+                Storage::disk('public')->delete($customer->profile_photo);
+            }
+            $customer->profile_photo = $request->file('photo')->store('customer_avatars', 'public');
+        } elseif ($request->filled('profile_photo_url')) {
+            $customer->profile_photo = $request->input('profile_photo_url');
+        } elseif ($request->filled('profile_photo') && is_string($request->input('profile_photo'))) {
+            $customer->profile_photo = $request->input('profile_photo');
+        }
+
+        $customer->fill(collect($validated)->except(['photo', 'profile_photo_url'])->all());
+        $customer->save();
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Profile updated successfully.',
+            'customer' => $customer->fresh(),
+        ]);
+    }
+
+    /**
+     * Upload customer profile avatar.
+     */
+    public function uploadProfilePhoto(Request $request): JsonResponse
+    {
+        $hasFile = $request->hasFile('photo');
+        $hasBase64 = $request->filled('photo_base64');
+
+        if (! $hasFile && ! $hasBase64) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Please provide a photo file or base64 image data.',
+                'errors' => [
+                    'photo' => ['A photo file or base64 image is required.'],
+                ],
+            ], 422);
+        }
+
+        /** @var Customer $customer */
+        $customer = $request->user();
+
+        if ($hasFile) {
+            $request->validate([
+                'photo' => ['image', 'mimes:jpeg,png,jpg,webp', 'max:5120', new FileIsClean],
+            ]);
+            $path = $request->file('photo')->store('customer_avatars', 'public');
+        } else {
+            $base64Data = (string) $request->input('photo_base64');
+            if (preg_match('/^data:image\/(\w+);base64,/', $base64Data, $matches)) {
+                $ext = strtolower($matches[1]);
+                $extension = in_array($ext, ['jpeg', 'jpg', 'png', 'webp']) ? ($ext === 'jpeg' ? 'jpg' : $ext) : 'jpg';
+                $base64Data = substr($base64Data, strpos($base64Data, ',') + 1);
+            } else {
+                $extension = 'jpg';
+            }
+
+            $decoded = base64_decode($base64Data, true);
+            if ($decoded === false || strlen($decoded) === 0) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Invalid base64 image data.',
+                    'errors' => ['photo_base64' => ['The provided image data is invalid.']],
+                ], 422);
+            }
+
+            if (strlen($decoded) > 5 * 1024 * 1024) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Image size exceeds 5MB limit.',
+                    'errors' => ['photo_base64' => ['Image must be under 5MB.']],
+                ], 422);
+            }
+
+            $filename = 'customer_avatars/' . Str::random(40) . '.' . $extension;
+            Storage::disk('public')->put($filename, $decoded);
+            $path = $filename;
+        }
+
+        if ($customer->profile_photo && ! Str::startsWith($customer->profile_photo, ['http://', 'https://'])) {
+            Storage::disk('public')->delete($customer->profile_photo);
+        }
+
+        $customer->profile_photo = $path;
+        $customer->save();
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Profile photo updated successfully.',
+            'profile_photo_url' => $customer->profile_photo_url,
+            'customer' => $customer->fresh(),
         ]);
     }
 

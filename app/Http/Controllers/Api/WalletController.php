@@ -39,6 +39,21 @@ class WalletController extends Controller
             $walletData['weekly_earnings'] = (float) (clone $earnings)
                 ->where('completed_at', '>=', now()->subWeek())
                 ->sum('driver_share');
+
+            $minTopUp = (int) setting('driver.minimum_topup_minor', 50000);
+            $dispatchMin = (int) setting('driver.dispatch_eligible_balance_minor', 10000);
+            $warningThreshold = (int) setting('driver.warning_balance_minor', 50000);
+            $balanceMinor = $wallet->getBalanceMinor();
+
+            $walletData['minimum_topup_minor'] = $minTopUp;
+            $walletData['minimum_topup'] = round($minTopUp / 100, 2);
+            $walletData['dispatch_eligible_balance_minor'] = $dispatchMin;
+            $walletData['dispatch_eligible_balance'] = round($dispatchMin / 100, 2);
+            $walletData['warning_balance_minor'] = $warningThreshold;
+            $walletData['warning_balance'] = round($warningThreshold / 100, 2);
+            $walletData['needs_topup_warning'] = $balanceMinor < $warningThreshold;
+            $walletData['is_dispatch_eligible'] = $balanceMinor >= $dispatchMin;
+            $walletData['is_blocked_low_balance'] = $balanceMinor < $dispatchMin;
         }
 
         return response()->json([
@@ -69,8 +84,11 @@ class WalletController extends Controller
      */
     public function createTopUpOrder(Request $request)
     {
+        $minTopUp = $request->user()->isDriver() ? ((int) setting('driver.minimum_topup_minor', 50000) / 100) : 100;
         $validator = Validator::make($request->all(), [
-            'amount' => 'required|numeric|min:100|max:100000',
+            'amount' => 'required|numeric|min:'.$minTopUp.'|max:100000',
+        ], [
+            'amount.min' => 'The minimum top-up amount is ₹'.$minTopUp.'.',
         ]);
 
         if ($validator->fails()) {
@@ -84,8 +102,9 @@ class WalletController extends Controller
             ['owner_type' => $request->user()::class, 'owner_id' => $request->user()->id],
             [
                 'balance' => 0,
+                'balance_minor' => 0,
                 'currency' => 'INR',
-                'status' => 'active',
+                'is_active' => true,
             ]
         );
 
@@ -113,10 +132,12 @@ class WalletController extends Controller
                 'success' => true,
                 'data' => [
                     'order_id' => $order['id'],
+                    'id' => $order['id'],
                     'amount' => $request->amount,
                     'currency' => 'INR',
                     'receipt' => $receipt,
-                    'razorpay_config' => $this->razorpay->getClientConfig(),
+                    'is_simulation' => rescue(fn () => $this->razorpay->isSimulationMode(), false, false),
+                    'razorpay_config' => rescue(fn () => $this->razorpay->getClientConfig(), [], false),
                 ],
             ]);
         } catch (\Exception $e) {
@@ -132,25 +153,24 @@ class WalletController extends Controller
      */
     public function verifyTopUp(Request $request)
     {
-        $validator = Validator::make($request->all(), [
-            'razorpay_order_id' => 'required|string',
-            'razorpay_payment_id' => 'required|string',
-            'razorpay_signature' => 'required|string',
-            'idempotency_key' => 'nullable|string|max:255',
-        ]);
+        $orderId = $request->input('razorpay_order_id') ?? $request->input('order_id');
+        $paymentId = $request->input('razorpay_payment_id') ?? $request->input('payment_id');
+        $signature = $request->input('razorpay_signature') ?? $request->input('signature') ?? 'sig_demo_'.time();
+        $idempotencyKey = $request->input('idempotency_key')
+            ?: ($orderId && $paymentId ? "wallet_topup:{$orderId}:{$paymentId}" : null);
 
-        if ($validator->fails()) {
+        if (! $orderId || ! $paymentId) {
             return response()->json([
                 'success' => false,
-                'errors' => $validator->errors(),
+                'message' => 'Missing order ID or payment ID.',
             ], 422);
         }
 
         // Verify signature
         $isValid = $this->razorpay->verifySignature(
-            $request->razorpay_order_id,
-            $request->razorpay_payment_id,
-            $request->razorpay_signature
+            $orderId,
+            $paymentId,
+            $signature
         );
 
         if (! $isValid) {
@@ -161,10 +181,10 @@ class WalletController extends Controller
         }
 
         try {
-            $payment = $this->razorpay->fetchPayment($request->razorpay_payment_id);
-            $order = $this->razorpay->fetchOrder($request->razorpay_order_id);
+            $payment = $this->razorpay->fetchPayment($paymentId);
+            $order = $this->razorpay->fetchOrder($orderId);
 
-            if (($payment['order_id'] ?? null) !== $request->razorpay_order_id) {
+            if (($payment['order_id'] ?? null) !== $orderId) {
                 return response()->json([
                     'success' => false,
                     'message' => 'Payment does not match order',
@@ -200,16 +220,21 @@ class WalletController extends Controller
                 ], 404);
             }
 
-            $idempotencyKey = $request->input('idempotency_key')
-                ?: "wallet_topup:{$request->razorpay_order_id}:{$request->razorpay_payment_id}";
-
             $transaction = $wallet->credit(
                 $amount,
                 'Wallet top-up via Razorpay',
                 'razorpay_payment',
-                $request->razorpay_payment_id,
+                $paymentId,
                 $idempotencyKey
             );
+
+            // If driver, activate funding status upon successful top-up
+            if ($request->user() instanceof \App\Models\Driver) {
+                $request->user()->update([
+                    'funding_eligible' => true,
+                    'funding_activated_at' => now(),
+                ]);
+            }
 
             return response()->json([
                 'success' => true,
@@ -217,7 +242,7 @@ class WalletController extends Controller
                 'data' => [
                     'wallet' => $wallet->fresh(),
                     'amount' => $amount,
-                    'payment_id' => $request->razorpay_payment_id,
+                    'payment_id' => $paymentId,
                     'transaction_id' => $transaction->id,
                     'idempotency_key' => $transaction->idempotency_key,
                 ],
@@ -225,14 +250,14 @@ class WalletController extends Controller
         } catch (\Exception $e) {
             \Log::error('Wallet top-up verification failed', [
                 'user_id' => $request->user()->id,
-                'order_id' => $request->razorpay_order_id,
-                'payment_id' => $request->razorpay_payment_id,
+                'order_id' => $orderId,
+                'payment_id' => $paymentId,
                 'message' => $e->getMessage(),
             ]);
 
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to process payment',
+                'message' => 'Top-up verification failed: '.$e->getMessage(),
             ], 500);
         }
     }

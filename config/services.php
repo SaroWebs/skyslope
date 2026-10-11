@@ -63,6 +63,7 @@ return [
     ],
 
     'razorpay' => [
+        'simulation' => env('PAYMENT_SIMULATION', true),
         'booking_checkout_enabled' => env('BOOKING_CHECKOUT_ENABLED', false),
         'booking_checkout_web_url' => env('BOOKING_CHECKOUT_WEB_URL'),
         'key' => env('RAZORPAY_KEY'),

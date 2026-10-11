@@ -10,7 +10,8 @@ class DriverVerificationService
     public const DOCUMENTS = [
         'driving_license' => ['label' => 'Driving licence', 'number_label' => 'Licence number', 'required' => true, 'has_expiry' => true],
         'government_id' => ['label' => 'Government ID (e.g. Aadhaar)', 'number_label' => 'ID number', 'required' => true, 'has_expiry' => false],
-        'police_verification' => ['label' => 'Police verification', 'number_label' => 'Reference number', 'required' => true, 'has_expiry' => true],
+        'vehicle_rc' => ['label' => 'Vehicle registration certificate (RC)', 'number_label' => 'Registration number', 'required' => true, 'has_expiry' => true],
+        'police_verification' => ['label' => 'Police verification', 'number_label' => 'Reference number', 'required' => false, 'has_expiry' => true],
         'tax_id' => ['label' => 'PAN / tax ID', 'number_label' => 'PAN number', 'required' => false, 'has_expiry' => false],
     ];
 

@@ -2,134 +2,28 @@
 
 namespace Database\Seeders;
 
-use App\Models\Customer;
-use App\Models\Driver;
 use App\Models\User;
 use Illuminate\Database\Seeder;
-use Illuminate\Support\Facades\Hash;
 
 class UserSeeder extends Seeder
 {
-    /**
-     * Run the database seeds.
-     */
     public function run(): void
     {
-        $users = [
-            [
-                'name' => 'Admin User',
-                'email' => 'admin@skyslope.com',
-                'phone' => '+1-555-0100',
-                'role' => 'admin',
-                'email_verified_at' => now(),
-                'password' => Hash::make('password'),
-                'created_at' => now(),
-                'updated_at' => now(),
-            ],
-            [
-                'name' => 'John Smith',
-                'email' => 'john@example.com',
-                'phone' => '+1-555-0101',
-                'account_type' => 'customer',
-                'email_verified_at' => now(),
-                'password' => Hash::make('password'),
-                'created_at' => now(),
-                'updated_at' => now(),
-            ],
-            [
-                'name' => 'Sarah Johnson',
-                'email' => 'sarah@example.com',
-                'phone' => '+1-555-0102',
-                'account_type' => 'customer',
-                'email_verified_at' => now(),
-                'password' => Hash::make('password'),
-                'created_at' => now(),
-                'updated_at' => now(),
-            ],
-            [
-                'name' => 'Mike Wilson',
-                'email' => 'mike@example.com',
-                'phone' => '+1-555-0103',
-                'role' => 'guide',
-                'email_verified_at' => now(),
-                'password' => Hash::make('password'),
-                'created_at' => now(),
-                'updated_at' => now(),
-            ],
-            [
-                'name' => 'Emma Davis',
-                'email' => 'emma@example.com',
-                'phone' => '+1-555-0104',
-                'account_type' => 'driver',
-                'email_verified_at' => now(),
-                'password' => Hash::make('password'),
-                'created_at' => now(),
-                'updated_at' => now(),
-            ],
-            [
-                'name' => 'Robert Wilson',
-                'email' => 'robert@example.com',
-                'phone' => '+1-555-0105',
-                'account_type' => 'driver',
-                'email_verified_at' => now(),
-                'password' => Hash::make('password'),
-                'created_at' => now(),
-                'updated_at' => now(),
-            ],
-            [
-                'name' => 'Lisa Brown',
-                'email' => 'lisa@example.com',
-                'phone' => '+1-555-0106',
-                'account_type' => 'driver',
-                'email_verified_at' => now(),
-                'password' => Hash::make('password'),
-                'created_at' => now(),
-                'updated_at' => now(),
-            ],
-        ];
-
-        foreach ($users as $userData) {
-            $accountType = $userData['account_type'] ?? null;
-
-            if ($accountType === 'customer') {
-                unset($userData['account_type']);
-
-                Customer::updateOrCreate(
-                    ['email' => $userData['email']],
-                    $userData
-                );
-
-                continue;
+        foreach ([
+            ['admin@skyslope.com', 'SkySlope Administrator', '7002000000'],
+            ['operations.admin@skyslope.com', 'Operations Administrator', '7002000001'],
+            ['content.admin@skyslope.com', 'Content Administrator', '7002000002'],
+        ] as [$email, $name, $phone]) {
+            $user = User::where('email', $email)->first();
+            if (! $user) {
+                $password = config('seeding.admin_password');
+                if (! $password) {
+                    throw new \RuntimeException('Set SEED_ADMIN_PASSWORD before creating seeded administrators.');
+                }
+                $user = User::create(['email' => $email, 'name' => $name, 'phone' => $phone, 'password' => $password]);
+                $user->forceFill(['email_verified_at' => now()])->save();
             }
-
-            if ($accountType === 'driver') {
-                unset($userData['account_type']);
-
-                // Add driver specific fields
-                $userData['is_approved'] = true;
-                $userData['is_active'] = true;
-                $userData['is_online'] = true;
-                $userData['approved_at'] = now();
-                $userData['status'] = 'active';
-
-                Driver::updateOrCreate(
-                    ['email' => $userData['email']],
-                    $userData
-                );
-
-                continue;
-            }
-
-            $role = $userData['role'];
-            unset($userData['role']);
-
-            $user = User::firstOrCreate(
-                ['email' => $userData['email']],
-                $userData
-            );
-
-            // Ensure role is present even for existing users
-            $user->assignRole($role);
+            $user->assignRole('admin');
         }
     }
 }

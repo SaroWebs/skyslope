@@ -2,6 +2,7 @@
 
 namespace Database\Seeders;
 
+use App\Models\CarRental;
 use App\Models\CarRentalExtra;
 use Illuminate\Database\Seeder;
 
@@ -12,60 +13,55 @@ class CarRentalExtraSeeder extends Seeder
      */
     public function run(): void
     {
+        $rental = CarRental::first();
+        if (!$rental) {
+            $this->command?->warn('No car rental available to attach extras. Run DemoServerSeeder first.');
+
+            return;
+        }
+
         $extras = [
             [
-                'extra_type' => 'gps',
-                'extra_name' => 'GPS Navigation',
-                'description' => 'GPS navigation system for easy route guidance',
-                'price_per_day' => 200.00,
+                'car_rental_id' => $rental->id,
+                'name' => 'GPS Navigation',
                 'quantity' => 1,
-                'is_included' => false,
-                'is_optional' => true,
+                'unit_price' => 200.00,
+                'total_price' => 200.00,
             ],
             [
-                'extra_type' => 'child_seat',
-                'extra_name' => 'Child Seat',
-                'description' => 'Safety seat for children (up to 5 years)',
-                'price_per_day' => 150.00,
+                'car_rental_id' => $rental->id,
+                'name' => 'Child Seat',
                 'quantity' => 1,
-                'is_included' => false,
-                'is_optional' => true,
+                'unit_price' => 150.00,
+                'total_price' => 150.00,
             ],
             [
-                'extra_type' => 'extra_driver',
-                'extra_name' => 'Additional Driver',
-                'description' => 'Allow additional driver for the rental period',
-                'price_per_day' => 300.00,
+                'car_rental_id' => $rental->id,
+                'name' => 'Additional Driver',
                 'quantity' => 1,
-                'is_included' => false,
-                'is_optional' => true,
+                'unit_price' => 300.00,
+                'total_price' => 300.00,
             ],
             [
-                'extra_type' => 'wifi',
-                'extra_name' => 'WiFi Hotspot',
-                'description' => 'Portable WiFi hotspot for internet connectivity',
-                'price_per_day' => 100.00,
+                'car_rental_id' => $rental->id,
+                'name' => 'WiFi Hotspot',
                 'quantity' => 1,
-                'is_included' => false,
-                'is_optional' => true,
+                'unit_price' => 100.00,
+                'total_price' => 100.00,
             ],
             [
-                'extra_type' => 'snacks',
-                'extra_name' => 'Refreshments Package',
-                'description' => 'Bottled water and light snacks for the journey',
-                'price_per_day' => 250.00,
+                'car_rental_id' => $rental->id,
+                'name' => 'Refreshments Package',
                 'quantity' => 1,
-                'is_included' => false,
-                'is_optional' => true,
+                'unit_price' => 250.00,
+                'total_price' => 250.00,
             ],
             [
-                'extra_type' => 'toll_pass',
-                'extra_name' => 'Toll Pass',
-                'description' => 'Pre-loaded toll pass for highway travel',
-                'price_per_day' => 50.00,
+                'car_rental_id' => $rental->id,
+                'name' => 'Toll Pass',
                 'quantity' => 1,
-                'is_included' => false,
-                'is_optional' => true,
+                'unit_price' => 50.00,
+                'total_price' => 50.00,
             ],
         ];
 

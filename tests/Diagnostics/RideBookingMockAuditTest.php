@@ -37,7 +37,7 @@ beforeEach(function () {
         'year' => 2025, 'color' => 'White', 'seats' => 4,
         'is_active' => true, 'approval_status' => 'approved',
     ]);
-    foreach (['driving_license', 'government_id', 'police_verification'] as $type) {
+    foreach (['driving_license', 'government_id', 'vehicle_rc'] as $type) {
         DriverDocument::create([
             'driver_id' => $this->driver->id, 'type' => $type,
             'status' => 'approved', 'file_path' => "mock/{$type}.pdf",

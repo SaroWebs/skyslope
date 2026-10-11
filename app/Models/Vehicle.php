@@ -54,9 +54,11 @@ class Vehicle extends Model
         'reviewed_at',
         'reviewed_by',
         'rejection_reason',
+        'photos',
     ];
 
     protected $casts = [
+        'photos' => 'array',
         'insurance_expiry' => 'date',
         'permit_expiry' => 'date',
         'fitness_expiry' => 'date',
@@ -69,6 +71,15 @@ class Vehicle extends Model
         'odometer_km' => 'integer',
         'reviewed_at' => 'datetime',
     ];
+
+    protected $appends = ['photo_urls'];
+
+    public function getPhotoUrlsAttribute(): array
+    {
+        return collect($this->photos ?? [])->mapWithKeys(fn ($path, $side) => [
+            $side => \Illuminate\Support\Facades\Storage::disk('public')->url($path),
+        ])->all();
+    }
 
     protected static function booted(): void
     {

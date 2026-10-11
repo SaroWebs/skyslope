@@ -87,7 +87,7 @@ class WalletLedgerService
                 ? $beforeMinor + $amountMinor
                 : $beforeMinor - $amountMinor;
 
-            if ($afterMinor < 0) {
+            if ($afterMinor < 0 && $referenceType !== 'system_charge' && $referenceType !== 'platform_commission') {
                 throw new \RuntimeException('Insufficient wallet balance.');
             }
 
@@ -235,6 +235,8 @@ class WalletLedgerService
             str_starts_with($ref, 'ride_booking'),
             str_starts_with($ref, 'tour_booking'),
             str_starts_with($ref, 'car_rental') => ['system:booking_revenue', 'Booking revenue'],
+            $ref === 'system_charge',
+            $ref === 'platform_commission' => ['system:commission', 'Platform Commission'],
             $ref === 'driver_earning' => ['system:driver_earnings', 'Driver earnings'],
             $ref === 'driver_withdrawal' => ['system:payout_clearing', 'Payout clearing'],
             str_contains($ref, 'refund') => ['system:refunds', 'Refunds'],

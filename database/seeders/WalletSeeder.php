@@ -13,75 +13,59 @@ class WalletSeeder extends Seeder
      */
     public function run(): void
     {
-        // Get users who are drivers for wallet seeding
+        \App\Models\Setting::updateOrCreate(['key' => 'driver.minimum_topup_minor'], ['value' => '50000']);
+        \App\Models\Setting::updateOrCreate(['key' => 'driver.dispatch_eligible_balance_minor'], ['value' => '10000']);
+        \App\Models\Setting::updateOrCreate(['key' => 'driver.warning_balance_minor'], ['value' => '50000']);
+
         $drivers = Driver::all();
 
         foreach ($drivers as $driver) {
-            // Create wallet for driver
-            $wallet = $driver->wallet()->firstOrCreate([], [
-                'balance' => rand(5000, 50000),
-                'currency' => 'INR',
-                'status' => 'active',
-            ]);
-
-            // Create wallet transactions
             $transactions = [
-                [
-                    'transaction_type' => 'credit',
-                    'amount' => 10000,
-                    'description' => 'Initial wallet top-up',
-                    'status' => 'completed',
-                ],
-                [
-                    'transaction_type' => 'credit',
-                    'amount' => 5000,
-                    'description' => 'Payment for booking RIDE20251201ABCD',
-                    'status' => 'completed',
-                ],
-                [
-                    'transaction_type' => 'commission',
-                    'amount' => 1000,
-                    'description' => 'Commission for booking RIDE20251201ABCD',
-                    'status' => 'completed',
-                ],
-                [
-                    'transaction_type' => 'debit',
-                    'amount' => 2000,
-                    'description' => 'Driver withdrawal',
-                    'status' => 'completed',
-                ],
-                [
-                    'transaction_type' => 'credit',
-                    'amount' => 8000,
-                    'description' => 'Payment for booking RIDE20251202EFGH',
-                    'status' => 'completed',
-                ],
-                [
-                    'transaction_type' => 'commission',
-                    'amount' => 800,
-                    'description' => 'Commission for booking RIDE20251202EFGH',
-                    'status' => 'completed',
-                ],
+                ['type' => 'credit', 'amount' => 10000, 'description' => 'Initial wallet top-up'],
+                ['type' => 'credit', 'amount' => 5000, 'description' => 'Payment for booking RIDE20251201ABCD'],
+                ['type' => 'debit', 'amount' => 1000, 'description' => 'Commission for booking RIDE20251201ABCD'],
+                ['type' => 'debit', 'amount' => 2000, 'description' => 'Driver withdrawal'],
+                ['type' => 'credit', 'amount' => 8000, 'description' => 'Payment for booking RIDE20251202EFGH'],
+                ['type' => 'debit', 'amount' => 800, 'description' => 'Commission for booking RIDE20251202EFGH'],
             ];
 
-            foreach ($transactions as $transactionData) {
-                $wallet->transactions()->create($transactionData);
+            $running = 0;
+            foreach ($transactions as $tx) {
+                $running += $tx['amount'];
+            }
+
+            $wallet = $driver->wallet()->firstOrCreate([], [
+                'balance' => $running,
+                'currency' => 'INR',
+                'is_active' => true,
+            ]);
+
+            $running = 0;
+            foreach ($transactions as $tx) {
+                $balanceBefore = $running;
+                $running += $tx['amount'];
+                $wallet->transactions()->create(array_merge($tx, [
+                    'balance_before' => $balanceBefore,
+                    'balance_after' => $running,
+                    'status' => 'completed',
+                ]));
             }
         }
 
-        // Create wallets for some customers too
         $customers = Customer::limit(3)->get();
 
         foreach ($customers as $customer) {
             $wallet = $customer->wallet()->firstOrCreate([], [
-                'balance' => rand(1000, 10000),
+                'balance' => 5000,
                 'currency' => 'INR',
-                'status' => 'active',
+                'is_active' => true,
             ]);
 
             $wallet->transactions()->create([
-                'transaction_type' => 'topup',
+                'type' => 'credit',
                 'amount' => 5000,
+                'balance_before' => 0,
+                'balance_after' => 5000,
                 'description' => 'Wallet top-up via credit card',
                 'status' => 'completed',
             ]);

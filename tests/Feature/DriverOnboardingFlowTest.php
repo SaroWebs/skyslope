@@ -23,7 +23,7 @@ function onboardingDriver(): Driver
 
 function onboardingDocuments(Driver $driver, string $status = 'approved'): void
 {
-    foreach (['driving_license', 'government_id', 'police_verification'] as $type) {
+    foreach (['driving_license', 'government_id', 'vehicle_rc'] as $type) {
         DriverDocument::create([
             'driver_id' => $driver->id, 'type' => $type, 'status' => $status,
             'file_path' => "test/{$type}.pdf",
@@ -45,6 +45,21 @@ function onboardingVehicle(Driver $driver): Vehicle
         'approval_status' => 'approved', 'is_active' => true, 'condition' => 'good',
     ]);
 }
+
+it('allows a pending driver to submit a car before uploading documents', function () {
+    $driver = onboardingDriver();
+    $driver->update(['status' => 'pending', 'is_approved' => false]);
+    $category = CarCategory::create(['name' => 'Sedan', 'slug' => 'pending-sedan', 'vehicle_type' => 'sedan', 'seats' => 4, 'base_price_per_day' => 1000, 'is_active' => true]);
+    Sanctum::actingAs($driver);
+    $this->putJson('/api/driver-app/vehicle', [
+        'car_category_id' => $category->id, 'registration_number' => 'ka 01 ab 9876',
+        'make' => 'Toyota', 'model' => 'Etios', 'year' => 2024, 'color' => 'White',
+        'fuel_type' => 'petrol', 'seats' => 4, 'is_ac' => true,
+    ])->assertOk()->assertJsonPath('vehicle.approval_status', 'pending')
+        ->assertJsonPath('vehicle.registration_number', 'KA01AB9876')
+        ->assertJsonPath('vehicle_readiness.can_go_online', false);
+    expect($driver->vehicle()->count())->toBe(1);
+});
 
 it('creates a resumable account without asking for licence and car twice', function () {
     $phone = '8300000001';
@@ -75,11 +90,11 @@ it('prioritizes corrections and treats expiry as a server derived status', funct
     $driver = onboardingDriver();
     onboardingDocuments($driver);
     $driver->documents()->where('type', 'driving_license')->update(['expires_at' => today()->subDay()]);
-    $driver->documents()->where('type', 'police_verification')->update(['status' => 'rejected', 'rejection_reason' => 'Unreadable']);
+    $driver->documents()->where('type', 'vehicle_rc')->update(['status' => 'rejected', 'rejection_reason' => 'Unreadable']);
     $summary = app(DriverVerificationService::class)->summary($driver);
 
     expect($summary['status'])->toBe('action_required')
-        ->and($summary['next_document'])->toBe('police_verification')
+        ->and($summary['next_document'])->toBe('vehicle_rc')
         ->and($summary['requirements'][0]['status'])->toBe('expired')
         ->and($summary['approved_count'])->toBe(1);
 });

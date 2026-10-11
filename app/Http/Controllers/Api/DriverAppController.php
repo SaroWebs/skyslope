@@ -40,6 +40,15 @@ class DriverAppController extends Controller
             'vehicle' => $vehicle,
             'vehicle_readiness' => $this->vehicleReadiness($vehicle, $driver),
             'document_verification' => $this->documentVerification($driver),
+            'wallet' => [
+                'balance_minor' => $driver->getWalletBalanceMinor(),
+                'balance' => round($driver->getWalletBalanceMinor() / 100, 2),
+                'minimum_topup_minor' => (int) setting('driver.minimum_topup_minor', 50000),
+                'dispatch_eligible_balance_minor' => (int) setting('driver.dispatch_eligible_balance_minor', 10000),
+                'warning_balance_minor' => (int) setting('driver.warning_balance_minor', 50000),
+                'needs_topup_warning' => $driver->getWalletBalanceMinor() < (int) setting('driver.warning_balance_minor', 50000),
+                'is_dispatch_eligible' => $driver->getWalletBalanceMinor() >= (int) setting('driver.dispatch_eligible_balance_minor', 10000),
+            ],
             'stats' => [
                 'active_rides' => RideBooking::where('driver_id', $driver->id)
                     ->whereIn('status', ['driver_assigned', 'driver_arriving', 'pickup', 'in_transit'])
@@ -97,6 +106,17 @@ class DriverAppController extends Controller
         ]);
 
         if ($validated['is_online']) {
+            $dispatchEligibleMinor = (int) setting('driver.dispatch_eligible_balance_minor', 10000);
+            $driverBalanceMinor = $request->user()->getWalletBalanceMinor();
+            if ($driverBalanceMinor < $dispatchEligibleMinor) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Wallet balance is below ₹'.($dispatchEligibleMinor / 100).'. Please top up your wallet to go online and pick rides.',
+                    'balance_minor' => $driverBalanceMinor,
+                    'minimum_required_minor' => $dispatchEligibleMinor,
+                ], 422);
+            }
+
             $vehicle = $request->user()->vehicle()->first();
             $readiness = $this->vehicleReadiness($vehicle, $request->user());
 
@@ -142,6 +162,7 @@ class DriverAppController extends Controller
 
         return response()->json([
             'success' => true,
+            'setup_options' => array_merge(config('vehicle_catalog'), ['years' => range(now()->year + 1, 1980)]),
             'vehicle' => $vehicle,
             'vehicle_readiness' => $this->vehicleReadiness($vehicle, $request->user()),
             'document_verification' => $this->documentVerification($request->user()),
@@ -248,9 +269,17 @@ class DriverAppController extends Controller
             'permit_expiry' => ['nullable', 'date'],
             'fitness_expiry' => ['nullable', 'date'],
             'pollution_expiry' => ['nullable', 'date'],
+            'photos' => ['sometimes', 'array:front,rear,left,right'],
+            'photos.front' => [$vehicle ? 'sometimes' : 'required_with:photos', 'image', 'mimes:jpg,jpeg,png,webp', 'max:10240', new FileIsClean],
+            'photos.rear' => [$vehicle ? 'sometimes' : 'required_with:photos', 'image', 'mimes:jpg,jpeg,png,webp', 'max:10240', new FileIsClean],
+            'photos.left' => [$vehicle ? 'sometimes' : 'required_with:photos', 'image', 'mimes:jpg,jpeg,png,webp', 'max:10240', new FileIsClean],
+            'photos.right' => [$vehicle ? 'sometimes' : 'required_with:photos', 'image', 'mimes:jpg,jpeg,png,webp', 'max:10240', new FileIsClean],
         ]);
 
-        if ($vehicle && ! (clone $vehicle)->fill($validated)->isDirty()) {
+        $uploads = $validated['photos'] ?? [];
+        unset($validated['photos']);
+
+        if ($vehicle && ! $uploads && ! (clone $vehicle)->fill($validated)->isDirty()) {
             return response()->json([
                 'success' => true,
                 'message' => 'Your car details are already saved. Review status has not changed.',
@@ -267,23 +296,52 @@ class DriverAppController extends Controller
         $validated['reviewed_by'] = null;
         $validated['rejection_reason'] = null;
 
-        $vehicle = Vehicle::updateOrCreate(['driver_id' => $driver->id], $validated);
-        $category = CarCategory::find($validated['car_category_id']);
+        $oldPhotos = $vehicle?->photos ?? [];
+        $storedPhotos = [];
+        try {
+            foreach ($uploads as $side => $photo) {
+                $path = $photo->store('vehicle-photos/'.$driver->id, 'public');
+                if (! $path) {
+                    throw new \RuntimeException('Could not store vehicle photo.');
+                }
+                $storedPhotos[$side] = $path;
+            }
+            if ($storedPhotos) {
+                $validated['photos'] = array_replace($oldPhotos, $storedPhotos);
+            }
 
-        $driver->update([
-            'vehicle_type' => $category?->vehicle_type,
-            'vehicle_number' => $vehicle->registration_number,
-            'vehicle_model' => trim($vehicle->make.' '.$vehicle->model),
-            'vehicle_color' => $vehicle->color,
-            'vehicle_year' => $vehicle->year,
-            'is_online' => false,
-        ]);
+            $vehicle = DB::transaction(function () use ($driver, $validated) {
+                $vehicle = Vehicle::updateOrCreate(['driver_id' => $driver->id], $validated);
+                $category = CarCategory::find($validated['car_category_id']);
 
-        DriverAvailability::where('driver_id', $driver->id)->update([
-            'status' => 'offline',
-            'is_available' => false,
-            'last_updated' => now(),
-        ]);
+                $driver->update([
+                    'vehicle_type' => $category?->vehicle_type,
+                    'vehicle_number' => $vehicle->registration_number,
+                    'vehicle_model' => trim($vehicle->make.' '.$vehicle->model),
+                    'vehicle_color' => $vehicle->color,
+                    'vehicle_year' => $vehicle->year,
+                    'is_online' => false,
+                ]);
+
+                DriverAvailability::where('driver_id', $driver->id)->update([
+                    'status' => 'offline',
+                    'is_available' => false,
+                    'last_updated' => now(),
+                ]);
+
+                return $vehicle;
+            });
+        } catch (\Throwable $error) {
+            Storage::disk('public')->delete(array_values($storedPhotos));
+            throw $error;
+        }
+
+        // Delete replaced files only after the database changes have committed.
+        foreach (array_keys($storedPhotos) as $side) {
+            if (isset($oldPhotos[$side])) {
+                Storage::disk('public')->delete($oldPhotos[$side]);
+            }
+        }
 
         $vehicle->load('category:id,name,vehicle_type,seats,base_fare,price_per_km,price_per_minute,min_fare,base_price_per_day,extra_km_charge');
 
@@ -407,6 +465,16 @@ class DriverAppController extends Controller
             ->latest()
             ->paginate(20);
 
+        $rides->getCollection()->transform(function (RideBooking $ride) {
+            if ($ride->commission_amount === null && (float) $ride->total_fare > 0) {
+                $ride->commission_amount = app(\App\Services\CommissionService::class)->calculateRideCommission($ride);
+            }
+            if ($ride->driver_share === null && (float) $ride->total_fare > 0) {
+                $ride->driver_share = max(0, round((float) $ride->total_fare - (float) $ride->commission_amount, 2));
+            }
+            return $ride;
+        });
+
         return response()->json([
             'success' => true,
             'data' => $rides,
@@ -430,6 +498,15 @@ class DriverAppController extends Controller
                 ->where('driver_id', $driverId)
                 ->findOrFail($id),
         };
+
+        if ($kind === 'ride' && $record instanceof RideBooking) {
+            if ($record->commission_amount === null && (float) $record->total_fare > 0) {
+                $record->commission_amount = app(\App\Services\CommissionService::class)->calculateRideCommission($record);
+            }
+            if ($record->driver_share === null && (float) $record->total_fare > 0) {
+                $record->driver_share = max(0, round((float) $record->total_fare - (float) $record->commission_amount, 2));
+            }
+        }
 
         return response()->json([
             'success' => true,
